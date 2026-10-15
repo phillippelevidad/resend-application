@@ -66,7 +66,7 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 | Invariant | Carried by | Evidence | Design test (MUST) |
 | --- | --- | --- | --- |
 | **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | pending — sim invariant 1 (slice 1); `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
-| **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
+| **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` and `--chaos dispatcher-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
 | **Order independence**: any arrival order and duplication give the same state | ADR-003 | pending — fast-check properties 1–4 (slice 0); sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
 ### Simulator invariants
@@ -75,8 +75,11 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 by number. Adapted from [idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness).
 
 1. Every generated event is in `webhook_events` exactly once.
-2. Every `email_state` equals `projectEmail(ground truth)`.
-3. No `outbox` dedupe key was dispatched twice.
+2. Every `email_state`, `email_recipients` and `recipient_state` row equals the projection of the
+   ground truth (`projectEmail`, `projectRecipient`).
+3. No `outbox` `dedupe_key` produced two effects at a receiver: the fake Resend counts sends per
+   `Idempotency-Key`, and the simulator's callback receiver counts deliveries per callback id after
+   its own dedupe.
 4. The DLQ contains only the deliberately poisoned messages.
 
 ## Decisions
@@ -126,15 +129,19 @@ Rejected: incremental `UPDATE status = new` (correctness depends on arrival orde
 
 ### ADR-004 — Immutable ledger keyed on `svix_id`, one transaction per message
 
-**Accepted.** Per message, one transaction: insert into `webhook_events` `ON CONFLICT (svix_id) DO
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-26).
+Per message, one transaction: insert into `webhook_events` `ON CONFLICT (svix_id) DO
 NOTHING`; on conflict, commit as a duplicate; otherwise lock the email's `email_state` row,
 recompute projections, insert outbox rows, commit. The transaction runs at READ COMMITTED (the
 Postgres default) and reads every projection input after it holds the email lock and the recipient
 locks; every projection row is created with `INSERT … ON CONFLICT DO NOTHING` before its
 `SELECT … FOR UPDATE`. A crash at any point is either nothing or everything.
-Unknown and non-email event types are stored raw, skipped by projections and counted
-(RS-25). Dedupe is on `svix_id`, which Resend's retries keep (RS-06, RS-08), never on the SQS
-`messageId`, which redrive changes (AWS-21). **Conditional:** a reconciler replay dedupes only if
+Unknown and non-email event types, and verified events whose payload fails their type's schema
+(typed columns null where unreadable), are stored raw, skipped by projections and counted
+(RS-25). A verified event is never dead-lettered for its content: only unexpected code errors reach
+the DLQ (ADR-008), and the simulator's poison message is an injected fault. Dedupe is on `svix_id`,
+which Resend's retries keep (RS-06, RS-08), never on the SQS `messageId`, which redrive changes
+(AWS-21). **Conditional:** a reconciler replay dedupes only if
 it carries the original `svix-id` (RS-U01); slice 4 MUST settle it.
 Rejected: dedupe on `(email_id, type)` (collapses distinct events); one transaction per step.
 **Evidence:** pending — Testcontainers integration tests for duplicate insert and crash between steps; sim invariant 1 (slice 1).
@@ -152,24 +159,42 @@ Rejected: multi-database connectors (the Ingester's job); an analytics store; Dy
 
 ### ADR-006 — Transactional outbox for reactions
 
-**Accepted.** Reactions are outbox rows with a unique `dedupe_key`, written in the causing event's
-transaction and delivered by the dispatcher (ADR-017) with retries and backoff. Alert emails carry
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-05, V1-08, V1-25).
+Reactions are outbox rows with a unique `dedupe_key`, written in the causing event's
+transaction and delivered by the dispatcher (ADR-017) with retries and backoff. A rule fires when a
+predicate of the recomputed state becomes true, and only on a predicate that, once true, stays true
+for every larger event set (for example, a recipient reaching `hard_bounced`), so it becomes true
+exactly once in any arrival order; it never fires on an intermediate state, which differs by order.
+A projection rebuild writes no outbox rows. Alert emails carry
 an `Idempotency-Key` derived from `dedupe_key` (RS-24); keys live 24 h, so an alert's retry horizon
 stays under 24 h and past it the entry is marked dead ([resend.md → Constraint 8](resend.md#constraints-and-sharp-edges)).
 An alert's subject and body are rendered only from `outbox.payload`, so every retry sends identical
 bytes; `409 concurrent_idempotent_requests` is retried, and `409 invalid_idempotent_request` marks
 the entry dead with that name in `last_error` (RS-24).
-App callbacks are signed, with stable ids. The dispatcher sends with a `sending_access` key only
-([integrations.md → Secrets layout](integrations.md#secrets-layout)).
+App callbacks are signed, with stable ids, and delivered at least once: a dispatcher crash after
+the send re-sends, and the receiver dedupes on the id. The dispatcher sends with a `sending_access`
+key only ([integrations.md → Secrets layout](integrations.md#secrets-layout)). Outbox rows caused
+by `source = simulated` events are dispatched only to the simulator's receiver sink, never to
+Resend or a real callback URL, so a simulator run makes no live Resend write and spends no team
+budget.
 Rejected: calling third parties from the worker; dedupe in memory.
-**Evidence:** pending — `--chaos worker-crash` yields no duplicate dispatch, sim invariant 3; retry-horizon unit test (slice 6).
+**Evidence:** pending — `--chaos worker-crash` and `--chaos dispatcher-crash` (kill after send, before commit) produce no second effect, sim invariant 3; retry-horizon unit test; fast-check property: every permutation of an event set emits the same set of `(rule, subject)` reactions (slice 6).
 
 ### ADR-007 — Recovery by id diff and replay through ingest
 
-**Accepted.** On the hourly cron and on demand, the reconciler reads the webhook's `status` first
-and stops with `webhook_disabled` if it is disabled (RS-11, RS-13). It then pages List Events
-newest first (RS-14), skips events younger than a 10-minute grace window, stops at a lookback
-horizon (default 3 days, above the ≈ 27.6 h retry schedule, RS-09), diffs ids against
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03).
+On the hourly cron and on demand, the reconciler reads the configured webhook's `status` first
+(its id is a deploy input, [integrations.md → Secrets layout](integrations.md#secrets-layout)) and
+stops with `webhook_disabled` if it is disabled (RS-11, RS-13). It then pages List Events newest
+first (RS-14), skips events younger than its grace window (10 minutes, or the source queue's
+`ApproximateAgeOfOldestMessage`, AWS-22, when that is longer; locally the oldest visible
+`local_queue_messages` row), so an event ingest acknowledged that is still queued is neither
+counted missing nor replayed. A dead-lettered event is replayed once per run until it is redriven
+or purged; the DLQ alarm already shows it (ADR-008). It stops at a lookback horizon (default 3
+days, above the ≈ 27.6 h retry schedule, RS-09; extended back to the `horizon_end` of the last run
+that finished without an `error_code` when that is older, capped at 30 days, RS-31, and at List
+Events reach, RS-U03, so a span when runs could not run, such as a tripped kill switch, a database
+outage or a quota suspension, is covered with no `--lookback`), diffs ids against
 `webhook_events`, and replays the missing ones (RS-16). A replay re-enters through ingest, so
 verification and dedupe apply unchanged. One failed replay never aborts a run; runs never overlap
 (a run starts in one transaction that takes `pg_advisory_xact_lock` on a fixed reconcile key,
@@ -181,7 +206,7 @@ cited, not claimed. **Conditional:** the id diff holds only if List Events ids a
 three MUST be settled in slice 4; recoverable range is bounded by List Events reach (RS-U03); the
 grace window assumes visibility within minutes (RS-U13).
 Rejected: a write path that inserts fetched payloads directly (bypasses verification); diffing by delivery status (misses "acknowledged but never stored").
-**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; disabled webhook; `429` with `retry-after` (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
+**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; a 5-day gap since the last good run recovered with no `--lookback`; disabled webhook; `429` with `retry-after`; a queued backlog older than 10 minutes is not replayed (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
 
 ### ADR-008 — Backpressure: bounded concurrency, partial batch failure, DLQ
 
@@ -242,13 +267,16 @@ Rejected: CLI or MCP reading the database directly; a dev-only inspection script
 
 ### ADR-012 — `resend-client` is the sole Resend API caller
 
-**Accepted.** Every Resend API call goes through `packages/resend-client`. It owns one limiter,
-2 req/s by default, that yields when `ratelimit-remaining` falls below half of `ratelimit-limit`
-and waits `retry-after` on `429`, because the 10 req/s budget is per team, shared by every key and
-endpoint (RS-19, RS-20). The SDK never throws or retries (RS-23), so every response is checked and
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-04).
+Every Resend API call goes through `packages/resend-client`. Each calling function holds one
+limiter instance, 2 req/s by default, that yields when `ratelimit-remaining` falls below half of
+`ratelimit-limit` and waits `retry-after` on `429`, because the 10 req/s budget is per team, shared
+by every key and endpoint (RS-19, RS-20). The SDK never throws or retries (RS-23), so every response is checked and
 errors are mapped by status, then name, with a default branch (RS-22). Every request carries a
 `User-Agent` (RS-21). Rules in [integrations.md → Locked rules](integrations.md#locked-rules-must).
-Rejected: calling the `resend` SDK from apps directly; a limiter per caller.
+Every calling function is single-flight (the reconciler by non-overlapping runs, ADR-007; the
+dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s.
+Rejected: calling the `resend` SDK from apps directly; a limiter shared across functions through a table or service (single-flight callers make it unnecessary).
 **Evidence:** pending — limiter unit tests (rate, yield on low `remaining`, `retry-after`); fake-API `429` storm completes the run (slice 4).
 
 ### ADR-013 — Pure core and local mode
@@ -298,8 +326,9 @@ Rejected: automatic DLQ redrive after recovery (needs a failure classification t
 
 ### ADR-016 — The simulator reaches AWS only through an opt-in simulator secret
 
-**Accepted** (owner, 2026-10-15). An off-by-default deploy flag creates one extra secret,
-`ledger/simulator-signing-secret`, read by ingest only. Ingest verifies against it after the Resend
+**Accepted** (owner, 2026-10-15); **amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-58).
+An off-by-default deploy flag creates one extra secret, `ledger/simulator-signing-secret`, read by
+ingest only. Ingest verifies against it after the Resend
 set and stamps matching events `source = simulated`. The simulator generates fresh `svix_id`s and
 never reuses one captured from a real delivery, so a simulated event cannot displace a live one.
 Only the owner's deployment sets the flag, and
@@ -308,31 +337,43 @@ adopter's stack therefore never accepts a second, test signing secret, and the s
 targets a stack holding adopter data ([features.md → verify](features.md#adopter-lifecycle)). The
 simulator is `sim/`, run as `pnpm sim`, not a `ledger` subcommand: it holds a signing secret and
 checks invariants through `packages/db`, both of which the CLI must never do (ADR-011). Cost:
-USD 0.40/month, in the owner's deployment only (AWS-11).
+USD 0.40/month, in the owner's deployment only (AWS-11). Locally (slices 1 and 2B), ingest reads an
+optional `LEDGER_SIMULATOR_SECRET` from `.env.local`, verified after the Resend set and stamping
+`simulated` exactly as on AWS.
 Rejected: a separate demo stack (doubles the idle secret and alarm lines); injecting straight into SQS (bypasses ingest, so no ingest latency numbers for slice 9).
 **Evidence:** pending — CDK assertion test: without the flag the template has no simulator secret and ingest references none; unit test: a simulator-signed request is rejected when the secret is absent (slice 3).
 
 ### ADR-017 — The dispatcher is triggered after commit, plus an hourly sweep
 
-**Accepted.** When a worker transaction commits outbox rows, the worker invokes the dispatcher
-asynchronously. The dispatcher claims due rows with row locks inside one transaction (pooler-safe),
-delivers them, and records the outcome. A sweep on the shared hourly cron retries what failed or
-was never triggered. No sub-hourly schedule touches Postgres, which keeps the idle wake budget
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-04).
+When a worker transaction commits outbox rows, the worker invokes the dispatcher asynchronously.
+The dispatcher is single-flight: its transaction first takes `pg_try_advisory_xact_lock` on a fixed
+dispatcher key (transaction-scoped, so pooler-safe), and an invocation that does not get the lock
+exits, because the holder or the next sweep delivers. The holder claims up to 10 due rows
+`FOR UPDATE SKIP LOCKED`, repeating until none is due; per batch it delivers them, and records the
+outcome. A sweep on the shared hourly cron retries what failed or was never triggered. No
+sub-hourly schedule touches Postgres, which keeps the idle wake budget
 ([integrations.md → Cadence](integrations.md#cadence-and-the-database)); hourly retries fit inside
-the 24 h idempotency-key horizon (ADR-006). A lost async invoke only delays delivery to the next
-sweep.
+the 24 h idempotency-key horizon (ADR-006). Each delivery has an HTTP timeout well below the
+Lambda timeout, and outcomes commit with their batch, so a crash re-sends at most one batch, which
+the receivers absorb (ADR-006, sim invariant 3). A lost async invoke only delays delivery to the
+next sweep.
 Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24, AWS-U03); dispatching inline in the worker after commit (couples worker latency and failures to third parties); a sub-hourly poller (breaks the wake budget).
-**Evidence:** pending — integration test: an invoke dropped after commit is delivered by the sweep, once; sim invariant 3 (slice 6).
+**Evidence:** pending — integration test: an invoke dropped after commit is delivered by the sweep, once; two concurrent invokes deliver from one container only; sim invariant 3 (slice 6).
 
 ### ADR-018 — Migrations run from the deploy command, before the code that needs them
 
-**Accepted.** `drizzle-kit` migrations run from the deploy command with the **direct** Postgres URL
-supplied by the deployer, then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
-never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). Migrations are
-expand/contract only, so code from the previous deploy runs against the new schema and no deploy
-needs downtime.
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37).
+`drizzle-kit` migrations run from the deploy command with the **direct** Postgres URL supplied by
+the deployer, then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
+never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). The deploy
+command refuses to run while the kill switch is tripped (the worker's reserved concurrency reads
+`0`) unless it runs as the re-arm, and restores an ADR-015 pause after `cdk deploy` if the worker's
+ESM was paused before it, because whether a CloudFormation update re-applies the template's
+`Enabled: true` is AWS-U09. Migrations are expand/contract only, so code from the previous deploy
+runs against the new schema and no deploy needs downtime.
 Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; concurrent cold starts race); a CDK custom resource (adds a Lambda whose failure blocks the deploy).
-**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests (slice 1); the deploy command migrates, then deploys (slice 2).
+**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it is marked as a contract step (slice 2); the deploy command migrates, then deploys (slice 2).
 
 ## Technology
 
@@ -344,7 +385,7 @@ Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; conc
 | Tests | Vitest, fast-check, Testcontainers | Property tests are first-class |
 | Lint / format | Biome | |
 | Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
-| Logging / metrics | Winston JSON; CloudWatch EMF; vended SQS, Lambda, API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30) |
+| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`; vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
 | Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `apps/ingest` | ADR-012, ADR-009 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
 | MCP | Official MCP TypeScript SDK | ADR-011 |
@@ -373,6 +414,7 @@ measured reason in an ADR. Neon Free bills nothing and sits outside the AWS budg
 | Upstream PRs to the Webhook Ingester | categorical | Not planned ([decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized), owner 2026-10-15) | Superseding ADR only |
 | Aurora Serverless v2 fallback | temporal | Neon Free meets R1–R7 at USD 0 | Any trigger in [integrations.md → Decision](integrations.md#decision--neon): Neon pauses, deletes or bills a kept-up deploy; one quota suspension; owner opts for all-AWS |
 | Projections for non-email events | temporal | Stored raw; no consumer yet | An [api-contract.md](api-contract.md) operation or a reaction rule that reads contact, domain or topic state |
+| Projection rebuild on a logic or column change (versioned, batched, in the worker's lock order, no outbox rows) | temporal | No projection logic has reached a kept deploy yet | The first change after slice 1 that alters `projectEmail` or `projectRecipient` output, or adds a projection column: that change lands the rebuild in the deploy command |
 | Inbound email projection | temporal | `email.received` carries metadata only (RS-30) | M2 done **and** a row in [What this project must demonstrate](about.md#what-this-project-must-demonstrate) names inbound email |
 | Inngest worker adapter | temporal | No row of What this project must demonstrate needs it | M2 done **and** a row names a claim only it can prove |
 | Minimal read-only web UI | temporal | CLI and MCP cover every persona's job | M2 done **and** a demo step cannot be shown through CLI or MCP output |
@@ -387,7 +429,7 @@ A slice is a small, independently shippable v0 with its own tests, hand-walkable
 the API or the simulator ([lens clause 3](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 [build-checklist.md](build-checklist.md) is the progress layer over this list and takes its IDs and
 titles verbatim. **Spine:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7, then M3 in any order. **Branch:** 2B
-MAY start once 2 is done and MUST land before M2 closes. Every milestone boundary leaves the README
+MAY start once 3 is done and MUST land before M2 closes. Every milestone boundary leaves the README
 claims, the demo and the deploy coherent.
 
 | Slice | Ships | Walk | Milestone |
@@ -420,7 +462,7 @@ account are Ask-first.
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19 |
 | 1 | RS-U21, RS-U22 | RS-U15, RS-U18 |
-| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, PG-U04 |
+| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, PG-U04 |
 | 3 | — | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 6 | — | RS-U16 |
@@ -438,20 +480,20 @@ impacted recipients); it rides on the RS-U15 sends.
 
 | Risk | Mitigation |
 | --- | --- |
-| Cost runaway while the stack is kept up | Guardrails stack, kill switch on in the owner's deployment, overshoot bounded to the budget's refresh window (billing lag plus up to 12 h) at the throttled rate (ADR-010, AWS-34); AWS-U01 and AWS-U02 settled in slice 2 |
+| Cost runaway while the stack is kept up | Guardrails stack, kill switch on in the owner's deployment, overshoot bounded to the budget's refresh window (billing lag plus up to 12 h) at the steady throttle, cut to minutes by the usage trip (ADR-010, AWS-34); AWS-U01 and AWS-U02 settled in slice 2 |
 | Neon deletes an inactive Free project, losing the ledger (PG-U01) | Settled in slice 2 from Neon's docs or support; the hourly reconciler writes a row from slice 4; Aurora fallback trigger (ADR-005) |
-| Neon suspends the compute for quota (PG-U03) | The worker pauses and the queue holds events up to 13 days (ADR-015); quota use measured in slice 4; fallback trigger |
-| A database outage longer than SQS retention (13 days) | Queue-age alarm fires within the hour (slice 3); past retention, reconcile recovers only within List Events reach (RS-U03) |
+| Neon suspends the compute for quota (PG-U03) | The worker pauses and the queue holds events up to 13 days (ADR-015); a quota suspension lasts until the next billing period, which can exceed that (next row); quota use measured in slice 4; fallback trigger |
+| A database outage longer than SQS retention (13 days) | Queue-age alarm fires within the hour (slice 3); past retention, the reconciler's extended lookback (ADR-007) recovers what SQS expired, within List Events reach (RS-U03) |
 | A per-message error misclassified as a connection error pauses the pipeline | The fresh-connection retry first; the hourly resume bounds the stall to one hour; classification unit test (ADR-015) |
 | A flapping database spends receive counts across pause and resume cycles | Resume only after a successful probe; a message that still reaches the DLQ is redriven, deduplicated on `svix_id` (ADR-004, ADR-008) |
 | Kill switch tripped: webhooks fail meanwhile | Owner's deployment only; scripted re-arm, then `ledger reconcile` within List Events reach ([about.md → Risk appetite](about.md#risk-appetite)) |
-| Concurrent workers update the same `recipient_state` from different emails | Lock recipient rows in sorted `address_hash` order after the email lock; recompute from all its `email_recipients` rows; concurrency integration test (slice 1) and through the pooler (PG-U02, slice 2) |
-| Postgres connection exhaustion under burst | One connection per container, `MaximumConcurrency` caps containers (ADR-008); Neon's pooler accepts far more |
+| Concurrent workers update the same `recipient_state` from different emails | Lock recipient rows in sorted `address_hash` order after the email lock; recompute from all its `email_recipients` rows; concurrency integration test (slice 1) and through the pooler (PG-U02, slice 2); sim invariant 2 under `--burst` on AWS (slice 3) |
+| Postgres connection exhaustion under burst | One connection per container, `MaximumConcurrency` caps worker containers (ADR-008), and the dispatcher is single-flight (ADR-017); Neon's pooler accepts far more |
 | Webhook auto-disabled and nobody notices | The reconciler reads `status` every run and alarms with `webhook_disabled` (ADR-007) |
-| Reconcile competes with the team's sending for 10 req/s | One limiter at 2 req/s that yields on low `remaining` (ADR-012) |
+| Reconcile competes with the team's sending for 10 req/s | A 2 req/s limiter per single-flight caller, yielding on low `remaining`, ≤ 4 req/s in total (ADR-012) |
 | Replays fail verification or land under a new id (RS-U01, RS-U20) | Settled in slice 4 by one Ask-first replay of a stored event, before recovery is called done |
 | Outcome precedence wrong for async bounces or `created_at` semantics | Oracle property test under both answers (ADR-003); RS-U10, RS-U11, RS-U12 in slice 0 |
-| PII or secrets leak through logs, responses or tool output | gitleaks history scan in `pnpm verify` (slice 0); test addresses only; ids in logs, never addresses or bodies (AWS-29); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
+| PII or secrets leak through logs, responses or tool output | gitleaks history scan in `pnpm verify` (slice 0); test addresses only; ids in logs, never addresses or bodies, enforced by the logger's allow-list (unit test, slice 1); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
 
 ## Open decisions
 
