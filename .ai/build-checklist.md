@@ -63,9 +63,10 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 - **Ships:**
   - [ ] pnpm workspace with strict TypeScript, Biome and Vitest; `pnpm verify` mirrors CI stage for stage and exits 0 only when every stage ran and passed.
   - [ ] GitHub Actions CI runs `pnpm verify` on every push and pull request; evidence: a green run on a pushed commit.
-  - [ ] `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
+  - [ ] `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` extending the default ruleset (`[extend] useDefault = true`) and adding rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
   - [ ] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
   - [ ] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity, oracle agreement (ADR-003).
+  - [ ] `packages/core` address normalization and mask functions ([PII & retention](data-modeling.md#pii--retention)); evidence: fast-check properties (masks idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token) and the two-recipient property (a bounce naming one recipient leaves the other's outcome unchanged).
   - [ ] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage.
   - [ ] `sim` history generator with seed, duplicate and shuffle knobs; `pnpm sim` prints the projection of a generated, shuffled history, identical for a fixed seed.
   - [ ] README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
@@ -85,14 +86,15 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [ ] `packages/db` Drizzle schema and expand-only migrations for `webhook_events`, `email_state`, `email_recipients` and `recipient_state`; CI applies every migration to a fresh Postgres before the integration tests (ADR-018).
   - [ ] Worker runs one transaction per message behind the in-process queue port, deduplicating on `svix_id` (ADR-004, ADR-013); evidence: Testcontainers tests for a duplicate insert and a crash between steps.
   - [ ] Recipient rows locked in sorted `address_hash` order after the email lock; evidence: concurrency integration test with two emails sharing a recipient.
-  - [ ] Projections hold masks and keyed address hashes only; evidence: integration test finding no raw address or subject in any projection row.
+  - [ ] Projections hold masks and keyed address hashes only, under an address-hash key the setup script generates once into `.env.local` ([PII & retention](data-modeling.md#pii--retention)); evidence: integration test finding no raw address or subject in any projection row.
   - [ ] Unknown and non-email event types stored raw, projection skipped, metric emitted; evidence: unit test.
   - [ ] Minimal read API (OpenAPI, Zod), SDK, `ledger email <email_id>` and `ledger recipient <address>` with `--json` in the error shape, auth skipped only on loopback; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
   - [ ] `pnpm sim --duplicates 0.2 --shuffle` against the local process passes invariants 1 and 2.
   - [ ] RS-U21 settled by the Ask-first two-recipient send to `delivered@resend.dev` and `bounced@resend.dev`, observed through `resend webhooks listen`, with the result in resend.md.
   - [ ] RS-U15 recorded from the Ask-first test-address sends, with simulator fixtures mirroring the observed sequences; RS-U18 checked by a read-only `GET /webhooks` after an interrupted `listen` session.
+  - [ ] RS-U22 settled in the first approved `listen` session: the temporary webhook's secret read with `resend webhooks get <id>`, loaded into the local secret set, and one forwarded delivery verified by local ingest, with the result in resend.md.
 - **UI surfaces:** `POST /webhooks/resend` (local) · `resend webhooks listen` · `ledger email <email_id>` · `ledger recipient <address>` · `pnpm sim --duplicates 0.2 --shuffle`.
-- **Ops:** owner: a Resend API key and webhook signing secret in the git-ignored `.env.local`; approve each `resend webhooks listen` session (it creates a temporary webhook, RS-33) and each test send (Ask-first); `@resend.dev` test addresses only; Docker for Testcontainers.
+- **Ops:** owner: a Resend API key and, per `listen` session, that session's signing secret (RS-U22) in the git-ignored `.env.local`; approve each `resend webhooks listen` session (it creates a temporary webhook, RS-33) and each test send (Ask-first); `@resend.dev` test addresses only; Docker for Testcontainers.
 - **Deferred tail:** SQS, DLQ, CDK and bearer tokens ([slice 2](#2--durable-ingest-on-aws)). DLQ operations ([slice 3](#3--operations-and-evidence-on-aws)). Rotation runbook and retired-secret test ([slice 4](#4--recovery)). `email.explainDelivery` and MCP ([slice 5](#5--mcp-server-and-contract-hardening)). `docker compose` local mode ([slice 2B](#2b--local-mode-queue-and-docker-compose)).
 
 ### 2 — Durable ingest on AWS
@@ -106,16 +108,16 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [ ] Ingest decodes both body encodings and answers `200` after enqueue, `401` on a bad signature and `503` when the enqueue fails; evidence: unit tests for both encodings and the three responses.
   - [ ] Worker builds its failure list from per-message results; evidence: batch-failure unit test.
   - [ ] On a database outage the worker retries once on a fresh connection, then fails the batch and disables its own ESM; the hourly cron and `ledger worker resume` re-enable it after a successful probe (ADR-015); evidence: error-classification unit test and a Testcontainers test where no message reaches the DLQ.
-  - [ ] Hashed `api_tokens` with `read` and `operate` scopes, `ledger token create|list|revoke|current`, the first `operate` token issued by the deploy command; evidence: API and CLI tests for `401`, `403 forbidden` and `last_operate_token`.
+  - [ ] Hashed `api_tokens` with `read` and `operate` scopes, `ledger token create|list|revoke|current`, the first `operate` token issued by the deploy command; evidence: API and CLI tests for `401`, `403 forbidden` and `last_operate_token`, and a deploy-command test where a re-run inserts no second first-token.
   - [ ] `ledger health` reports queue depth and age, DLQ depth, event-source state and database reachability, and answers during a database outage; evidence: unit test with the database unreachable.
-  - [ ] Guardrails stack with the USD 50 budget, SNS, the kill switch (on in the owner's deployment) and a scripted re-arm; AWS-U01 and AWS-U02 settled by the recorded trip drill.
-  - [ ] One deploy command (migrate with the direct URL, then deploy both stacks) and one teardown command; evidence: a post-destroy listing of stack-tagged resources finds nothing billable.
+  - [ ] Guardrails stack with the USD 50 budget, SNS, the kill switch (on in the owner's deployment) and a scripted re-arm; AWS-U01 and AWS-U02 settled by the recorded trip drill; evidence: CDK assertion test that the budget, its notifications and the kill-switch wiring exist (aws.md → Budget alarms, item 8).
+  - [ ] One deploy command (migrate with the direct URL, then deploy both stacks) and one teardown command; the deploy command refuses an address-hash key whose `key_id` differs from stored hashes; evidence: a deploy-command test for that refusal, and a post-destroy listing of stack-tagged resources finds nothing billable.
   - [ ] PG-U01 settled from Neon's docs or support; PG-U02 settled by a deployed test where two transactions on one `email_id` serialize through the pooled URL.
   - [ ] Verify stage walked with one Ask-first send to `delivered@resend.dev`, `ledger email` showing `delivered` and `ledger health` showing queue and DLQ at 0; it settles RS-U14 and AWS-U04.
   - [ ] RS-U07 closed by the Ask-first test webhook pointed at an endpoint that returns `401`, or proved safe by the exact-`200` contract, its row citing the result.
   - [ ] AWS-U03, AWS-U05, AWS-U06, AWS-U07 and PG-U04 closed or proved safe either way, each [Unverified] row citing its test, measurement or teardown drill.
 - **UI surfaces:** deploy command · teardown command · `POST /webhooks/resend` (deployed) · `ledger email <email_id>` · `ledger recipient <address>` · `ledger health` · `ledger worker resume` · `ledger token create|list|revoke|current` · trip drill and re-arm scripts.
-- **Ops:** owner: approve the first deploy and every AWS resource (Ask-first); an AWS account CDK-bootstrapped in us-east-2, with `aws lambda get-account-settings` read before the deploy (AWS-U05); a Neon Free project in `aws-us-east-2` and its direct and pooled URLs; create the Resend webhook for the ingest URL and put its signing secret in Secrets Manager; approve the verify-stage send and the RS-U07 experiment (Ask-first); run the trip drill.
+- **Ops:** owner: approve the first deploy and every AWS resource (Ask-first); an AWS account on the Paid plan (AWS-51), CDK-bootstrapped in us-east-2, with `aws lambda get-account-settings` read before the deploy (AWS-U05); a Neon Free project in `aws-us-east-2` and its direct and pooled URLs; create the Resend webhook for the ingest URL and put its signing secret in Secrets Manager; approve the verify-stage send and the RS-U07 experiment (Ask-first); confirm any SNS email subscription the guardrails stack creates (CBL-03); run the trip drill.
 - **Deferred tail:** Alarms, runbook, DLQ inspect and redrive, simulator secret, burst and chaos runs ([slice 3](#3--operations-and-evidence-on-aws)). Reconciler and its Resend key ([slice 4](#4--recovery)). Scripted webhook creation (tripwire in [architecture.md → Deferred](architecture.md#deferred-yagni)).
 
 ### 3 — Operations and evidence on AWS
@@ -127,13 +129,13 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 - **Ships:**
   - [ ] CloudWatch alarms → SNS → email, each with one runbook entry; evidence: the alarm-to-runbook link check.
   - [ ] `ledger dlq inspect` returns a sample with no address, subject or payload, and `ledger dlq redrive` refuses a second concurrent task; evidence: API and CLI tests, plus a redaction test on the inspect output.
-  - [ ] Off-by-default simulator secret (ADR-016); evidence: CDK assertion test (without the flag, no secret and no ingest reference) and a unit test rejecting a simulator-signed request when the secret is absent.
+  - [ ] Off-by-default simulator secret (ADR-016); evidence: CDK assertion test (without the flag, no secret and no ingest reference), a unit test rejecting a simulator-signed request when the secret is absent, and a unit test that a simulator-signed event is stamped `simulated`.
   - [ ] `pnpm sim --burst 10000/10s` on the deployed stack passes invariants 1 and 2 and records the ingest p99, closing RS-U08.
-  - [ ] `pnpm sim --chaos db-outage` on AWS keeps ingest at `200` and the DLQ at 0, and the queue drains after resume, with invariants 1 and 2.
+  - [ ] `pnpm sim --chaos db-outage` on AWS keeps ingest at `200` and the DLQ at 0, and the queue drains after resume, with invariants 1 and 2; the queue-age alarm email reaches the owner within the hour, recorded with the run.
   - [ ] A poison message reaches the DLQ after `maxReceiveCount` while the others commit (invariant 4), and a redrive after the fix returns the depth to 0.
   - [ ] `pnpm sim --duplicates 0.2 --shuffle` passes invariants 1 and 2 through the deployed queue (ADR-002).
 - **UI surfaces:** `pnpm sim --burst 10000/10s` · `pnpm sim --chaos db-outage` · `pnpm sim` poison run · `ledger dlq inspect` · `ledger dlq redrive` · `ledger health` · alarm email.
-- **Ops:** owner: confirm the SNS email subscription; set the simulator flag in the owner's deployment only; approve the redeploys (Ask-first); watch the budget during the burst.
+- **Ops:** owner: confirm the SNS email subscription; check the account concurrency quota against the burst (AWS-U05) and request an increase if it falls short; set the simulator flag in the owner's deployment only; approve the redeploys (Ask-first); watch the budget during the burst.
 - **Deferred tail:** Published latency, drain and cost numbers ([slice 9](#9--real-aws-burst-numbers)). MCP `inspect_dlq` and `redrive_dlq` ([slice 5](#5--mcp-server-and-contract-hardening)). Local-mode DLQ ([slice 2B](#2b--local-mode-queue-and-docker-compose)).
 
 ### 4 — Recovery
@@ -144,12 +146,12 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 - **Refs:** [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller) · [resend.md → Headless Webhook API](resend.md#headless-webhook-api-rs-13rs-18) · [integrations.md → Locked rules](integrations.md#locked-rules-must) · [integrations.md → Secrets layout](integrations.md#secrets-layout) · [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) · [gaps.list](api-contract.md#gapslist) · [reconcile.getRun](api-contract.md#reconcilegetrun) · [reconcile.start](api-contract.md#reconcilestart) · [health.get](api-contract.md#healthget) · [features.md → recover, rotate secret](features.md#adopter-lifecycle) · [J3](features.md#j3--outage--recovery) · [J5](features.md#j5--secret-rotation)
 - **Ships:**
   - [ ] `packages/resend-client` with one 2 req/s limiter that yields on low `ratelimit-remaining` and waits `retry-after` on `429`, every response checked and mapped by status then name; evidence: limiter unit tests.
-  - [ ] Reconciler on the hourly cron and on demand writes one `reconcile_runs` row per run and never overlaps; evidence: fake-API integration test where an outage past the retry schedule ends 100 % recovered with 0 duplicates.
+  - [ ] Reconciler on the hourly cron and on demand writes one `reconcile_runs` row per run and never overlaps; evidence: an integration test where two concurrent starts yield one run and one `reconcile_in_progress`, and a fake-API integration test where an outage past the retry schedule ends 100 % recovered with 0 duplicates.
   - [ ] A disabled webhook stops the run with `webhook_disabled`, and a `429` storm with `retry-after` still completes; evidence: fake-API integration tests.
   - [ ] `ledger gaps [--since]` and `ledger reconcile [--dry-run] [--lookback] [--no-wait]`, with the last run in `ledger health`; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
-  - [ ] Rotation runbook entry; evidence: unit test where a retired secret gets `401`.
+  - [ ] Rotation runbook entry; evidence: unit test with a fake clock where a secret removed from the store gets `401` once the 5-minute cache TTL passes.
   - [ ] RS-U01 and RS-U20 settled by one Ask-first replay of a stored event on the owner's webhook; RS-U02 settled read-only by comparing stored `svix_id`s with List Events ids.
-  - [ ] RS-U03 reach of at least the 3-day lookback, RS-U13 visibility lag and RS-U17 revoked-key status closed by read-only checks; PG-U03 by Neon's usage page; RS-U06 proved safe by the status read every run.
+  - [ ] RS-U03 reach of at least the 3-day lookback, RS-U13 visibility lag and RS-U17 revoked-key status closed by read-only checks; PG-U03 proved safe either way (Free never bills; a quota suspension pauses the worker while the queue holds events, ADR-015), its row citing that, with the 30-idle-day usage reading added beside aws.md → Cost shape when it exists; RS-U06 proved safe by the status read every run.
   - [ ] RS-U04 and RS-U05 closed by the Ask-first disabled-webhook experiments, RS-U09 by an Ask-first secret rotation on a test webhook, RS-U10 by the RS-U01 replay, or each proved safe either way, its row citing the result.
   - [ ] M1 boundary: the README states only claims whose evidence landed in slices 0–4, with 0 unlinked claims and the CI link check green.
 - **UI surfaces:** `ledger gaps --since 24h` · `ledger reconcile --dry-run` · `ledger reconcile` · `ledger health` · the hourly cron run.
@@ -217,7 +219,7 @@ simulator evidence.
 - **Depends on:** 6 and 2B.
 - **Refs:** [ADR-014](architecture.md#adr-014--raw-payload-retention-and-redaction) · [PII & retention](data-modeling.md#pii--retention) · [about.md → Success metrics](about.md#success-metrics) · [J1](features.md#j1--first-deploy) · [resend.md → \[Unverified\]](resend.md#unverified)
 - **Ships:**
-  - [ ] Retention job masks `to`, `from` and `subject` and nulls unread fields after N days; evidence: integration test where a rebuild after redaction yields identical projections.
+  - [ ] Retention job masks `to`, `from` and `subject` and nulls unread fields after N days, in every event type; evidence: integration test where a rebuild after redaction yields identical projections, and a `contact.created` fixture (test address) holds no raw address or name afterwards.
   - [ ] `docs/results.md` holds the simulator results from slices 1–6, each linked to its run.
   - [ ] Runbook covers every alarm, secret rotation, a database outage and the kill-switch re-arm; evidence: the alarm-to-runbook link check.
   - [ ] README quick start, with a timed newcomer deploy of 15 minutes or less recorded.
@@ -241,6 +243,7 @@ npm releases with semver, real AWS load numbers, a learning log. Any order once 
   - [ ] Final name picked and recorded in about.md before the first publish.
   - [ ] Release workflow publishes `packages/sdk` and `apps/cli` with semver and provenance; evidence: the published versions on npm.
   - [ ] An `npx` install of the published CLI reads an email from the deployed stack.
+  - [ ] M3 boundary, if this is the last open M3 card: 0 unlinked README claims, and the deploy and demo coherent; evidence: the CI link check.
 - **UI surfaces:** `npx <cli-package> email <email_id>` · `npm view <sdk-package> versions`.
 - **Ops:** owner: npm account and package names; approve the release workflow (Ask-first: CI change) and each publish.
 - **Deferred tail:** — none.
@@ -254,6 +257,7 @@ npm releases with semver, real AWS load numbers, a learning log. Any order once 
 - **Ships:**
   - [ ] One recorded `pnpm sim --burst 10000/10s` on the deployed stack, with p50/p99 ingest latency and queue drain time in `docs/results.md`.
   - [ ] The burst's AWS cost from Cost Explorer recorded beside it.
+  - [ ] M3 boundary, if this is the last open M3 card: 0 unlinked README claims, and the deploy and demo coherent; evidence: the CI link check.
 - **UI surfaces:** `pnpm sim --burst 10000/10s` · the Cost Explorer line.
 - **Ops:** owner: approve the burst run; read Cost Explorer.
 - **Deferred tail:** — none.
@@ -266,6 +270,7 @@ npm releases with semver, real AWS load numbers, a learning log. Any order once 
 - **Refs:** [architecture.md → Decisions](architecture.md#decisions) · [aws.md → Learning notes](aws.md#learning-notes)
 - **Ships:**
   - [ ] A learning log in `docs/` with each entry linked to its ADR, test or measured number; evidence: the CI link check.
+  - [ ] M3 boundary, if this is the last open M3 card: 0 unlinked README claims, and the deploy and demo coherent; evidence: the CI link check.
 - **UI surfaces:** the log's links.
 - **Ops:** — none.
 - **Deferred tail:** — none.
