@@ -33,7 +33,7 @@ Three questions per ADR:
 2. **If not, is the departure argued?** [The OpenSpec design rule](../../../../openspec/config.yaml): *"If the design must depart from one, say so explicitly and propose superseding it — never diverge silently."* An argued departure is a decision. A silent one is [A2](findings.md).
 3. **Does it need a doc edit?** A departure, a clarification, or a tripwire the change retires all become **tasks** in `tasks.md`. Never edit `.ai/` from this skill.
 
-Also check the [Deferred (YAGNI)](../../../../.ai/architecture.md#deferred-yagni) table: a **categorical** reject that the design quietly builds (SQS FIFO, a second database, multi-tenant) is reopened only by a superseding ADR, not by a design document. A **temporal** deferral being pulled forward needs a reason the lens allows — build cost or testability, never integrator harm in the gap.
+Also check the [Deferred (YAGNI)](../../../../.ai/architecture.md#deferred-yagni) table: a **categorical** reject that the design quietly builds (SQS FIFO, a second database, multi-tenant) is reopened only by a superseding ADR, not by a design document. A **temporal** deferral being pulled forward needs a reason the lens allows — build cost or testability, never adopter or reviewer harm in the gap between slices.
 
 ---
 
@@ -69,7 +69,7 @@ Its `Never` list in one line each: editing an applied migration · a `pgEnum` ·
 | No app importing from another app; `packages/core` free of I/O | The import graph is the boundary check and it is greppable |
 | List reads on the standard envelope | A second pagination shape reaching the SDK |
 | SQS for delivery, Postgres for truth, **only** | A second queue, a cache or a FIFO ordering standing in as source of truth or ordering guarantee |
-| The [api-contract.md](../../../../.ai/api-contract.md) entry and the owner's Ask-first approval for any contract change, as tasks | An operation, error code, CLI flag or MCP tool that ships without its contract entry, so the hand-written SDK and the docs drift from the code |
+| The [api-contract.md](../../../../.ai/api-contract.md) entry and the owner's Ask-first approval for any contract change, as tasks | An operation, error code, CLI flag or MCP tool that ships without its contract entry, so the SDK and the docs drift from the code |
 
 Watch specifically for the **read-then-write** shape: a cap, a quota, or a uniqueness rule enforced by counting first. Two concurrent submits both pass it. The constraint decides, never a read.
 

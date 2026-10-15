@@ -170,7 +170,7 @@ and `.claude/commands/opsx/` (the `/opsx:propose`, `/opsx:apply`, `/opsx:archive
 Customize OpenSpec only through `openspec/config.yaml`. After `openspec update`, run
 `pnpm sync-skills`, because the `claude` target also writes copies into `.claude/skills/`.
 
-Phase 0 adds the rest. The intended shape: one `pnpm verify` that mirrors CI stage for stage, and
+Slice 0 adds the rest. The intended shape: one `pnpm verify` that mirrors CI stage for stage, and
 whose exit 0 means every stage ran and passed. Document every command here when it lands.
 
 ## Module boundaries
@@ -189,7 +189,7 @@ whose exit 0 means every stage ran and passed. Document every command here when 
 | Tier | Examples |
 | --- | --- |
 | **Always** | Run tests and lint before committing; follow module boundaries; verify Resend behavior against docs; [commit and push each finished step](#commit-and-push-as-you-go) |
-| **Ask first** | Add a dependency; change a migration that's already pushed; change CI; alter a public contract (read API, error codes, CLI commands or flags, MCP tools); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
+| **Ask first** | Add a dependency; change a migration that's already pushed; change CI; alter or extend a public contract (read API routes, error codes, CLI commands or flags, environment variables, MCP tools; [api-contract.md → Conventions](.ai/api-contract.md#conventions)); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
 | **Never** | Commit secrets, API keys, webhook signing secrets or real recipient addresses (use Resend's test addresses, such as `delivered@resend.dev`); disable a failing gate to make CI green; edit generated files by hand |
 
 ## Editing files on this machine
@@ -246,7 +246,7 @@ One shape everywhere: read API, SDK, CLI `--json`, MCP tools (ADR-011, [api-cont
   "error": {
     "code": "webhook_disabled",
     "message": "The Resend webhook is disabled, so replays will not be delivered.",
-    "hint": "Re-enable it in the Resend dashboard, then run `ledger reconcile`.",
+    "hint": "Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile`.",
     "docs": "https://resend.com/docs/webhooks/retries-and-replays"
   }
 }

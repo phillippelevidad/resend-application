@@ -33,7 +33,7 @@ duty below that the change triggers is discharged in the same diff.
 
 | If the change… | It must also contain |
 | --- | --- |
-| Adds or changes an operation, route, error code, CLI command or flag, or MCP tool | The [api-contract.md](../../../.ai/api-contract.md) entry, and the owner's Ask-first approval ([Conventions](../../../.ai/api-contract.md#conventions)) |
+| Adds or changes an operation, route, error code, CLI command or flag, environment variable, or MCP tool | The [api-contract.md](../../../.ai/api-contract.md) entry, and the owner's Ask-first approval ([Conventions](../../../.ai/api-contract.md#conventions)) |
 | Lands a table in the schema and a migration | The ticked `Modeled` box in [data-modeling.md → Model index](../../../.ai/data-modeling.md#model-index) |
 | Adds, removes or repurposes a project folder | The [root AGENTS.md → Projects](../../../AGENTS.md#projects) table |
 | Completes or advances a slice | The card's `Status` line and `Ships` boxes, updated in place ([Legend](../../../.ai/build-checklist.md#legend)) |

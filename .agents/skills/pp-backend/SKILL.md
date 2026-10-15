@@ -64,7 +64,7 @@ Each entry names its alternative.
 - The caller's scope resolved server-side from its bearer token; operate MCP tools registered only
   with an `operate` token **and** `--enable-operate`.
 - Tokens from `LEDGER_TOKEN`, never a `--token` flag; addresses only in request bodies.
-- The SDK is written by hand against the contract; there is no generated client.
+- The SDK is types generated from the OpenAPI document plus a thin hand-written client (ADR-011).
 
 ## Gate — then read the diff
 

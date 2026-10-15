@@ -21,7 +21,7 @@ Beware `2` matching `2B` and vice versa: `2B`'s entries read `2B — Local-mode 
 | The pre-proposal needs | Read | How to get there |
 | --- | --- | --- |
 | The slice's scope contract | [`build-checklist.md`](../../../../.ai/build-checklist.md) | `grep -n '^### ' .ai/build-checklist.md`, then read the whole card. Headings are marker-free; `Status` is the first bullet |
-| How to work a slice at all | [`build-checklist.md#how-to-work-this-checklist`](../../../../.ai/build-checklist.md#how-to-work-this-checklist) | Spine vs. parallel tracks, the one-launch rule, and the `WALKTHROUGH.md` every slice owes |
+| How to work a slice at all | [`build-checklist.md#how-to-work-this-checklist`](../../../../.ai/build-checklist.md#how-to-work-this-checklist) | Spine vs. parallel tracks, deploy and keep (one demo per milestone), the Ships done-list, and the `WALKTHROUGH.md` every slice owes |
 | Why this slice is here, and what precedes it | [`architecture.md#build-order-vertical-slices`](../../../../.ai/architecture.md#build-order-vertical-slices) | Canonical ordering and rationale. The checklist is the progress layer over it, and owns neither |
 | The ADRs the slice rests on | [`architecture.md`](../../../../.ai/architecture.md) | The card's `Refs` line links them by anchor. `grep -n '^### ADR-' .ai/architecture.md` for the full list |
 | Whether a capability is deferred, and on what trigger | [`architecture.md#deferred-yagni`](../../../../.ai/architecture.md#deferred-yagni) | Sort by the stated reason: **temporal** → defer with a countable threshold or named event; **categorical** → reject, reopened only by a superseding ADR |

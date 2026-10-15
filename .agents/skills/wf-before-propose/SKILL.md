@@ -30,7 +30,7 @@ Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill (read order, 
 
 `.ai/pre-proposals/<YYYY-MM-DD>-<change-name>.md` — create the folder if it is missing.
 
-`<change-name>` is kebab-case and matches what the OpenSpec change will be called, so the two line up: `slice-<n>-<card title kebabbed>` — e.g. `2026-11-02-slice-3-recovery.md`, `2026-11-14-slice-2b-local-mode-queue.md`. Check [`openspec/changes/archive/`](../../../openspec/changes/) for the naming already in use.
+`<change-name>` is kebab-case and matches what the OpenSpec change will be called, so the two line up: `slice-<n>-<card title kebabbed>` — e.g. `2026-11-02-slice-4-recovery.md`, `2026-11-14-slice-2b-local-mode-queue.md`. Check [`openspec/changes/archive/`](../../../openspec/changes/) for the naming already in use.
 
 These documents are permanent and never deleted. Re-running on the same slice **the same day rewrites the file in place**; on a later day it writes a new dated file whose metadata block links the earlier one and says in one line what changed. One slice per document — the change name maps 1:1, and a document covering two slices cannot be handed to `opsx:propose`.
 

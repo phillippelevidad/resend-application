@@ -110,11 +110,11 @@ Load [`pp-backend`](../../pp-backend/SKILL.md).
 | Every worker handler idempotent on `dedupe_key`; every outbound Resend send carrying an idempotency key derived from it | At-least-once is the delivery contract. "It will only run once" is not a design |
 | The whole write inside one transaction where two tables must agree | A half-written aggregate that no test with one row will ever produce |
 | Error shape: the one `{ error: { code, message, hint, docs } }` shape, validation through Zod | A hand-rolled error body the SDK, the CLI's `--json` and the MCP tools cannot read |
-| List reads on the standard pagination envelope ([api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions)) | A second pagination shape the hand-written SDK, the CLI and the MCP tools each have to special-case |
+| List reads on the standard pagination envelope ([api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions)) | A second pagination shape the SDK, the CLI and the MCP tools each have to special-case |
 | No Resend API call outside `packages/resend-client` | A call that bypasses the shared rate-limit budget, untestable without the vendor |
 | No app importing another app; nothing in `packages/core` importing AWS, Postgres or Resend | The import graph is the boundary check, and it is greppable |
 | SQS for delivery and Postgres for truth, **only** | A cache, a second queue or an in-memory map treated as source of truth |
-| Projections as a pure function of the event **set**, folded in `(created_at, rank(type), svix_id)` order | State decided by arrival order: a late `email.delivered` overwriting an earlier `email.bounced` |
+| Projections as a pure function of the event **set**, folded in `(event_created_at, rank(type), svix_id)` order, never by row time | State decided by arrival order: a late `email.delivered` overwriting an earlier `email.bounced` |
 
 ### Security
 
@@ -143,7 +143,7 @@ Load [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp
 | Every failure path mapped to a **registered** `code` with a written `message` and `hint` | A raw stack trace, or a code the registry does not carry — itself an unapproved contract change |
 | CLI exit codes `0` / `1` / `2` as the contract states, and `--json` printing exactly the one error shape | A script that treats a usage error as success, or cannot parse the failure |
 | Every operation the surface exposes registered in [api-contract.md](../../../../.ai/api-contract.md), with its scope | A command or tool nobody approved — adding or changing one is Ask-first |
-| The SDK written by hand against the contract, its types matching the response the API actually returns | A field the SDK promises and the API never sends |
+| The SDK's types generated from the OpenAPI document (ADR-011), matching the response the API actually returns | A field the SDK promises and the API never sends |
 | List commands and tools following the pagination envelope, not truncating silently | A CLI that shows the first page and calls it the whole answer |
 
 ### Security
