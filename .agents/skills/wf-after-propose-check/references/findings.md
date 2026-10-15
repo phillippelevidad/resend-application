@@ -21,7 +21,7 @@ The signature class of this gate, because the pre-proposal was **already verifie
 
 For each item, decide between three: **covered by something that does not name it** (fine — note it and move on), **deliberately dropped with a reason stated in the change** (fine), or **gone** (a finding).
 
-**What it costs.** The slice ships without a rule nobody notices until an integrator meets it, or with a doc that now lies. Neither is visible to `pnpm verify`.
+**What it costs.** The slice ships without a rule nobody notices until an adopter meets it, or with a doc that now lies. Neither is visible to `pnpm verify`.
 
 **How it closes.** Rung 3 — the pre-proposal settles it, and the repair is to restore it at the right altitude: a rule becomes a `### Requirement:` with a `#### Scenario:`, a surface becomes a task, a doc edit becomes a task. Where the drop was deliberate and merely unstated, write the reason instead of restoring the work.
 
@@ -83,7 +83,7 @@ This is the class a single-file reader cannot see, which is why pass 2 reads all
 
 The script helps with the first shape only, listing every backticked identifier the repo has never heard of and separating the ones **grafted onto something that does exist** from the ones wholly new — which are usually just what the change builds. Its `freshness` list is the other half: anything that landed since the change was written makes its claim unverified again.
 
-**What it costs.** A slice the owner cannot hand-exercise, which the lens makes a MUST regardless of the fact that no integrator is watching, because the walk is how the slice is verified at all.
+**What it costs.** A slice the owner cannot hand-exercise, which the lens makes a MUST regardless of the fact that no adopter is watching, because the walk is how the slice is verified at all.
 
 **How it closes.** Rung 2 — the repo is the fact. The cheap repair is usually already half-built: a read that loads the row anyway can return its id; an operation that exists needs its CLI command; a claim the token already carries needs reading rather than adding. Write it as a decision in `design.md` with the reachability it restores, and add the task — a fix needing new backend code is a different conversation from one needing a field on an existing response.
 
@@ -135,7 +135,7 @@ The script helps with the first shape only, listing every backticked identifier 
 
 *The self-service test.* Do not read the proposal's answer — run it. Walk `deploy → connect the webhook → ingest → query → recover → tear down` for the stages this change touches, and at each step ask *who running Ledger has to do something by hand for this to work?* The fallbacks that hide: an owner script (the command's own comment often says so), a database query to find an id the product never shows, a manual replay or approval, an unbounded wait with no in-product diagnosis.
 
-Then place it: **off** the integrator's path it costs owner hours, is correctly cheap, and defers on a tripwire. **In** their path to a working ledger it costs time-to-first-event and adoption — and it must be admitted, not answered with "escalate only on measured pain", because that pain is never measured; the integrator leaves instead of reporting it.
+Then place it: **off** the integrator's path it costs owner hours, is correctly cheap, and defers on a tripwire. **In** their path to a working ledger it costs time-to-first-event and adoption — and it must be admitted, not answered with "escalate only on measured pain", because that pain is never measured; the adopter leaves instead of reporting it.
 
 **What it costs.** A slice sized at 1–3 days that is not; a bullet the owner ticks having never built it; or a proposal claiming a self-service flow the product does not have, with the claim already carried into the specs.
 
@@ -151,7 +151,7 @@ Read with the OpenSpec templates (`openspec instructions <artifact> --change <na
 
 | Owes | The miss to look for |
 | --- | --- |
-| **Why**, argued from build cost and testability | An argument from integrator harm in the gap — [not available](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), no real user meets it |
+| **Why**, argued from build cost and testability | An argument from adopter or reviewer harm in the gap — [not available](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), no real user meets it |
 | The `Ships` list, verbatim | Script-checked both ways. Judge only whether rewritten links changed meaning |
 | **What Changes**, specific per surface, breaking changes marked | A bullet naming a surface with no mechanism, or a mechanism with no surface |
 | **Capabilities**, split New / Modified | Script-checked against `openspec/specs/` and the delta files. Judge whether a "modified" one really changes *requirements* rather than implementation |

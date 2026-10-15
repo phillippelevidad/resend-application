@@ -431,15 +431,11 @@ const SECTIONS = 25;
 
 // ---------------------------------------------------------------- 8. owner rulings
 
-// A ruling from this run's question round settles build shape. It does not settle a
-// legal or fiscal duty — that channel is a `.human/` brief, and a marker written on top
-// of an agent's own recommendation has passed for one here before.
+// A ruling from this run's question round settles build shape. A PII, retention or legal
+// subject also needs its row under `.ai/about.md → Open questions`, tagged [Unverified] —
+// and a marker written on top of an agent's own recommendation has passed for one here before.
 {
-  const legalish =
-    /\b(LGPD|NFS-?e|NF-?e|nota fiscal|tribut|imposto|ISS|ICMS|Simples Nacional|contador|advogad|consumer law|CDC|Marco Civil|termos de uso|ToU|DPA|liabilit|indemnif|retenção|retencao|data retention|erasure|KYC|KYB)/i;
-  const briefs = existsSync(join(repoRoot, ".human"))
-    ? readdirSync(join(repoRoot, ".human")).filter((f) => f.startsWith("open-question-"))
-    : [];
+  const legalish = /\b(PII|personal data|data retention|retention period|erasure|GDPR|liabilit|indemnif)/i;
 
   docLines.forEach((line, i) => {
     if (!/owner-ruled/i.test(line)) return;
@@ -457,11 +453,10 @@ const SECTIONS = 25;
       "ruling",
       flag ? "BLOCK" : "READ",
       flag
-        ? `L${i + 1}: ${head[1]} is owner-ruled on a legal/fiscal subject — that channel is a .human/ brief, not a question round`
+        ? `L${i + 1}: ${head[1]} is owner-ruled on a PII/retention/legal subject — confirm the owner answered it in the owner-decision round and it is recorded under .ai/about.md → Open questions tagged [Unverified]`
         : `L${i + 1}: ${head[1]} owner-ruled — confirm the owner actually answered this`,
     );
   });
-  if (briefs.length) record("ruling", "READ", `.human/ briefs on file: ${briefs.length} (${briefs.map((b) => b.replace(/^open-question-|\.md$/g, "")).join(", ")})`);
 }
 
 // ---------------------------------------------------------------- 9. deferral triggers
@@ -484,18 +479,8 @@ const SECTIONS = 25;
 // The script cannot tell the two apart. It can tell you which ones the repo has never
 // heard of, which is the list worth walking.
 
-const SOURCE_ROOTS = [
-  "backend/src",
-  "backend/prisma",
-  "supabase",
-  "storefront/src",
-  "backoffice/src",
-  "admin/src",
-  "auth/src",
-  "packages/ui/src",
-  "packages/api-client/src",
-];
-const SOURCE_EXT = /\.(ts|tsx|js|mjs|sql|prisma|json)$/;
+const SOURCE_ROOTS = ["packages", "apps", "infra", "sim"];
+const SOURCE_EXT = /\.(ts|tsx|js|mjs|sql|json)$/;
 
 function collectSourceTokens() {
   const tokens = new Set();
@@ -507,7 +492,7 @@ function collectSourceTokens() {
       return;
     }
     for (const e of entries) {
-      if (e.name === "node_modules" || e.name === ".next" || e.name === "dist") continue;
+      if (e.name === "node_modules" || e.name === "cdk.out" || e.name === "dist" || e.name === "coverage") continue;
       const p = join(dir, e.name);
       if (e.isDirectory()) walk(p);
       else if (SOURCE_EXT.test(e.name)) {
@@ -532,12 +517,12 @@ function collectSourceTokens() {
       "value values type types kind kinds name names item items list lists data row rows table tables " +
       "column columns field fields state status active pending closed error errors page pages view views " +
       "read reads write writes command commands event events job jobs test tests spec specs " +
-      "monthly yearly slice slices tenant tenants operator operators seller sellers buyer buyers admin")
+      "monthly yearly slice slices owner owners adopter adopters")
       .split(/\s+/),
   );
 
-  // A filename is not a mechanism — `proxy.ts` and `views.md` are noise here.
-  const FILE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml|prisma|css|scss|html|sh|env|lock|toml|txt|png|svg)$/i;
+  // A filename is not a mechanism — `handler.ts` and `api-contract.md` are noise here.
+  const FILE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml|css|scss|html|sh|env|lock|toml|txt|png|svg)$/i;
 
   // Backticked identifier-shaped tokens: `snake_case`, `camelCase`, `Type.member`, `a.b.c`.
   const candidates = new Map(); // token -> first line

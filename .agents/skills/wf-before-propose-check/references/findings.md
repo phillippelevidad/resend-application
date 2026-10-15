@@ -18,9 +18,9 @@ The second and third shapes are the dangerous ones, because every piece sounds n
 
 The script helps with the first shape and only the first: it lists every backticked identifier the repo has never heard of, separating the ones **grafted onto something that does exist** (`WebhookEvent.replayedAt` — the type is real, the field is not) from the ones that are wholly new, which are usually just the slice's own work.
 
-**What it costs.** A slice the owner cannot hand-exercise — which [the lens makes a MUST](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) regardless of the fact that no integrator is watching, because the walk is how the slice is verified at all. Found at build time it is a redesign; found here it is a paragraph.
+**What it costs.** A slice the owner cannot hand-exercise — which [the lens makes a MUST](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) regardless of the fact that no adopter is watching, because the walk is how the slice is verified at all. Found at build time it is a redesign; found here it is a paragraph.
 
-**How it closes.** Rung 2 — the repo is the fact. The cheap repair is almost always already half-built: a read that loads the row anyway can return its id; a route that exists needs a button; a claim that the token already carries needs reading rather than adding. Write the repair as a numbered decision in §7 with the reachability it restores, and cost it — a fix needing new backend code is a different conversation from one needing a field on an existing response.
+**How it closes.** Rung 2 — the repo is the fact. The cheap repair is almost always already half-built: a read that loads the row anyway can return its id; an operation that exists needs its CLI command; a claim that the token already carries needs reading rather than adding. Write the repair as a numbered decision in §7 with the reachability it restores, and cost it — a fix needing new backend code is a different conversation from one needing a field on an existing response.
 
 ---
 
@@ -41,7 +41,7 @@ The script helps with the first shape and only the first: it lists every backtic
 
 ## F3 — The document contradicts itself
 
-**The tell.** Pick each concrete object the slice touches — a column, a status, a route, a field, a policy, a button — and grep **every** mention of it across the document. Then compare. Real examples:
+**The tell.** Pick each concrete object the slice touches — a column, a status, a route, a field, a scope, a CLI flag — and grep **every** mention of it across the document. Then compare. Real examples:
 
 - A replay described in §10 as re-entering through normal ingest, in §14 as written straight into `webhook_events`, and in §12.5 with *both* an ingest path and a `--direct` flag.
 - A reaction condition written as "not `ok`" in one section and as "`hard_bounced` only" in another — a difference that decides whether a `soft_bouncing` address fires the app callback.
@@ -63,7 +63,7 @@ This is the class a section-sampling reader cannot see, which is why pass 2 read
 | Seed data in `packages/db` | A backfill asserting "every `email_state` row has a `webhook_events` row" when two seeded rows have none — the migration blocks mid-apply on a fresh database |
 | Test fixtures | A property "already proven" by a test that does not assert it |
 | The Drizzle schema vs its migrations | A table with no migration, or a migration missing the unique key idempotency rests on — reads as done, fails the duplicate-delivery test |
-| The exported OpenAPI | An operation that exists in code and is missing from the OpenAPI document, so the SDK cannot type it |
+| `apps/api` routes vs [`api-contract.md`](../../../../.ai/api-contract.md) | A route that exists in code with no contract entry, or an entry with no route — the SDK, CLI and MCP surfaces are written against the contract, so either drift reaches them |
 | `git log` since the document's date | Anything that landed after it was written |
 
 **What it costs.** "Already done" that is wrong makes the change skip real work. "Absent" that is wrong makes it rebuild and collide. A seed-data miss blocks the migration, which is the most expensive place to find anything.
@@ -76,9 +76,9 @@ This is the class a section-sampling reader cannot see, which is why pass 2 read
 
 **The tell.** The script diffs §2 against the card, so the verbatim check is done. What remains is judgement:
 
-- **Orphan work.** Something in §8–§13 that no `Ships` bullet, view or operation authorizes. The card is the scope contract and this skill may explode it, never widen it.
+- **Orphan work.** Something in §8–§13 that no `Ships` bullet, surface or operation authorizes. The card is the scope contract and this skill may explode it, never widen it.
 - **A homeless bullet.** A `Ships` item with a verdict in §5 and no home in §8–§13. It will not get built.
-- **A deferral that quietly took scope with it.** §3 defers something §12 still draws a screen for.
+- **A deferral that quietly took scope with it.** §3 defers something §12 still exposes a command or tool for.
 - **A deferral with no trigger.** "When demand warrants" is not one. It needs a countable threshold or a named observable event, or it is a [categorical reject](../../../../.ai/architecture.md#deferred-yagni) and belongs in §3 as such.
 
 **What it costs.** A slice sized at 1–3 days that is not, or a bullet the owner ticks having never built it.
@@ -87,16 +87,16 @@ This is the class a section-sampling reader cannot see, which is why pass 2 read
 
 ---
 
-## F6 — A human on the owner's side is still standing on the integrator's path
+## F6 — A human on the owner's side is still standing on the adopter's path
 
-**The tell.** Do not read §19's answer — run the test. Walk `discover → sign up → live → operate → get paid → leave` for the stages this slice touches, and at each step ask *who on the owner's side has to do something for this to work?* The fallbacks that hide:
+**The tell.** Do not read §19's answer — run the test. Walk [`deploy → connect the webhook → ingest → query → recover → tear down`](../../../../.ai/about.md#guiding-principles) for the stages this slice touches, and at each step ask *who running Ledger has to do something by hand for this to work?* The fallbacks that hide:
 
 - An owner script (the command's own comment often says so).
-- A database query to find an id the product never shows.
-- A manual publish, approval, or provisioning step.
+- A SQL query to find an id the CLI never shows.
+- A console click, a manual secret copy, or a provisioning step.
 - An unbounded wait with no in-product diagnosis.
 
-Then place it: **off** the integrator's path it costs owner hours, is correctly cheap, and defers on a tripwire. **In** their path to a working integration it costs time-to-first-event and adoption — and it must be admitted, not answered with "escalate only on measured pain", because that pain is never measured; the integrator leaves instead of reporting it.
+Then place it: **off** the adopter's path (owner-only demo ops) it costs owner hours, is correctly cheap, and defers on a tripwire. **In** their path to a working deploy it costs time-to-first-event — and it must be admitted, not answered with "escalate only on measured pain", because that pain is never measured; the adopter leaves instead of reporting it.
 
 **What it costs.** The document claims a self-service flow the product does not have, and the claim survives into the proposal and the spec.
 
@@ -112,9 +112,9 @@ Then place it: **off** the integrator's path it costs owner hours, is correctly 
 | --- | --- |
 | A §14 rule that cannot become a `#### Scenario:` WHEN/THEN | Sharpen it into behaviour, or it is not a requirement |
 | A column with no nullability, or an enum member with no meaning | State both; the migration needs them |
-| Copy left as "an appropriate message" | Write the string, under [`pp-ux-copy`](../../pp-ux-copy/SKILL.md)'s vocabulary. A screen with unwritten copy is a screen invented at 2am |
-| A view missing one of the four required states | Write empty, loading, error and success |
-| An operation with no idempotency answer on the money path | [`pp-money`](../../pp-money/SKILL.md) binds and wins over `pp-backend` and `pp-database` |
+| An error `message` or `hint` left as "an appropriate message" | Write the string, under [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp), in the error shape. A hint left unwritten is a hint invented at 2am |
+| A CLI command or MCP tool with no `--json` output or no error codes | Name the operation, the output and every code it raises, from the registry |
+| An operation with no idempotency answer on the correctness path (outbox, reconcile, redrive, replay) | [`pp-backend` → Never](../../pp-backend/SKILL.md#never) binds, and the [tie-break](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) puts correctness of event handling (no loss, no duplicate effects, order-independent state) above everything else |
 | "The implementer will choose" | Choose, at the rung that settles it |
 | A capability path marked `ADDED`/`MODIFIED` wrongly | The script checks this against `openspec/specs/` |
 
@@ -129,13 +129,13 @@ Then place it: **off** the integrator's path it costs owner hours, is correctly 
 **The tell.** An `owner-ruled <date>` marker. Two questions:
 
 1. **Did the owner actually answer?** A ruling from a question round in the authoring session is real. A marker written by an agent on top of its own recommendation is not — that has happened, seven times in one change, and five `.ai/` rewrites were made on its strength before the owner overturned one of them.
-2. **Is the subject one a question round can settle?** Build shape, sequencing, UI stance: yes. A **legal, fiscal or commercial duty**: no. That channel is a `.human/` decision brief and [`wf-open-question`](../../wf-open-question/SKILL.md), and no amount of reading closes it.
+2. **Is the subject one reading can settle?** Build shape, sequencing, surface stance: yes. **Resend behaviour the docs leave open, or a PII, retention or legal question**: no. It is recorded under [`about.md → Open questions`](../../../../.ai/about.md#open-questions) tagged `[Unverified]` and put to the owner in the owner-decision round, and no amount of reading closes it.
 
 The script flags both, and flags the second as blocking.
 
 **What it costs.** A ratified doc rewritten on an authority that does not exist. This is the most expensive class in this workflow's history precisely because it is invisible — a `RULED` marker looks like the end of a conversation.
 
-**How it closes.** Never by deciding it yourself. Downgrade the marker to a recommendation with its real authority, and either put it in the owner round (rung 4) or route it to `wf-open-question` and record it in **§25 Owner ops still open** (rung 5). §25 is the only section allowed to hold an unresolved item, and only an op — an account to create, a signature to obtain, a professional to consult.
+**How it closes.** Never by deciding it yourself. Downgrade the marker to a recommendation with its real authority, and either put it in the owner round (rung 4) or record it under `about.md → Open questions` tagged `[Unverified]` and in **§25 Owner ops still open** (rung 5). §25 is the only section allowed to hold an unresolved item, and only an op — an account to create, a signature to obtain, a professional to consult.
 
 ---
 
@@ -145,7 +145,7 @@ Read with [wf-before-propose's template](../../wf-before-propose/references/temp
 
 | § | Owes | The miss to look for |
 | --- | --- | --- |
-| 1 | Why now, argued from build cost and testability | An argument from integrator harm in the gap — [not available](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), no real user meets it |
+| 1 | Why now, argued from build cost and testability | An argument from adopter or reviewer harm in the gap — [not available](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), no real user meets it |
 | 2 | The `Ships` list verbatim | Script-checked. Judge only whether link rewrites changed meaning |
 | 3 | Deferrals, each with a carrying slice or a countable trigger | "When demand warrants"; a deferral whose own trigger cannot fire without the deferred thing |
 | 4 | Prerequisites, blocking vs lagging | A dependency slice assumed done that is not |
@@ -156,12 +156,12 @@ Read with [wf-before-propose's template](../../wf-before-propose/references/temp
 | 9 | States, transitions, guards, log writes, outbox dispatch | A mutation that is not a transition |
 | 10 | Operations: kind, semantics, auth, scope, idempotency, new-or-existing | An invented endpoint path — [`api-contract.md`](../../../../.ai/api-contract.md) is the only place operations are named |
 | 11 | Outbox types, handlers and their idempotency argument, scheduled-job overlap guards, webhook verification and replay | Queue order relied on for correctness; SQS standard owns delivery and projections make order irrelevant |
-| 12 | Per view: actor, scope, reads, actions, **all four states**, copy, formatting, a11y | A missing state; copy left unwritten; a forbidden term |
-| 13 | Per view: fan-out, caching, revalidation | Business logic in the BFF; a client-supplied scope trusted |
+| 12 | Surfaces: per endpoint, CLI command and MCP tool — the operation, scope, `--json` output, every error code with `message` and `hint` written | A code missing from the registry; a hint described rather than written; a new command, flag or tool not flagged Ask-first |
+| 13 | Recovery paths: redrive, replay, reconcile, and what a re-delivered message does | A replay or redrive that can produce a second effect; data no recovery path reaches |
 | 14 | MUST/MUST NOT, stated under duplicate and out-of-order delivery, behavioural | A rule that cannot become a scenario. Every "rule `<n>`" cited elsewhere must exist |
 | 15 | Authentication per surface, scopes, the idempotency key per write, duplicate and replay expectations, the integration cases | A write with no idempotency decision; no named integration case |
-| 16 | The money path, or `Not touched — <why>` | Silence where checkout, order, payment, split, payout, commission, fiscal or reconciliation is touched |
-| 17 | PII fields, legal basis, retention, log discipline | `Not touched` with no reason. PII in logs or spans — resource ids only |
+| 16 | Cost and the Resend budget: AWS resources added, idle cost, Resend calls through `resend-client` | An always-on resource with no ADR; a Resend call outside `resend-client` or with no answer for the shared 10 req/s budget |
+| 17 | PII fields, retention and redaction, log discipline, masks on surfaces | `Not touched` with no reason. PII in logs, spans, outbox payloads or MCP output — resource ids and masks only |
 | 18 | Providers, env vars, secrets, owner ops | An owner op recorded as an open question. It is a work item with an owner |
 | 19 | The self-service test and the cost brake, in writing | F6 — run it, do not read it |
 | 20 | What proves each requirement, by tier; what `pnpm verify` cannot see | A requirement with no test that would fail if the mechanism were removed |

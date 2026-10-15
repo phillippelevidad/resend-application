@@ -7,7 +7,7 @@ description: Adversarially reviews the pre-proposal `wf-before-propose` wrote, b
 
 **Owns:** verifying the pre-proposal against the ratified `.ai/` docs and the repo · repairing what the docs, the repo or the decision lens settle · the owner-decision round · the ready-for-propose verdict.
 
-**Does not own:** authoring a missing pre-proposal (→ [`wf-before-propose`](../wf-before-propose/SKILL.md)) · creating the OpenSpec change (→ `opsx:propose`) · verifying the change once it exists (→ [`wf-after-propose-check`](../wf-after-propose-check/SKILL.md)) · implementing it (→ `opsx:apply`) · editing ratified `.ai/` docs (→ [`wf-open-question`](../wf-open-question/SKILL.md) mode 3) · any code-level rule (→ the [`pp-*` skills](../../../AGENTS.md#patterns-and-practices)).
+**Does not own:** authoring a missing pre-proposal (→ [`wf-before-propose`](../wf-before-propose/SKILL.md)) · creating the OpenSpec change (→ `opsx:propose`) · verifying the change once it exists (→ [`wf-after-propose-check`](../wf-after-propose-check/SKILL.md)) · implementing it (→ `opsx:apply`) · editing ratified `.ai/` docs (→ the change itself at apply time, recorded under §22 Docs to update) · any code-level rule (→ the [`pp-*` skills](../../../AGENTS.md#patterns-and-practices)).
 
 **Precedence:** a ratified `.ai/` decision outranks anything the pre-proposal says. The [decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) and the [risk appetite](../../../.ai/about.md#risk-appetite) outrank this skill's own reasoning. The slice card's `Ships` list is still the scope contract — repairs may sharpen it, never widen it.
 
@@ -18,7 +18,7 @@ description: Adversarially reviews the pre-proposal `wf-before-propose` wrote, b
 Three priors, each of which has already happened in a real run of this workflow:
 
 1. **The authority that does not say that.** An ADR stated two mutually exclusive dedupe keys in one sentence, and slice 2 found it after the schema was written.
-2. **The ruling nobody made.** Slice 2 carried seven `RULED` markers written by the drafting agent on top of its own recommendations, and five `.ai/` rewrites were made citing them. The owner later overturned one. A ruling from a question round settles build shape; a legal or fiscal duty is settled only by a `.human/` brief.
+2. **The ruling nobody made.** Slice 2 carried seven `RULED` markers written by the drafting agent on top of its own recommendations, and five `.ai/` rewrites were made citing them. The owner later overturned one. A ruling from a question round settles build shape only when the owner actually gave it; a PII, retention or legal question is also recorded under [`about.md → Open questions`](../../../.ai/about.md#open-questions) tagged `[Unverified]`.
 3. **Confident prose about unread code.** The reality check is the cure for it, and is itself written by an agent that may have grepped for the wrong string.
 
 So the stance here is adversarial toward the *document*, never toward the owner: **read it as though someone competent wrote it in a hurry and believed every sentence.** Your job is to find the sentences that are not true, and then — this is the part that makes the skill worth running — to *fix them from the docs* rather than hand the owner a list.
@@ -40,9 +40,9 @@ Work down. Stop at the first rung that settles it.
 | --- | --- | --- |
 | **1 — a ratified doc settles it** | `.ai/` states the rule | Fix it. Cite the `doc.md#anchor` and quote the binding wording verbatim |
 | **2 — the repo settles it** | the code is the fact | Fix it. Cite `file:line` |
-| **3 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument in the doc**, not just in the report. Build cost and testability are the reasons that survive; [integrator harm in the gap is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
+| **3 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument in the doc**, not just in the report. Build cost and testability are the reasons that survive; [adopter or reviewer harm in the gap between slices is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
 | **4 — two lawful paths still stand** | both survive the lens | Do not pick silently. Hold it for the owner round |
-| **5 — a legal, fiscal or commercial unknown** | no research settles it | Do not decide. Route it to [`wf-open-question`](../wf-open-question/SKILL.md) and record it in §25 |
+| **5 — an unknown no research settles** | Resend behaviour the docs leave open, or a legal or commercial question | Do not decide. Record it under [`about.md → Open questions`](../../../.ai/about.md#open-questions) tagged `[Unverified]`, put it to the owner in the owner-decision round, and note it in §25 |
 
 **The hard stop: a repair that needs you to invent a fact — a price, a rate, a provider behaviour, a statute, a deadline, a build estimate — is rung 4 or 5, never rung 3.** Rung 3 rearranges known facts under a stated clause. It does not manufacture one.
 
@@ -54,7 +54,7 @@ Work down. Stop at the first rung that settles it.
 | --- | --- |
 | [findings.md](references/findings.md) | Passes 2–4 — the eight finding classes, each with its tell, what it costs downstream, and how it is closed; plus the per-section conformance table |
 
-Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill. Load the task-relevant `pp-*` skills **when the slice touches their surface** — their wording is what the document's rules must be consistent with, and `pp-money` wins wherever it collides with `pp-backend` or `pp-database`. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for both the `.ai/` anchors and the repo reality-check recipes; use it rather than re-deriving them.
+Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill. Load [`pp-database`](../pp-database/SKILL.md) and [`pp-backend`](../pp-backend/SKILL.md) **when the slice touches their surface** — their wording is what the document's rules must be consistent with. Where they collide, the [decision lens tie-break](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) settles it: correctness of event handling (no loss, no duplicate effects, order-independent state) outranks everything else. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for both the `.ai/` anchors and the repo reality-check recipes; use it rather than re-deriving them.
 
 ## Pipeline
 
@@ -83,7 +83,7 @@ node .agents/skills/wf-before-propose-check/scripts/check.mjs .ai/pre-proposals/
 
 Run it against the document **in place** — every path resolves relative to the file, so a copy elsewhere reports its whole link set as broken.
 
-It decides only what is decidable: link targets and heading anchors, `file:line` bounds, the `Ships` list diffed verbatim against the card, `D<n>` / `X<n>` / `rule <n>` cross-references, `ADDED` vs `MODIFIED` against what `openspec/specs/` actually holds, unresolved markers attributed to their section, missing sections, decisions with no authority line, and `owner-ruled` claims on legal or fiscal subjects.
+It decides only what is decidable: link targets and heading anchors, `file:line` bounds, the `Ships` list diffed verbatim against the card, `D<n>` / `X<n>` / `rule <n>` cross-references, `ADDED` vs `MODIFIED` against what `openspec/specs/` actually holds, unresolved markers attributed to their section, missing sections, decisions with no authority line, and `owner-ruled` claims on PII, retention or legal subjects.
 
 It also builds **two worklists for the reading passes**, and these are where the expensive defects hide:
 
@@ -104,7 +104,7 @@ This is the pass that finds the expensive defects, and it asks **two** questions
 
 **Does it exist?** Re-run the reality check rather than trusting §5, using the [doc-map recipes](../wf-before-propose/references/doc-map.md#reality-check-recipes--what-the-repo-already-contains), and check git for anything that landed after the document was written. Widen the recipes to **`seed.sql`, migrations, and test fixtures** — a backfill that assumes every seeded `email_state` row has a `webhook_events` row is wrong the moment two seeded rows do not, and only the seed file says so. Look for the partial that reads as done: a Drizzle table with no migration, a migration missing the unique key idempotency rests on, an operation with no OpenAPI declaration.
 
-**Can the actor reach it?** Take each thing the document says an integrator, the owner or an agent over MCP does, and trace the path they walk. The failure shape is a capability that exists on the server and is unreachable from the surface: a row whose id no endpoint returns, a token scope nothing grants, a status field no query sources, a command no CLI flag or MCP tool exposes. The document will read as complete, because every piece is named — and the owner will not be able to walk the slice, which is the [MUST every finished slice owes](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized).
+**Can the actor reach it?** Take each thing the document says an adopter, the owner or an agent over MCP does, and trace the path they walk. The failure shape is a capability that exists on the server and is unreachable from the surface: a row whose id no endpoint returns, a token scope nothing grants, a status field no query sources, a command no CLI flag or MCP tool exposes. The document will read as complete, because every piece is named — and the owner will not be able to walk the slice, which is the [MUST every finished slice owes](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized).
 
 An "already done" verdict that is wrong makes the change skip real work. An "absent" verdict that is wrong makes it rebuild something and collide. A "reachable" that is wrong ships a flow nobody can complete.
 
@@ -121,9 +121,9 @@ The concrete test, per artifact `opsx:propose` must write:
 | `design.md` | §7, §8, §9, §10, §11, §15, §19 | Decisions with authority, and a reader who never has to re-derive one |
 | `tasks.md` | §23's task groups, §20, §21 | Ordered, independently verifiable, Ask-first flagged, `pnpm verify` last |
 
-Then §12's four required states per view, §17's PII answer, and §21's one path per role.
+Then §12's error codes with their `message` and `hint` written out per surface, §13's recovery path, §17's PII answer, and §21's one path per role.
 
-**Run §19's self-service test yourself rather than reading the document's answer.** It is the sharpest detector in the repo and the document grades its own homework: walk `discover → sign up → live → operate → get paid → leave` for the stages this slice touches and ask, at each step, *who on the owner's side has to do something for this to work?* An owner script, a database query to find a row id, a manual publish, an unbounded wait — each is a human on the integrator's path, and each is the lens's admitted-fallback case whether or not §19 admits it. The cheapest removal usually already exists: a read that loads the row anyway can return its id, and a route that exists needs only a button.
+**Run §19's self-service test yourself rather than reading the document's answer.** It is the sharpest detector in the repo and the document grades its own homework: walk [`deploy → connect the webhook → ingest → query → recover → tear down`](../../../.ai/about.md#guiding-principles) for the stages this slice touches and ask, at each step, *who on the owner's side has to do something by hand for this to work?* An owner script, a SQL query to find a row id, a console click, an unbounded wait — each is a human on the adopter's path, and each is the lens's admitted-fallback case whether or not §19 admits it. The cheapest removal usually already exists: a read that loads the row anyway can return its id, and an operation that exists needs only a CLI command.
 
 [findings.md](references/findings.md) carries all eight classes.
 

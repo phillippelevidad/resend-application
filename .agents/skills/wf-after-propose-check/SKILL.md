@@ -42,7 +42,7 @@ Work down. Stop at the first rung that settles it.
 | **1 — a ratified doc or a binding skill settles it** | `.ai/` states the rule, or a `pp-*` skill's `Always`/`Never` does | Fix it. Cite the `doc.md#anchor` or the skill's rule and quote the binding wording verbatim. Event-handling correctness wins collisions ([tie-break](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) |
 | **2 — the repo settles it** | the code is the fact | Fix it. Cite `file:line` |
 | **3 — the pre-proposal settles it** | it was verified, and nothing above outranks it | Restore what was dropped, **or** — where the change made a deliberate better call — write the departure and its reason into `design.md` where it is currently silent |
-| **4 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument into the artifact**, not just the report. Build cost and testability are the reasons that survive; [integrator harm in the gap is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
+| **4 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument into the artifact**, not just the report. Build cost and testability are the reasons that survive; [adopter or reviewer harm in the gap is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
 | **5 — two lawful paths still stand** | both survive every rung above | Do not pick silently. Hold it for the owner round |
 | **6 — an unverified Resend behaviour, or a legal or commercial unknown** | no research settles it | Do not decide. Record it under [`about.md` → Open questions](../../../.ai/about.md#open-questions) tagged `[Unverified]`, put it to the owner in the owner-decision round, and record it in `proposal.md`'s open-questions section |
 
@@ -125,7 +125,7 @@ Two questions, not one.
 
 **Can the actor reach it?** Take each thing the change says an application developer, on-call engineer, operator or AI agent does, and trace the path they walk. The failure shape is a capability that exists on the server and is unreachable from the CLI or the MCP server: a row whose id no endpoint returns, a token scope nothing checks, a status field no query sources, an operation with no CLI subcommand. The change will read as complete, because every piece is named — and the owner will not be able to walk the slice, which is the [MUST every finished slice owes](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized).
 
-**Run the self-service test yourself rather than reading the proposal's answer.** Walk `deploy → connect the webhook → ingest → query → recover → tear down` for the stages this change touches and ask, at each step, *who running Ledger has to do something by hand for this to work?* An owner script, a database query to find a row id, a manual replay, an unbounded wait — each is a human on the integrator's path whether or not the proposal admits it.
+**Run the self-service test yourself rather than reading the proposal's answer.** Walk `deploy → connect the webhook → ingest → query → recover → tear down` for the stages this change touches and ask, at each step, *who running Ledger has to do something by hand for this to work?* An owner script, a database query to find a row id, a manual replay, an unbounded wait — each is a human on the adopter's path whether or not the proposal admits it.
 
 ### Pass 5 — Buildability: what would `opsx:apply` stop and ask?
 

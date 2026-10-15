@@ -6,15 +6,15 @@ Paths below are relative to the repo root.
 
 ## The one trick worth learning first
 
-[`views.md`](../../../../.ai/views.md) and [`api-contract.md`](../../../../.ai/api-contract.md) entries each end with a `- **Slices:**` line naming the build-checklist slices that contribute to them. That line is a reverse index: one grep gives you every screen and every backend operation a slice owes, without reading either file whole.
+[`api-contract.md`](../../../../.ai/api-contract.md) entries each end with a `- **Slices:**` line naming the build-checklist slices that contribute to them. That line is a reverse index: one grep gives you every operation a slice owes, without reading the file whole. The endpoints, CLI commands and MCP tools that expose them are on the card's own `UI surfaces` line.
 
 ```bash
-grep -n 'Slices:.*\b3 —' .ai/views.md .ai/api-contract.md
+grep -n 'Slices:.*\b4 —' .ai/api-contract.md
 ```
 
-Then read upward from each hit to the nearest `### ` (an operation or view entry) or `#### ` (an operation under a group heading) and read that whole entry. Mind the two failure modes: a slice appearing **second** in the list (`5 — Reactions; 3 — Recovery`) means the entry is mostly a later slice's, and this slice owes only its named part; and an entry that names your slice with a caveat (`**Not slice 2**: …`) is telling you the opposite — read the caveat, it is usually the scope contract in miniature.
+Then read upward from each hit to the nearest `#### ` (an operation entry) and read that whole entry. Mind the two failure modes: a slice appearing **second** in the list (`6 — Reactions; 4 — Recovery`) means the entry is mostly a later slice's, and this slice owes only its named part; and an entry that names your slice with a caveat (`**Not slice 2**: …`) is telling you the opposite — read the caveat, it is usually the scope contract in miniature.
 
-Beware `2` matching `2B` and vice versa: `2B`'s entries read `2B — Local-mode queue & docker compose`, so grep the exact string with its title fragment when the slice is a branch.
+Beware `2` matching `2B` and vice versa: `2B`'s entries read `2B — Local-mode queue and docker compose`, so grep the exact string with its title fragment when the slice is a branch.
 
 ## Where each fact lives
 
@@ -27,18 +27,20 @@ Beware `2` matching `2B` and vice versa: `2B`'s entries read `2B — Local-mode 
 | Whether a capability is deferred, and on what trigger | [`architecture.md#deferred-yagni`](../../../../.ai/architecture.md#deferred-yagni) | Sort by the stated reason: **temporal** → defer with a countable threshold or named event; **categorical** → reject, reopened only by a superseding ADR |
 | Tables, columns, types, constraints | [`data-modeling.md`](../../../../.ai/data-modeling.md) | Start at [`#model-index`](../../../../.ai/data-modeling.md#model-index) for the table's **Stage** and **Modeled** box, then open its `### ` section for the field table and its rules |
 | The fields every new table carries | [`data-modeling.md#base-fields--the-checklist-for-every-new-model`](../../../../.ai/data-modeling.md#base-fields--the-checklist-for-every-new-model) | Also `#modeling-conventions-canonical` and `#anti-patterns-must-not` |
-| Whether something belongs in a `jsonb` bucket or a typed column | [`data-modeling.md#extended-data--the-escape-hatch-with-rules`](../../../../.ai/data-modeling.md#extended-data--the-escape-hatch-with-rules) | The discipline: presentational or toggle → JSON; anything driving validation, search, money or state → its own typed table |
-| State machines and transitions | [`data-modeling.md#transactions-as-state-machines-not-status-strings`](../../../../.ai/data-modeling.md#transactions-as-state-machines-not-status-strings) | Plus the entity's own section. Transitions are the only mutator |
-| PII and data-protection duties | [`data-modeling.md#pii--lgpd--data-protection-modeling-rules`](../../../../.ai/data-modeling.md#pii--lgpd--data-protection-modeling-rules) and [`about.md#data-protection-lgpd`](../../../../.ai/about.md#data-protection-lgpd) | Both — the first is modeling, the second is policy |
-| Screens, actors, reads, actions | [`views.md`](../../../../.ai/views.md) | The `Slices:` grep above. Read the [per-view template](../../../../.ai/views.md#per-view-template) once so the `[composed]` / `[view-shaped]` tags mean something |
-| Backend operations | [`api-contract.md`](../../../../.ai/api-contract.md) | The `Slices:` grep. Reads live under `## Backend read surface`, commands under `## Backend command surface`, per-view fan-out under `## BFF orchestration` |
+| The unique key each write is idempotent on | [`data-modeling.md#idempotency-keys`](../../../../.ai/data-modeling.md#idempotency-keys) | `svix_id` for the ledger, `dedupe_key` for the outbox. Read it before any write the slice adds |
+| How state is derived, and why order never comes from transport | [`architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set`](../../../../.ai/architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set) and [`data-modeling.md#projections-are-derived`](../../../../.ai/data-modeling.md#projections-are-derived) | Plus the table's own section. Projections are recomputed from the event set, never advanced by arrival |
+| PII and retention duties | [`data-modeling.md#pii--retention`](../../../../.ai/data-modeling.md#pii--retention) and [`architecture.md#adr-014--raw-payload-retention-and-redaction`](../../../../.ai/architecture.md#adr-014--raw-payload-retention-and-redaction) | Both — the first is the modeling rules, the second is the retention decision |
+| Surfaces — endpoints, CLI commands, MCP tools | The card's `UI surfaces` line, then [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp) | One contract, many surfaces ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)) |
+| Operations | [`api-contract.md`](../../../../.ai/api-contract.md) | The `Slices:` grep. Reads live under `## Read operations`, `operate`-scoped writes under `## Operate operations`, the webhook endpoint under `## Ingest boundary` |
 | Auth, scopes, idempotency, errors, pagination, versioning | [`api-contract.md#conventions`](../../../../.ai/api-contract.md#conventions) | Read once per pre-proposal; these bind every operation the slice adds |
-| The capability the slice delivers, in product terms | [`features.md`](../../../../.ai/features.md) | The card's `Refs` links the section. Its lifecycle stage table, once written, is the binding table the self-service test is argued against |
+| Error codes, their statuses and who raises them | [`api-contract.md#error-codes`](../../../../.ai/api-contract.md#error-codes) | The only list. A new or changed code is a public-contract change (Ask first) |
+| The capability the slice delivers, in product terms | [`features.md`](../../../../.ai/features.md) | The card's `Refs` links the journey. [`#adopter-lifecycle`](../../../../.ai/features.md#adopter-lifecycle) is the stage table the self-service test is argued against |
 | Personas, vocabulary, non-goals, scale ceiling | [`about.md`](../../../../.ai/about.md) | `#target-personas`, `#domain-vocabulary`, `#non-goals--out-of-scope`, `#platform-scale-assumptions`, `#risk-appetite` |
-| Money and fiscal duties | [`about.md#fiscal--financial-core`](../../../../.ai/about.md#fiscal--financial-core) and [`architecture.md#fiscal--financial-core`](../../../../.ai/architecture.md#fiscal--financial-core) | Plus the `pp-money` skill, which is binding for any table or command on the money path |
-| Providers, adapters, vendor evaluations | [`integrations.md`](../../../../.ai/integrations.md) | Only when the slice integrates one |
-| What is genuinely unsettled | [`about.md#open-questions`](../../../../.ai/about.md#open-questions) and `.human/open-question-*.md` | Count the bullets at read time. If a slice depends on one, say so — do not settle it here |
-| The decision lens and the self-service test | [`AGENTS.md`](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) | The verdicts it must reproduce: [`decision-lens-suite.md`](../../../../.ai/decision-lens-suite.md) |
+| Resend behaviour the slice relies on | [`resend.md`](../../../../.ai/resend.md) | Cite the `RS-*` fact. A row under [`#unverified`](../../../../.ai/resend.md#unverified) is an open question, not a fact |
+| AWS limits, idle cost, teardown | [`aws.md`](../../../../.ai/aws.md) | [`#cost-shape`](../../../../.ai/aws.md#cost-shape), [`#budget-alarms`](../../../../.ai/aws.md#budget-alarms), [`#teardown`](../../../../.ai/aws.md#teardown) |
+| Resend discipline, secrets layout, the Postgres host | [`integrations.md`](../../../../.ai/integrations.md) | [`#locked-rules-must`](../../../../.ai/integrations.md#locked-rules-must) before any slice that calls Resend |
+| What is genuinely unsettled | [`about.md#open-questions`](../../../../.ai/about.md#open-questions) | Count the bullets at read time. If a slice depends on one, say so — do not settle it here |
+| The decision lens and the self-service test | [`AGENTS.md`](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) and [`about.md#guiding-principles`](../../../../.ai/about.md#guiding-principles) | The verdicts it must reproduce: [`decision-lens-suite.md`](../../../../.ai/decision-lens-suite.md) |
 
 ## Reality-check recipes — what the repo already contains
 
@@ -64,6 +66,6 @@ Two things to look for beyond existence:
 
 ## What not to read
 
-- Do not read `data-modeling.md`, `api-contract.md` or `views.md` end to end. They run long; anchors and the `Slices:` grep get you the same facts for a fraction of the context.
+- Do not read `data-modeling.md`, `api-contract.md`, `resend.md` or `aws.md` end to end. They run long; anchors and the `Slices:` grep get you the same facts for a fraction of the context.
 - Do not read `node_modules`, generated code (OpenAPI output, migration snapshots), or migration SQL you are not checking a specific fact in.
 - Do not summarize a `pp-*` skill or an `.ai/` section through a sub-agent. Their exact wording binds, and the summary drops it.
