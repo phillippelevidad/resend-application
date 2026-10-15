@@ -27,3 +27,4 @@ an expensive procedure that should run only when a person decides it should.
 | Command | Use it for |
 | --- | --- |
 | [auto-decide.md](auto-decide.md) | Letting an agent decide in the owner's place on an unattended run: decided from the ratified docs, logged as it goes, summarized for review |
+| [next-bootstrap-step.md](next-bootstrap-step.md) | Working the next step of [bootstrap-checklist.md](../bootstrap-checklist.md) after a `/clear`: one batched question round with recommendations, then the step runs to a commit. Delete with the checklist |
