@@ -5,3 +5,9 @@ tools/
 
 # Per-developer agent settings (template: AGENTS.local.example.md)
 AGENTS.local.md
+
+# Dependencies
+node_modules/
+
+# Claude skills (synced from .agents/skills via pnpm sync-skills)
+.claude/skills

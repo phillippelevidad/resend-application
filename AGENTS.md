@@ -105,8 +105,16 @@ Update this table as projects land.
 
 ## Commands
 
-None yet. Phase 0 adds them. The intended shape: one `pnpm verify` that mirrors CI stage for stage,
-and whose exit 0 means every stage ran and passed. Document every command here when it lands.
+```bash
+pnpm install       # postinstall runs sync-skills
+pnpm sync-skills   # relink .claude/skills from .agents/skills (the canonical folder)
+```
+
+Skills live in `.agents/skills/`. `.claude/skills/` is generated (git-ignored): never edit it, and
+run `pnpm sync-skills` after adding or removing a skill.
+
+Phase 0 adds the rest. The intended shape: one `pnpm verify` that mirrors CI stage for stage, and
+whose exit 0 means every stage ran and passed. Document every command here when it lands.
 
 ## Module boundaries
 

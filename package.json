@@ -1,0 +1,14 @@
+{
+  "name": "ledger",
+  "scripts": {
+    "sync-skills": "node scripts/sync-skills.mjs",
+    "postinstall": "node scripts/sync-skills.mjs"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": "10.11.0"
+  },
+  "private": true
+}
