@@ -21,14 +21,16 @@ outbox for reactions) without a superseding decision written into that doc.
 - **Every reliability claim MUST carry its evidence.** A behavior in the docs or the README is
   backed by a unit test, a property test, an integration test or a simulator invariant
   ([idea §5.9](docs/idea.md#59-the-chaos-and-simulation-harness)), and the doc points at it. A
-  claim without evidence is deleted or moved to Open questions. This project exists to be checked.
+  claim without evidence is deleted or moved to [Open questions](.ai/about.md#open-questions).
+  This project exists to be checked.
 - **Verify Resend behavior; never assume it.** Check API and webhook behavior against the docs
   (`https://resend.com/docs/llms.txt`, and any page as `.md`) before relying on it. Cite the page
   in the doc that depends on it. If the docs don't settle it, add it to
-  [idea §10](docs/idea.md#10-open-questions) instead of guessing.
+  [about.md → Open questions](.ai/about.md#open-questions), tagged `[Unverified]`, instead of guessing.
 - **Complement, don't duplicate.** Before building something, check whether Resend's
   [Webhook Ingester](https://github.com/resend/resend-webhooks-ingester) or its open PRs already do
-  it. Where Ledger's work would help upstream, prefer offering it there.
+  it. Ledger builds what the Ingester does not ([positioning](.ai/about.md#positioning)). Upstream
+  PRs are not planned.
 - **Cost brake — MUST.** This runs on a personal AWS account. Serverless, pay-per-use, near-zero
   idle cost. No always-on resources (NAT gateways, provisioned RDS, idle containers) without a
   stated, measured reason. Everything torn down with one command.
@@ -38,8 +40,43 @@ outbox for reactions) without a superseding decision written into that doc.
 - **v0 per phase, smallest PR.** Each [phase](docs/idea.md#7-implementation-plan) ships usable and
   tested on its own. Optimize a change for how fast it can be reviewed and merged.
 
+**Right-sizing — how much to build:**
+
+1. **Right-size to the ceiling.** Build for
+   [about.md → Platform scale assumptions](.ai/about.md#platform-scale-assumptions) and nothing past
+   it. The ceiling caps owner operations as well as engineering: one owner, no on-call, so a manual
+   step that recurs per deploy, per demo or per review walk MUST be scripted.
+2. **Reversible-cheap over optimal-expensive.** Sort every deferral by its stated reason.
+   **Temporal** (cost, sequencing): defer with a countable threshold or a named observable event,
+   never "when demand warrants". **Categorical** (the reason holds at every point below the
+   ceiling, e.g. SQS FIFO, multi-database, multi-tenant): reject. Only a superseding ADR reopens it.
+3. **Reviewers arrive at milestone boundaries.** Every finished milestone
+   ([M1–M3](.ai/about.md#milestones)) MUST leave the README claims, the demo and the deploy
+   coherent. Inside a milestone, MUST NOT argue from adopter or reviewer harm in the gap between
+   slices. A gap that a named later slice carries is the plan working. Every finished slice MUST
+   still be hand-walkable through the CLI, the API or the simulator, because the walk is how the
+   slice is verified. Build cost and testability are the reasons that survive for pulling work
+   forward.
+4. **Self-service test, at scoping time.** Run the
+   [self-service test](.ai/about.md#guiding-principles) before a slice is scoped. On the adopter's
+   path, admit the smallest version that removes the manual step. Off it, defer on a tripwire.
+5. **Signal.** Effort is admitted when it produces something a reviewer can check (a test, an
+   invariant, a measured number, a working command) against a row in
+   [What this project must demonstrate](.ai/about.md#what-this-project-must-demonstrate).
+   Overdoing it is generality beyond the ceiling, polish nobody notices in a 30-minute review, and
+   infrastructure depth no claim depends on. Learning AWS counts only when an ADR or a test makes
+   it visible.
+6. **Spend anyway**, whatever clauses 1–5 say, when the absence causes any of: lost events;
+   duplicate effects; order-dependent state; security or PII exposure, MCP tool output included;
+   misstating Resend behavior or implying affiliation; a budget-alarm gap.
+7. **Deploy and keep.** Real deploys stay up until the owner tears them down, because review
+   timing is unknown. Idle cost MUST stay near zero ([target](.ai/about.md#success-metrics)).
+   Budget alarms with a hard monthly cap are mandatory from the first deploy, not polish
+   ([risk appetite](.ai/about.md#risk-appetite)). Teardown is one command.
+
 **Tie-break:** correctness of event handling (no loss, no duplicate effects, order-independent
-state) > evidence > cost > scope > polish.
+state) > evidence > cost > scope > polish. The self-service test decides whether; the cost brake
+decides how much.
 
 ## Commit and push as you go
 

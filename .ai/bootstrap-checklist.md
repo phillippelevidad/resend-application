@@ -50,7 +50,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 1 — `about.md` and the decision lens
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Produces:** [about.md](about.md); the rewritten decision lens in [root AGENTS.md](../AGENTS.md#decision-lens--evidence-over-claims-right-sized) (keep the heading text — skills cite its anchor).
 - **Depends on:** owner calibration (above).
 - **Owner input:** confirm the lens draft and the risk appetite before ratifying.

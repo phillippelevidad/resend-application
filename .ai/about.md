@@ -1,92 +1,5 @@
 # Ledger
 
-> **TEMPLATE — not ratified.** Bootstrap step 1 in [bootstrap-checklist.md](bootstrap-checklist.md). The preview content below is illustrative, drafted from [docs/idea.md](../docs/idea.md) without research. Nothing here is binding until this banner and the instructions comment are removed.
-
-<!-- AGENT INSTRUCTIONS
-Purpose: the canonical product doc. Who Ledger is for, what the repo must prove, how far it scales,
-whose risk may run thin, the words to use, what is out of scope, and every unconfirmed claim.
-
-Consumers: every wf-* skill. wf-before-propose reads #target-personas, #domain-vocabulary,
-#non-goals--out-of-scope, #platform-scale-assumptions, #risk-appetite (references/doc-map.md) and
-writes unverified items to #open-questions. wf-before-propose-check, wf-after-propose-check and
-wf-after-apply-check rank #risk-appetite above their own reasoning and run the self-service test
-from #guiding-principles. The decision lens in root AGENTS.md links #platform-scale-assumptions,
-#what-this-project-must-demonstrate and #risk-appetite. .ai/AGENTS.md routes every [Unverified] tag here.
-
-Inputs (read first): root AGENTS.md; bootstrap-checklist.md → "Owner calibration (ratified
-2026-10-15)" (binding, not re-asked); docs/idea.md in full (§2.2, §3, §4, §7, §9, §10 most).
-MAY read about/ (git-ignored) for role context. NEVER copy personal details, names, employers,
-locations or the owner's gap list into this file. Public-safe abstractions only.
-
-Research:
-- Webhook Ingester: current connector count, status of PR #13 (/reconcile) and issue #8, read from
-  https://github.com/resend/resend-webhooks-ingester and https://resend.com/docs/webhooks/ingester.md.
-  Positioning MUST match what the Ingester does today.
-- Role requirements: the public Resend job posts (Backend Engineer; Software Engineer, Developer
-  Tools). Paraphrase as abstract requirements. No quotes that identify people.
-- Resend values / stack: https://resend.com/handbook/engineering/what-is-our-tech-stack and the
-  public handbook. Cite each page used.
-- Any Resend behavior stated here (rate limit, retention, retry window): verify against
-  https://resend.com/docs/llms.txt and cite, or link resend.md once step 4 lands. Never restate a
-  fact canonical in resend.md / aws.md; link it.
-
-Required structure (anchors skills cite; heading text MUST be exactly):
-  ## Target personas · ## Guiding principles · ## What this project must demonstrate ·
-  ## Milestones · ## Success metrics · ## Platform scale assumptions · ## Positioning ·
-  ## Risk appetite · ## Domain vocabulary · ## Non-goals / out of scope (slug
-  non-goals--out-of-scope) · ## Open questions.
-  The self-service test MUST appear verbatim under Guiding principles with the flow
-  `deploy → connect the webhook → ingest → query → recover → tear down`.
-  Milestones MUST match the owner calibration exactly (M1/M2/M3, no dates).
-
-Decision lens rewrite (part of this step; do it in root AGENTS.md, not here). Keep the heading
-text "Decision lens — evidence over claims, right-sized" exactly (skills cite its anchor). Keep the
-existing evidence, verify-Resend, complement, stack and v0 bullets. Add these clauses, drawn from
-the calibration:
-  1. Right-size to the ceiling in about.md#platform-scale-assumptions; it caps owner operations
-     as well as engineering.
-  2. Reversible-cheap over optimal-expensive. Sort every deferral by its stated reason: temporal
-     (cost, sequencing) → defer with a countable threshold or named observable event, never "when
-     demand warrants"; categorical (holds at every point below the ceiling: SQS FIFO,
-     multi-database, multi-tenant) → reject, reopened only by a superseding ADR.
-  3. Reviewers arrive after the last slice. MUST NOT argue from adopter or reviewer harm in the
-     gap between slices; a gap a named later slice carries is the plan working. MUST still leave
-     every finished slice hand-walkable through the CLI, the API or the simulator. Surviving
-     reasons to pull work forward: build cost and testability.
-  4. The self-service test (from #guiding-principles), asked at scoping time.
-  5. Signal clause: effort is admitted when it produces something a reviewer can check (a test, an
-     invariant, a measured number, a working command) against a row in
-     #what-this-project-must-demonstrate. Overdoing it = generality beyond the ceiling, polish
-     nobody notices in a 30-minute review, infrastructure depth no claim depends on. AWS learning
-     counts only when an ADR or a test makes it visible.
-  6. Spend anyway when absence causes: lost events; duplicate effects; order-dependent state;
-     security or PII exposure, including MCP tool output; misstating Resend behavior or implying
-     affiliation; a gap in budget alarms.
-  7. Deploy-and-keep AWS posture inside the cost brake: real deploys stay up until the owner tears
-     them down; idle cost near zero; budget alarms with a hard monthly cap are mandatory, not polish;
-     teardown is one command.
-  8. Tie-break: keep the existing order; add "the self-service test decides whether, the cost
-     brake decides how much".
-  Then score the draft against decision-lens-suite.md (step 2) before ratifying.
-
-Evidence rules: every reliability claim links its test, property, invariant or cited page
-(root AGENTS.md → Decision lens). Anything unconfirmed is tagged [Unverified] and listed under
-Open questions. Delete every [Preview] tag; a line still needing one is not ready.
-
-Owner decisions to surface (one batched round, one recommended pick each):
-  - Confirm the lens draft and the risk appetite (required by the checklist).
-  - Monthly budget cap in USD for the hard alarm (recommend a small round number the owner would
-    not mind losing; aws.md designs the alarm).
-  - Success-metric targets: idle cost ceiling, newcomer deploy time (recommend idea §7's
-    15 minutes), burst numbers to publish (recommend p50/p99 ingest latency + drain time).
-  - Open question 10 (final name): recommend deferring to M3 with tripwire "before the first npm
-    publish".
-
-Done when: every anchor above resolves; idea §10 is carried into Open questions; the lens is
-rewritten in root AGENTS.md and confirmed by the owner; no [Preview] tag remains; banner and this
-comment are removed.
--->
-
 A self-hosted, single-installation service that turns Resend webhooks into correct, current,
 queryable state and safe reactions, and recovers the events it missed. Built in public as part
 of an application to Resend. **Not affiliated with or endorsed by Resend.**
@@ -100,16 +13,19 @@ Two audiences. Ledger is designed for the first, and judged by the second.
   - **Support / on-call engineer:** explains a specific delivery fast (`ledger email`, `ledger recipient`).
   - **Operator:** after an outage, proves nothing was lost, and recovers what was (`ledger gaps`, `ledger reconcile`).
   - **AI agent:** answers "why did this delivery fail?" through MCP, unable to break anything.
-- **Reviewer** [Preview]: a Resend engineer with about 30 minutes. Reads the README, runs the
-  demo or reads its recorded output, and checks a few claims against their evidence. Arrives after
-  the last slice.
+- **Reviewer:** a Resend engineer with about 30 minutes. Reads the README, runs the demo or reads
+  its recorded output, and checks a few claims against their evidence. Arrives at a **milestone
+  boundary** (M1, M2 or M3), timing unknown ([lens clause 3](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
+
+Every product persona is an actor the self-service test traces. Each finished slice is walked by
+hand in every role that reaches it.
 
 ## Guiding principles
 
 - **Evidence over claims (MUST):** every reliability claim links its evidence ([root lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
-- **Correct under real delivery (MUST):** duplicates, reordering, bursts and outages change nothing in the projected state.
+- **Correct under real delivery (MUST):** duplicates, reordering, bursts and outages change nothing in the projected state ([idea §3](../docs/idea.md#3-goals-and-non-goals), goals 1–3).
 - **Headless by default (SHOULD):** everything the owner can do, a script or an agent can do too (CLI `--json`, SDK, MCP).
-- **Near-zero idle cost (MUST):** see the cost brake in the [lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized).
+- **Near-zero idle cost (MUST):** target in [Success metrics](#success-metrics); the cost brake is in the [lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized).
 
 **Self-service test (MUST).** Walk `deploy → connect the webhook → ingest → query → recover → tear down`
 and ask at each step: *who running Ledger has to do something by hand for this to work (an owner
@@ -120,22 +36,31 @@ Applied at scoping time by the [decision lens](../AGENTS.md#decision-lens--evide
 
 ## What this project must demonstrate
 
-Each row is a role requirement or a Resend value, and where the repo proves it. A row without
-evidence is a gap, not a claim.
+Each row is a requirement from a public Resend role post or a published Resend value, with where
+the repo will prove it. Nothing is built yet, so **every row is a gap until its evidence lands**.
+The slice that lands it updates this column with a link.
 
-| Requirement / value | Where the repo proves it |
-| --- | --- |
-| Queues and workers that handle spikes, retries, duplicates, partial failures | [Preview] worker transaction, `fast-check` properties, simulator invariants ([idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness)) |
-| Infrastructure as code; operating what you build (monitoring, safe deploys) | [Preview] `infra/` CDK stack, alarms, runbook, budget alarm |
-| Relational data model; safe database changes | [Preview] `packages/db` Drizzle schema, expand/contract migrations |
-| Idempotency, rate limits, authn/authz | [Preview] outbox `dedupe_key` + Resend idempotency keys; `packages/resend-client` budget; `read`/`operate` scopes |
-| Interfaces developers and agents depend on: clear errors, compatibility | [Preview] SDK, CLI, MCP on one contract; the [error shape](../AGENTS.md#error-shape); semver at M3 |
-| Agents as users with their own security needs | [Preview] MCP read-only by default, operate tools unregistered without scope, redaction |
-| Headless direction: everything programmatic | [Preview] recovery via the Headless Webhook API, no dashboard step |
+Sources: [Backend Engineer](https://resend.com/careers/df2fe05d-87ca-4e87-a66d-50bb2c9c4859) (BE) ·
+[Software Engineer, Developer Tools](https://resend.com/careers/53d3710a-2d55-42ac-ba90-cdfd306bf560) (DT) ·
+[Philosophy](https://resend.com/philosophy) · [tech stack](https://resend.com/handbook/engineering/what-is-our-tech-stack) ·
+handbook pages linked per row. Checked 2026-10-15.
+
+| Requirement / value | Source | Planned evidence |
+| --- | --- | --- |
+| Queues and workers that survive spikes, retries, duplicate events, concurrency and partial failure | BE; stack ("queues absorb spikes") | Worker-transaction integration tests; `fast-check` permutation and duplication properties; simulator burst + chaos invariants ([idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness)) |
+| Relational data models; safe database changes | BE | `packages/db` Drizzle schema; expand/contract migrations run in CI |
+| Infrastructure as code (AWS CDK); serverless background work on Lambda | BE; stack | `infra/` CDK app; one-command deploy and teardown |
+| Operate what you build: monitoring, safe deploys, incident recovery, runbooks | BE; [incidents](https://resend.com/handbook/engineering/how-we-handle-incidents), [on-call](https://resend.com/handbook/engineering/how-we-handle-on-call-rotations) | CloudWatch alarms in CDK; runbook; budget alarms + kill switch ([aws.md](aws.md#budget-alarms)) |
+| Idempotency, retries, rate limits, partial failure | DT | Outbox `dedupe_key` + Resend idempotency keys; `packages/resend-client` rate-limit tests; `--chaos worker-crash` never duplicates an alert |
+| One contract across SDK, CLI, MCP and docs; clear errors; backward compatibility | DT; Philosophy ("predictable by design") | One read-API contract ([api-contract.md](api-contract.md)); the [error shape](../AGENTS.md#error-shape); semver at M3 |
+| AI agents as users, with their own discovery and security needs | DT | MCP read-only by default; operate tools unregistered without scope; redaction tests on tool output |
+| Zero friction; documentation is the product | Philosophy | Newcomer deploy target in [Success metrics](#success-metrics); recovery through the Headless Webhook API with no dashboard step; 0 unlinked claims |
+| Ship a minimal version early, in small PRs, after a written design | [shipping](https://resend.com/handbook/engineering/how-we-ship-new-features), [PRs](https://resend.com/handbook/engineering/how-we-handle-pull-requests), [RFCs](https://resend.com/handbook/engineering/how-we-use-rfcs) | [docs/idea.md](../docs/idea.md) as the RFC; v0 per slice; PR history |
 
 ## Milestones
 
-No dates. Slice IDs map to milestones in [architecture.md](architecture.md).
+No dates. Slice IDs map to milestones in [architecture.md](architecture.md). A reviewer may arrive
+at any milestone boundary, so each one MUST leave the README claims, the demo and the deploy coherent.
 
 - **M1 — MVP:** foundations, local v0, durable ingest on AWS, recovery, and a usable CLI. Evidence over breadth.
 - **M2 — Feature complete:** every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, real AWS deploy, simulator evidence.
@@ -148,18 +73,22 @@ Upstream PRs to Resend's Webhook Ingester are not planned.
 | Metric | Target | Evidence |
 | --- | --- | --- |
 | Simulator invariants after burst + chaos | 0 lost, 0 duplicated, N/N states correct | `sim` run output |
-| Newcomer: clone → deployed → demo run | [Preview] ≤ 15 min ([idea §7](../docs/idea.md#7-implementation-plan)) | README walkthrough |
-| Idle AWS cost per month | [Preview] near zero; hard cap set by the owner | Budget alarm, billing export |
+| Recovery after an outage past Resend's retry window | 100% of events recovered, 0 duplicates | Integration test ([idea §7](../docs/idea.md#7-implementation-plan) phase 3) |
+| Newcomer deploy | ≤ 15 min, timed from "AWS account with CDK bootstrapped + a Resend API key" to "demo run". Account creation excluded | Timed README walkthrough |
+| Idle AWS cost | ≤ USD 5 / month all-in | Billing export after 30 idle days |
+| Monthly AWS spend | Hard cap USD 50: alerts **plus** a kill switch that stops compute | [aws.md → Budget alarms](aws.md#budget-alarms); a recorded trip drill |
+| Burst numbers (M3, real AWS) | Published: p50/p99 ingest latency, queue drain time, AWS cost of one 10k burst | `docs/results.md` |
 | Unlinked reliability claims in README / docs | 0 | Review |
 
 ## Platform scale assumptions
 
 Design ceiling, not a growth plan:
 
-- **Installation:** one deployment, one Resend team, one webhook endpoint [Preview].
+- **Installation:** one deployment, one Resend team, one webhook endpoint ([idea §3](../docs/idea.md#3-goals-and-non-goals)).
 - **Load:** the demo burst, 10,000 events in 10 s ([idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness)). Nothing is engineered past it.
-- **Resend API budget:** 10 req/s per team, shared with the team's sending traffic ([rate limits](https://resend.com/docs/api-reference/rate-limit)). Ledger's calls MUST leave headroom.
+- **Resend API budget:** a per-team request limit shared across all of the team's API keys ([rate limits](https://resend.com/docs/api-reference/rate-limit)). Ledger's calls compete with the team's own API traffic and MUST leave headroom.
 - **Events per email:** small lifecycle counts; opens and clicks are counters ([idea §5.4](../docs/idea.md#54-order-independent-projections)).
+- **Demo traffic:** Resend test addresses only (`delivered@resend.dev`, `bounced@resend.dev`, …).
 
 **Owner operations are capped too (MUST).** One owner, no team, no on-call rotation. A manual step
 that recurs per deploy, per demo or per reviewer walk does not survive repeated reviews, so it is
@@ -168,9 +97,30 @@ in the adopter's path and MUST be scripted. Manual work is tolerable only off th
 
 ## Positioning
 
-- Resend's [Webhook Ingester](https://resend.com/docs/webhooks/ingester) answers *what happened?*: verified, idempotent raw rows in your database of choice.
-- Ledger answers *what is true now, what should happen, and what did we miss?*: order-independent state, idempotent reactions, queue-buffered ingest, recovery, CLI / SDK / MCP.
-- Ledger **complements** the Ingester; it does not compete on connectors. Comparison: [idea §2.2](../docs/idea.md#22-what-already-exists-the-resend-webhook-ingester) [Preview: re-verify].
+Resend's [Webhook Ingester](https://resend.com/docs/webhooks/ingester), as of 2026-10-15
+([repo](https://github.com/resend/resend-webhooks-ingester)):
+
+- A self-hosted Next.js app: it verifies the Svix signature and inserts each event into your
+  database, deduplicated on `svix_id`. It has 9 connectors (10 listed databases) and deploys to
+  Vercel, Railway, Render or Docker.
+- Verification and the database write happen in the same request. A failed write returns 500,
+  so Resend retries it.
+- It stores raw events only. It derives no state and runs no reactions. Status and rates are computed at read time.
+- Open, not merged: [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13)
+  ([#12](https://github.com/resend/resend-webhooks-ingester/issues/12)) adds an opt-in,
+  Postgres-only `/reconcile` that replays events missing from the database.
+  [Issue #8](https://github.com/resend/resend-webhooks-ingester/issues/8) asks for a per-email
+  timeline.
+
+The Ingester answers *what happened?* Ledger answers *what is true now, what should happen, and
+what did we miss?*
+
+- **Not in the Ingester:** queue-buffered ingest (a database outage is not a failed delivery);
+  order-independent per-email and per-recipient state; an outbox for idempotent reactions;
+  DLQ + redrive; CLI / SDK / MCP on one contract.
+- **Overlaps PR #13:** recovering missed events by diffing against List Events and replaying. Ledger
+  MUST describe its reconciler as the same approach, not as new.
+- Ledger **complements** the Ingester and does not compete on connectors.
 - Ledger MUST NOT imply affiliation with, or endorsement by, Resend, anywhere.
 
 ## Risk appetite
@@ -181,13 +131,19 @@ this decides *whose exposure* may run thin meanwhile.
 - **MAY run thin:** only the owner's own demo operations (e.g. a manual step in the owner's
   personal account), and only with a cheap reversal and a countable tripwire.
 - **MUST be discharged:** anything an adopter or a reviewer meets on the self-service path.
+- **Budget cap over continuity (owner deployment):** when the hard cap trips, the kill switch stops
+  compute. Webhooks that fail meanwhile are recovered by `ledger reconcile`, but only while List
+  Events still holds them (reach `[Unverified]`, see [Open questions](#open-questions)). This is
+  tolerable only in the owner's own demo deployment. Whether an adopter's deployment ships the
+  kill switch, and with what default, is decided in [aws.md](aws.md#budget-alarms).
 
 **Never tolerable:**
 
 - unbounded AWS spend, or a missing budget alarm;
 - a live Resend **write** nobody requested (replay, rotate secret, webhook change, send);
-- burning the shared 10 req/s budget;
-- real recipient addresses or secrets in the repo;
+- burning the shared Resend API budget;
+- real recipient data in the repo, the deployed demo's database, logs or MCP output; secrets in the repo;
+- security or PII exposure through any surface, MCP tool output included;
 - implying affiliation with Resend;
 - misstating Resend behavior.
 
@@ -203,7 +159,9 @@ this decides *whose exposure* may run thin meanwhile.
 | Re-queuing DLQ messages | redrive | replay | `redrive` |
 | Finding and closing missing events | reconcile | sync, backfill | `reconcile`, `reconcile_runs` |
 | A reaction queued in the same transaction | outbox entry | job, task | `outbox`, `dedupe_key` |
-| Someone who deploys Ledger | adopter | customer, tenant | — |
+| Someone who deploys Ledger | adopter | customer, tenant, integrator | — |
+| The control that stops compute when the monthly cap is hit | kill switch | circuit breaker | — |
+| A countable threshold or named event that reopens a deferral | tripwire | "when demand warrants" | — |
 
 ## Non-goals / out of scope
 
@@ -212,22 +170,35 @@ From [idea §3](../docs/idea.md#3-goals-and-non-goals) and the owner calibration
 - Multi-database connectors, warehouse loading, analytics dashboards (the Ingester covers these).
 - Multi-tenant hosting. One installation, one team.
 - Sending email, except operational alerts through Resend.
-- A full web UI.
+- A full web UI. A minimal read-only page is a deferral, see [Open questions](#open-questions).
 - Projections for non-email events in v0 (stored raw).
 - Upstream PRs to the Webhook Ingester.
 
 ## Open questions
 
-Each bullet is unconfirmed. Do not build on an `[Unverified]` claim without confirming it.
+Each bullet is unconfirmed. Do not build on an `[Unverified]` claim without confirming it. Scope
+questions carry a tripwire instead. Carried from [idea §10](../docs/idea.md#10-open-questions)
+(numbered `§10.N`) plus what research on 2026-10-15 surfaced.
 
-- Secret rotation: does Resend sign with both secrets for an overlap period, or switch immediately? Decides whether multi-secret verification is required. `[Unverified]`
-- List Events retention: how far back does it go? Bounds the recoverable outage and the default lookback. `[Unverified]`
-- Event timestamps: is `created_at` set when the event occurs or when it is generated? Affects projection tie-breaking. `[Unverified]`
-- Asynchronous bounces after delivery: how common, and is precedence override the right semantics? `[Unverified]`
-- Reconcile cadence vs the shared 10 req/s: what default never competes with sending traffic? `[Unverified]`
-- Upstream contribution: is `packages/core` useful to the Ingester (issue #8)? Calibration says no PRs planned. `[Unverified]`
-- Inngest adapter: worth it as a comparison, or scope creep? `[Unverified]`
-- Minimal read-only UI: worth adding, or are CLI + MCP enough? `[Unverified]`
-- Inbound email: is there a compelling `email.received` projection? `[Unverified]`
-- Final name: "Ledger" is a working name. `[Unverified]`
-- [Preview] MVP CLI: reads the database directly ([idea §7](../docs/idea.md#7-implementation-plan) phase 1) or only via the SDK ([module boundaries](../AGENTS.md#module-boundaries))? Settled in step 7. `[Unverified]`
+**Unverified facts:**
+
+- **List Events reach (§10.2).** No API page states how far back List Events goes. The only retention figure is 30 days for *email data* ([how to store webhooks data](https://resend.com/docs/webhooks/how-to-store-webhooks-data)). Decides the longest recoverable outage, the reconciler's default lookback, and whether events missed while the kill switch is tripped are recoverable. `[Unverified]`
+- **Event timestamps (§10.3).** Top-level `created_at` is when the webhook event was created ([email.bounced](https://resend.com/docs/webhooks/emails/bounced)). Whether that tracks when the bounce or complaint happened is unstated, and no page promises ordering. Affects projection tie-breaking. `[Unverified]`
+- **Bounce after delivery (§10.4).** No page says `email.bounced` can follow `email.delivered`. `email.complained` always does, by definition ([event types](https://resend.com/docs/webhooks/event-types)). Decides precedence override vs exposing both outcomes. `[Unverified]`
+- **Reconcile cadence vs the shared API budget (§10.5).** What default cadence never competes meaningfully with the team's own API traffic? Settled in [integrations.md](integrations.md). `[Unverified]`
+- **Retry window.** The retry schedule sums to about 27.6 h ([retries and replays](https://resend.com/docs/webhooks/retries-and-replays)), but another page says "up to 24 hours" ([how to store webhooks data](https://resend.com/docs/webhooks/how-to-store-webhooks-data)). Decides the reconciler's grace window and the outage length the recovery test simulates. `[Unverified]`
+- **Auto-disable threshold.** A failing endpoint is disabled automatically, after an unstated number of failures or time ([retries and replays](https://resend.com/docs/webhooks/retries-and-replays)). Decides how fast the reconciler must detect a disabled webhook. `[Unverified]`
+- **Replay keeps `svix-id`.** Replay returns the same `msg_` id ([replay event](https://resend.com/docs/api-reference/webhooks/replay-event)). That the redelivery carries the same `svix-id` header is verified only by a community report ([ingester#12](https://github.com/resend/resend-webhooks-ingester/issues/12)), not by the docs. Decides whether replays dedupe on `svix_id` alone. `[Unverified]`
+
+**Scope questions (deferred on a tripwire):**
+
+- **Inngest adapter (§10.7).** A second worker implementation as a comparison. Tripwire: M2 is done **and** a row in [What this project must demonstrate](#what-this-project-must-demonstrate) names a claim only it can prove.
+- **Minimal read-only UI (§10.8).** Tripwire: M2 is done **and** a demo step cannot be shown through CLI or MCP output.
+- **Inbound email projection (§10.9).** `email.received` carries metadata only; the body and attachments come from separate APIs ([email.received](https://resend.com/docs/webhooks/emails/received)). Stored raw in v0. Tripwire: M2 is done **and** a row in What this project must demonstrate names inbound email.
+- **Final name (§10.10).** "Ledger" is a working name. Deferred to M3. Tripwire: before the first npm publish.
+- **MVP CLI read path.** Does the M1 CLI read the database directly ([idea §7](../docs/idea.md#7-implementation-plan) phase 1), or only through the SDK ([module boundaries](../AGENTS.md#module-boundaries))? Decided in [architecture.md](architecture.md) (bootstrap step 7).
+
+**Resolved** (kept so the §10 carry is traceable; canonical facts move to [resend.md](resend.md)):
+
+- **Secret rotation (§10.1).** For 24 hours after a rotation, payloads are signed with both the new and the previous secret ([rotate signing secret](https://resend.com/docs/api-reference/webhooks/rotate-signing-secret)). Verification MUST accept both during that window.
+- **Upstream contribution (§10.6).** Closed. Upstream PRs are not planned (owner calibration, 2026-10-15).
