@@ -203,6 +203,7 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Kill-switch reach ([AWS-U01, AWS-U02](aws.md#unverified)).** Whether the budget deploys from us-east-2 and reaches a us-east-2 topic, and whether a route throttle of `0` stops API Gateway billing after a trip. Together they decide whether the hard cap holds. Settled by the first guardrails deploy and the trip drill. · *durable ingest · M1*, MUST be settled `[Unverified]`
 - **Smaller AWS gaps ([AWS-U03–U07](aws.md#unverified)).** Idle ESM polling cost, when the body is base64-encoded, the account concurrency quota, secret deletion on teardown, free-tier coverage. Each is safe either way and names its slice. `[Unverified]`
 - **Smaller Resend gaps ([RS-U13, U15–U19](resend.md#unverified)).** List Events visibility lag, test-address event sequences, idempotency-key scope, invalid-key status code, orphaned `listen` webhooks, the `email.suppressed` object. Each row names its slice. `[Unverified]`
+- **Per-event recipient lists ([RS-U21](resend.md#unverified)).** Whether a bounce on a multi-recipient email lists only the impacted recipients in `data.to`. If not, a healthy co-recipient would read `hard_bounced`. Settled by one Ask-first two-recipient send. · *local v0 · M1*, MUST be settled `[Unverified]`
 
 **Scope questions (deferred on a tripwire):**
 

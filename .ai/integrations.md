@@ -66,7 +66,7 @@ boundary, each USD 0.40/month (AWS-11):
 | --- | --- | --- | --- |
 | `ledger/webhook-signing-secrets` | The configured set of `whsec_` secrets (a JSON array, so rotation adds one before retiring one, RS-04) | `apps/ingest` only | M1 |
 | `ledger/resend-api-key` | A `full_access` key, the only kind the Headless Webhook API accepts (RS-18) | `apps/reconciler` only | M1 |
-| `ledger/database-url` | The pooled Postgres connection string ([Decision](#decision--neon)) | worker, dispatcher, reconciler, read API | M1 |
+| `ledger/database` | A JSON object holding the pooled Postgres connection string ([Decision](#decision--neon)) and the deployer-held address-hash key ([data-modeling.md → PII & retention](data-modeling.md#pii--retention)) | worker, dispatcher, reconciler, read API | M1 |
 | `ledger/resend-sending-key` | A `sending_access` key, optionally scoped to one domain with `domain_id` (RS-18) | `apps/dispatcher` only | *reactions · M2* |
 | `ledger/simulator-signing-secret` | The simulator's signing secret; created only by an off-by-default deploy flag ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | `apps/ingest` only | Slice 3, owner's deployment only |
 

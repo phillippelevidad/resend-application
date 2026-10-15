@@ -103,9 +103,10 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 8 — `data-modeling.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Produces:** [data-modeling.md](data-modeling.md).
 - **Depends on:** 7.
+- **Owner input (2026-10-15):** read API tokens are hashed rows in `api_tokens` (slice 2). Projections hold no raw PII: subjects and addresses are masked for display (`phi******@g****.c**`), and addresses are looked up by keyed hash. Recipients are modeled per email in `email_recipients`. Decided from the docs: `text` + `CHECK`, never `pgEnum`; identity `bigint` surrogates; `jsonb` payload without the "exactly what was signed" claim; `source` is `live` / `simulated` only.
 
 ### Step 9 — `api-contract.md`
 

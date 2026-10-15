@@ -100,7 +100,9 @@ Rejected: SQS FIFO (orders arrival at our queue, which means nothing; costs thro
 **Accepted.** `projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)` and folds;
 it is recomputed from the full event set on every new event. Status follows outcome precedence, not
 recency: terminal negatives (`bounced`, `failed`, `suppressed`) outrank `delivered`. Opens and
-clicks are counters plus first/last timestamps. `projectRecipient` derives from email states; a
+clicks are counters plus first/last timestamps. `projectRecipient` derives from per-recipient email
+states, each folded from the events whose own `data.to` names that recipient (RS-27, RS-U21,
+[data-modeling.md → `email_recipients`](data-modeling.md#email_recipients--outcome-per-email-and-recipient)); a
 hard bounce comes from `bounce.type = Permanent`, never from the event type alone (RS-28,
 [resend.md → Constraint 7](resend.md#constraints-and-sharp-edges)). Event-specific payload objects
 are optional in the Zod schemas (RS-26–RS-29). **Conditional:** `created_at` is used only as a
@@ -239,8 +241,10 @@ Rejected: AWS-only development (LocalStack as the only local path).
 ### ADR-014 — Raw-payload retention and redaction
 
 **Accepted.** A configurable job redacts personal data in raw payloads after N days. Redaction MUST
-keep every field projections read, so the source-of-truth rule survives; PII in projections follows
-[data-modeling.md → PII & retention](data-modeling.md#pii--retention). Resend itself keeps email
+keep every field projections read, so the source-of-truth rule survives: it replaces `to`, `from`
+and `subject` with their idempotent masks and nulls the fields no projection reads. Projections hold
+only keyed address hashes and masks, never raw PII (owner, 2026-10-15;
+[data-modeling.md → PII & retention](data-modeling.md#pii--retention)). Resend itself keeps email
 data 30 days (RS-31).
 Rejected: deleting ledger rows (breaks recovery diffing and rebuilds).
 **Evidence:** pending — integration test: rebuild after redaction yields identical projections (slice 7). Source: [idea §6.3](../docs/idea.md#63-data-model-initial).
@@ -362,7 +366,7 @@ claims, the demo and the deploy coherent.
 | --- | --- | --- | --- |
 | 0 — Foundations | Monorepo, Biome, Vitest, CI, `pnpm verify`; `packages/core` Zod event schemas (RS-25–RS-29), `projectEmail`, `projectRecipient`, properties 1–4 (ADR-003); core import lint rule (ADR-013); `sim` history generator; README skeleton with link check | `pnpm sim` prints the projection of a generated, shuffled history | M1 |
 | 1 — Local ledger and read path | `packages/db` schema and migrations (ADR-018); ingest (verify against the secret set, ADR-001, ADR-009) and worker transaction (ADR-004) behind the queue port in one local process; minimal read API, SDK and `ledger email` / `ledger recipient` with `--json` (ADR-011); `sim` duplicates + shuffle, invariants 1–2 | `pnpm sim` against the local process, then `ledger email` | M1 |
-| 2 — Durable ingest on AWS | App stack: HTTP API, ingest, SQS + DLQ, worker ESM (ADR-002, ADR-008), outage pause and resume (ADR-015), read API with bearer scopes, health read; guardrails stack with budget, kill switch and trip drill (ADR-010); deploy and teardown commands with migrations (ADR-018) | Verify stage: one send to `delivered@resend.dev`, `ledger email`, `ledger health`; trip drill; teardown listing | M1 |
+| 2 — Durable ingest on AWS | App stack: HTTP API, ingest, SQS + DLQ, worker ESM (ADR-002, ADR-008), outage pause and resume (ADR-015), read API with bearer scopes (hashed `api_tokens`), health read; guardrails stack with budget, kill switch and trip drill (ADR-010); deploy and teardown commands with migrations (ADR-018) | Verify stage: one send to `delivered@resend.dev`, `ledger email`, `ledger health`; trip drill; teardown listing | M1 |
 | 3 — Operations and evidence on AWS | Alarms → SNS → email with one runbook entry each; DLQ inspect and redrive (ADR-008); simulator secret (ADR-016); `sim` burst, `--chaos db-outage` and poison runs on the deployed stack, invariants 1, 2, 4 | `pnpm sim --burst` and `--chaos db-outage` on AWS; `ledger dlq inspect`, `ledger dlq redrive` | M1 |
 | 4 — Recovery | `packages/resend-client` (ADR-012); reconciler on the hourly cron (ADR-007); `ledger gaps`, `ledger reconcile [--dry-run]`; rotation runbook and retired-secret test (ADR-009) | `ledger gaps` → `ledger reconcile` → `ledger gaps` shows 0 missing | M1 |
 | 2B — Local-mode queue and docker compose | Postgres-backed queue behind the queue port; `docker compose up` runs the whole system (ADR-013) | `docker compose up`, then `pnpm sim` with invariants | M2 |
@@ -388,7 +392,7 @@ account are Ask-first.
 | Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19 |
-| 1 | — | RS-U15, RS-U18 |
+| 1 | RS-U21 | RS-U15, RS-U18 |
 | 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, PG-U04 |
 | 3 | — | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
@@ -400,7 +404,8 @@ account are Ask-first.
 comes from the burst run there. PG-U03 from *durable ingest* to slice 4, because the hourly
 reconciler is the first idle waker: before it, an idle stack never opens a connection (ADR-015).
 RS-U20 is new in this step (a replayed delivery passes the 5-minute timestamp window); it rides on
-the RS-U01 experiment.
+the RS-U01 experiment. RS-U21 is new in bootstrap step 8 (per-event `data.to` lists only the
+impacted recipients); it rides on the RS-U15 sends.
 
 ## Risks & mitigations
 
@@ -413,7 +418,7 @@ the RS-U01 experiment.
 | A per-message error misclassified as a connection error pauses the pipeline | The fresh-connection retry first; the hourly resume bounds the stall to one hour; classification unit test (ADR-015) |
 | A flapping database spends receive counts across pause and resume cycles | Resume only after a successful probe; a message that still reaches the DLQ is redriven, deduplicated on `svix_id` (ADR-004, ADR-008) |
 | Kill switch tripped: webhooks fail meanwhile | Owner's deployment only; scripted re-arm, then `ledger reconcile` within List Events reach ([about.md → Risk appetite](about.md#risk-appetite)) |
-| Concurrent workers update the same `recipient_state` from different emails | Lock recipient rows in sorted-address order after the email lock; recompute from all its emails; concurrency integration test (slice 1) and through the pooler (PG-U02, slice 2) |
+| Concurrent workers update the same `recipient_state` from different emails | Lock recipient rows in sorted `address_hash` order after the email lock; recompute from all its `email_recipients` rows; concurrency integration test (slice 1) and through the pooler (PG-U02, slice 2) |
 | Postgres connection exhaustion under burst | One connection per container, `MaximumConcurrency` caps containers (ADR-008); Neon's pooler accepts far more |
 | Webhook auto-disabled and nobody notices | The reconciler reads `status` every run and alarms with `webhook_disabled` (ADR-007) |
 | Reconcile competes with the team's sending for 10 req/s | One limiter at 2 req/s that yields on low `remaining` (ADR-012) |
@@ -423,10 +428,10 @@ the RS-U01 experiment.
 
 ## Open decisions
 
-- **Read API token storage and issuance.** ADR-011 fixes the scopes, not where tokens live or how
-  the first one is issued. Owned by [data-modeling.md](data-modeling.md) (step 8) and
-  [api-contract.md](api-contract.md) (step 9). Constraints: no plaintext token at rest, no idle cost
-  beyond one secret, and issuing the first token is scripted in the deploy command (owner
-  operations, [about.md → Platform scale assumptions](about.md#platform-scale-assumptions)).
+- **Read API token operations.** Storage is settled: hashed rows in `api_tokens`, the first
+  `operate` token inserted by the deploy command, revocation without a redeploy (owner, 2026-10-15;
+  [data-modeling.md → `api_tokens`](data-modeling.md#api_tokens--read-api-bearer-tokens)). The
+  create, list and revoke operations and their surfaces are owned by
+  [api-contract.md](api-contract.md) (step 9).
 - **Neon paid plan if the Free quota is hit.** Owner decision when PG-U03 or a quota suspension
   fires ([integrations.md → Open decisions](integrations.md#open-decisions)).
