@@ -72,7 +72,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 4 — `resend.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** read-only live calls allowed, with the owner's key in the git-ignored `.env.local`; any write falls back to an `[Unverified]` row plus a proposed Ask-first experiment. Every open item names the slice that owes it, so nothing ships resting on a guess. Key layout deferred to step 6. Sending-side facts included.
 - **Produces:** [resend.md](resend.md) — every Resend behavior Ledger relies on, as stable `RS-NN` facts with cited pages.
 - **Depends on:** 1. MAY run in parallel with 3 and 5.
 - **Note:** read-only research. Any **write** call against a live Resend account is Ask-first.
@@ -97,6 +98,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 - **Produces:** [architecture.md](architecture.md) — ADRs, system shape, Deferred (YAGNI), the build order with final slice IDs mapped to milestones M1–M3, risks.
 - **Depends on:** 2, 3, 4, 5, 6.
 - **Owner input:** the M1 slice cut, including how the MVP CLI reads state (see the conflict noted in the file).
+- **MUST:** every `RS-UNN` row in [resend.md](resend.md#unverified) and every unverified bullet in [about.md](about.md#open-questions) lands in the slice it names, or moves with a recorded reason. Constraint 4 in resend.md (`401` does not stop retries) supersedes the idea §5.2 rationale.
 
 ### Step 8 — `data-modeling.md`
 
@@ -117,7 +119,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 - **Status:** `[ ]`
 - **Produces:** [build-checklist.md](build-checklist.md) — one card per slice, in the exact format the `wf-*` scripts parse.
 - **Depends on:** 7, 8, 9.
-- **Back-fill:** replace the phase-named slice pointers in [features.md](features.md) (`· recovery · M1`) with card anchors (`build-checklist.md#<id>--<kebab-title>`).
+- **Back-fill:** replace the phase-named slice pointers in [features.md](features.md) (`· recovery · M1`) with card anchors (`build-checklist.md#<id>--<kebab-title>`). Do the same for the *Owed by* column in [resend.md → \[Unverified\]](resend.md#unverified) and the slice names in [about.md → Open questions](about.md#open-questions). Each owing card's done-when MUST name the `RS-UNN` it settles, or proves safe either way, along with its Ask-first experiment.
 
 ### Step 11 — `check-before-launch.md`
 

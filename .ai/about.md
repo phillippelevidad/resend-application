@@ -180,16 +180,26 @@ Each bullet is unconfirmed. Do not build on an `[Unverified]` claim without conf
 questions carry a tripwire instead. Carried from [idea §10](../docs/idea.md#10-open-questions)
 (numbered `§10.N`) plus what research on 2026-10-15 surfaced.
 
-**Unverified facts:**
+**Owed by a slice (MUST, owner 2026-10-15).** Every unverified fact names the slice that owes it.
+That slice MUST settle the fact, or prove the design safe under either answer, before it is done,
+so nothing ships resting on a guess. This matters most for anything touching duplicate effects or
+security. Slices are named by phase and milestone until
+[build-checklist.md](build-checklist.md) assigns card anchors.
 
-- **List Events reach (§10.2).** No API page states how far back List Events goes. The only retention figure is 30 days for *email data* ([how to store webhooks data](https://resend.com/docs/webhooks/how-to-store-webhooks-data)). Decides the longest recoverable outage, the reconciler's default lookback, and whether events missed while the kill switch is tripped are recoverable. `[Unverified]`
-- **Event timestamps (§10.3).** Top-level `created_at` is when the webhook event was created ([email.bounced](https://resend.com/docs/webhooks/emails/bounced)). Whether that tracks when the bounce or complaint happened is unstated, and no page promises ordering. Affects projection tie-breaking. `[Unverified]`
-- **Bounce after delivery (§10.4).** No page says `email.bounced` can follow `email.delivered`. `email.complained` always does, by definition ([event types](https://resend.com/docs/webhooks/event-types)). Decides precedence override vs exposing both outcomes. `[Unverified]`
-- **Reconcile cadence vs the shared API budget (§10.5).** What default cadence never competes meaningfully with the team's own API traffic? Settled in [integrations.md](integrations.md). `[Unverified]`
-- **Retry window.** The retry schedule sums to about 27.6 h ([retries and replays](https://resend.com/docs/webhooks/retries-and-replays)), but another page says "up to 24 hours" ([how to store webhooks data](https://resend.com/docs/webhooks/how-to-store-webhooks-data)). Decides the reconciler's grace window and the outage length the recovery test simulates. `[Unverified]`
-- **Auto-disable threshold.** A failing endpoint is disabled automatically, after an unstated number of failures or time ([retries and replays](https://resend.com/docs/webhooks/retries-and-replays)). Decides how fast the reconciler must detect a disabled webhook. `[Unverified]`
-- **Replay keeps `svix-id`.** Replay returns the same `msg_` id ([replay event](https://resend.com/docs/api-reference/webhooks/replay-event)). That the redelivery carries the same `svix-id` header is verified only by community reports ([ingester#12](https://github.com/resend/resend-webhooks-ingester/issues/12), and the [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13) description), not by the docs. Decides whether replays dedupe on `svix_id` alone. `[Unverified]`
-- **Test sends without a verified domain.** `onboarding@resend.dev` can send only to the account's own address ([403 resend.dev](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain)). Whether the `resend.dev` test addresses are exempt is unstated. Decides whether the [verify stage](features.md#adopter-lifecycle) needs a verified domain. `[Unverified]`
+**Unverified facts.** For Resend behavior, the canonical row (evidence, experiment, owing slice) is
+in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say what each one decides.
+
+- **Replay keeps `svix-id` ([RS-U01](resend.md#unverified)).** If false, reconcile replays the same event forever and effects duplicate. Settled by an Ask-first replay. · *recovery · M1*, MUST be settled `[Unverified]`
+- **List Events ids are `svix-id`s ([RS-U02](resend.md#unverified)).** The reconcile id diff depends on it. Read-only check after the first real delivery. · *recovery · M1*, MUST be settled `[Unverified]`
+- **List Events reach (§10.2, [RS-U03](resend.md#unverified)).** Decides the longest recoverable outage, the reconciler's default lookback, and whether events missed while the kill switch is tripped are recoverable. · *recovery · M1*, re-measured before M2 closes `[Unverified]`
+- **Disabled webhooks: replays, events created while disabled, threshold ([RS-U04–U06](resend.md#unverified)).** Decides how fast the reconciler detects a disabled webhook and whether re-enabling needs a reconcile. The design reads `status` every run, so it is safe either way. · *recovery · M1* `[Unverified]`
+- **Event timestamps (§10.3, [RS-U10](resend.md#unverified)).** Top-level `created_at` is "when the webhook event was created". Whether it tracks the real event, and stays stable across replays, is unstated. Affects projection tie-breaking. · *foundations · M1* `[Unverified]`
+- **Bounce after delivery (§10.4, [RS-U11](resend.md#unverified)), and `Temporary` bounces ([RS-U12](resend.md#unverified)).** Decides precedence override vs exposing both outcomes, and what counts as a hard bounce. · *foundations · M1* `[Unverified]`
+- **Reconcile cadence vs the shared API budget (§10.5).** What default cadence never competes meaningfully with the team's own API traffic ([RS-19](resend.md#facts))? Settled in [integrations.md](integrations.md). `[Unverified]`
+- **Failure responses and timeout ([RS-U07, RS-U08](resend.md#unverified)).** Whether a `401` stops Resend's retries (it contradicts [idea §5.2](../docs/idea.md#52-ingest)), and Resend's delivery timeout. · *durable ingest · M1* `[Unverified]`
+- **Rotation header format ([RS-U09](resend.md#unverified)).** How both signatures appear during the 24 h overlap. Security-relevant. Safe either way with per-secret verification. · *recovery · M1* `[Unverified]`
+- **Test sends without a verified domain ([RS-U14](resend.md#unverified)).** Decides whether the [verify stage](features.md#adopter-lifecycle) needs a verified domain. · *durable ingest · M1* `[Unverified]`
+- **Smaller Resend gaps ([RS-U13, U15–U19](resend.md#unverified)).** List Events visibility lag, test-address event sequences, idempotency-key scope, invalid-key status code, orphaned `listen` webhooks, the `email.suppressed` object. Each row names its slice. `[Unverified]`
 
 **Scope questions (deferred on a tripwire):**
 
@@ -202,5 +212,6 @@ questions carry a tripwire instead. Carried from [idea §10](../docs/idea.md#10-
 
 **Resolved** (kept so the §10 carry is traceable; canonical facts move to [resend.md](resend.md)):
 
-- **Secret rotation (§10.1).** For 24 hours after a rotation, payloads are signed with both the new and the previous secret ([rotate signing secret](https://resend.com/docs/api-reference/webhooks/rotate-signing-secret)). Verification MUST accept both during that window.
+- **Secret rotation (§10.1).** For 24 hours after a rotation, both secrets sign ([RS-04](resend.md#facts)). Verification MUST accept both during that window.
+- **Retry window.** Resend's docs disagree: "up to 24 hours" on one page, a schedule spanning ≈ 27.6 h on another. Ledger designs to the longer window ([resend.md → Constraint 3](resend.md#constraints-and-sharp-edges)), which is safe under either.
 - **Upstream contribution (§10.6).** Closed. Upstream PRs are not planned (owner calibration, 2026-10-15).
