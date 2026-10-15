@@ -25,8 +25,10 @@ on** is hard, because real-world delivery is messy
   status goes backwards.
 - **Bursts.** One broadcast produces a burst of webhooks for each recipient. The database runs out
   of connections, returns 5xx, and Resend's retries add even more load.
-- **Gaps.** If your endpoint is down longer than Resend's retry schedule (about a day), events
-  are lost and nothing tells you.
+- **Gaps.** If your endpoint is down longer than Resend's retry schedule (about a day), Resend
+  stops retrying those events, and an endpoint that keeps failing is disabled, with an email to
+  your team. Recent events can still be replayed by hand from the dashboard, but nothing tells you
+  which ones your system never stored.
 
 Every Resend behavior Ledger relies on is checked against Resend's docs and cited in
 [resend.md](.ai/resend.md). What the docs don't settle is marked `[Unverified]` there.
@@ -41,7 +43,7 @@ Every Resend behavior Ledger relies on is checked against Resend's docs and cite
    running the same side effect twice.
 4. **Recovers** events it missed, using Resend's Headless Webhook API.
 5. **Answers questions** like "did this user get the password-reset email, and if not, why?" from
-   a CLI, a typed SDK, or a read-only MCP server that an AI agent can use safely.
+   a CLI, a typed SDK, or an MCP server, read-only by default, that an AI agent can use safely.
 
 It runs on AWS (API Gateway, Lambda, SQS) with Postgres, deployed with AWS CDK, written in
 TypeScript. See the [architecture](.ai/architecture.md#system-shape).
@@ -70,7 +72,7 @@ usually enough.
 
 ## How it relates to Resend's Webhook Ingester
 
-Resend's open-source [Webhook Ingester](https://resend.com/docs/webhooks/ingester) answers "what
+Resend's [Webhook Ingester](https://resend.com/docs/webhooks/ingester) answers "what
 happened?": it verifies webhooks and stores each event as a row in your database. Ledger answers
 what comes next: "what's true now, and what should we do about it?" It's designed to complement
 the Ingester, not to compete with it
