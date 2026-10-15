@@ -212,7 +212,8 @@ below was ratified by the owner on 2026-10-15.
    overshoot.
 8. **Evidence.** A CDK assertion test proves the budget, the notifications and the kill-switch wiring exist.
    A recorded **trip drill** (publish to the trip topic, observe each throttle, re-arm, reconcile) proves
-   they work ([features.md → Operations](features.md#operations), [CBL-04](check-before-launch.md)).
+   they work ([features.md → Operations](features.md#operations)). Re-checked after every owner
+   deploy ([CBL-16](check-before-launch.md#deploy-configuration)).
    Owed by [slice 2](build-checklist.md#2--durable-ingest-on-aws).
 
 ## Teardown
@@ -270,7 +271,7 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 
 | Id | Claim | Why unsettled | What would settle it | Owed by |
 | --- | --- | --- | --- | --- |
-| AWS-U01 | `AWS::Budgets::Budget` deploys from a us-east-2 stack, and publishes to a us-east-2 SNS topic | The Budgets endpoint is listed in us-east-1 only, among US regions (AWS-35). The CloudFormation page states no restriction | The first guardrails deploy, then a forced low-threshold notification that reaches email and the trip topic (CBL-04). Fallback: deploy the guardrails stack to us-east-1, with the kill switch acting on us-east-2 | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
+| AWS-U01 | `AWS::Budgets::Budget` deploys from a us-east-2 stack, and publishes to a us-east-2 SNS topic | The Budgets endpoint is listed in us-east-1 only, among US regions (AWS-35). The CloudFormation page states no restriction | The first guardrails deploy, then a forced low-threshold notification that reaches email and the trip topic (the slice 2 trip drill). Fallback: deploy the guardrails stack to us-east-1, with the kill switch acting on us-east-2 | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
 | AWS-U02 | An HTTP API route throttle of `0` rejects every request, and throttled requests are not billed | No page states either (AWS-14). If not, a flood keeps billing API Gateway after a trip | The trip drill: send requests after the trip, read the status codes, and read API Gateway usage in Cost Explorer. Fallback: the lowest throttle that is accepted, with its worst-case spend stated | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
 | AWS-U03 | ESM polling of an idle queue stays inside the SQS free tier (est. 0.13–0.65M requests/month) | No page states the poll rate (AWS-04, AWS-24). The estimate assumes back-to-back 20 s long polls by 1–5 pollers | 30 idle days: SQS request usage in Cost Explorer | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.26/month at 5 pollers) |
 | AWS-U04 | When an HTTP API base64-encodes the request body | Only the function URL page states a rule (AWS-01) | Read `isBase64Encoded` on the first real Resend delivery | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (decode when `true`; unit test both) |

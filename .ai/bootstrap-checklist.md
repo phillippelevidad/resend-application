@@ -127,7 +127,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 11 — `check-before-launch.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** reviewers get recordings plus a `read` token on request, revoked after the review (recorded in [about.md → Target personas](about.md#target-personas)). Secret scanning is a gitleaks stage in `pnpm verify` and CI, added as a slice 0 Ships bullet. The cap and thresholds were already settled in aws.md, so they were not re-asked. Ten preview rows were deleted as duplicates of Ships bullets.
 - **Produces:** [check-before-launch.md](check-before-launch.md) — homeless pre-deploy and pre-demo checks.
 - **Depends on:** 5, 7. Grows after every deploy.
 

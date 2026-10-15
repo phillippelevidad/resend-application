@@ -317,6 +317,7 @@ Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; conc
 | Validation | Zod | Requests, responses, webhook payloads |
 | Tests | Vitest, fast-check, Testcontainers | Property tests are first-class |
 | Lint / format | Biome | |
+| Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
 | Logging / metrics | Winston JSON; CloudWatch EMF; vended SQS, Lambda, API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30) |
 | Resend | `resend` Node SDK, only inside `packages/resend-client`; verification in `apps/ingest` | ADR-012 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
@@ -364,7 +365,7 @@ claims, the demo and the deploy coherent.
 
 | Slice | Ships | Walk | Milestone |
 | --- | --- | --- | --- |
-| 0 — Foundations | Monorepo, Biome, Vitest, CI, `pnpm verify`; `packages/core` Zod event schemas (RS-25–RS-29), `projectEmail`, `projectRecipient`, properties 1–4 (ADR-003); core import lint rule (ADR-013); `sim` history generator; README skeleton with link check | `pnpm sim` prints the projection of a generated, shuffled history | M1 |
+| 0 — Foundations | Monorepo, Biome, Vitest, CI, `pnpm verify` with a gitleaks history scan; `packages/core` Zod event schemas (RS-25–RS-29), `projectEmail`, `projectRecipient`, properties 1–4 (ADR-003); core import lint rule (ADR-013); `sim` history generator; README skeleton with link check | `pnpm sim` prints the projection of a generated, shuffled history | M1 |
 | 1 — Local ledger and read path | `packages/db` schema and migrations (ADR-018); ingest (verify against the secret set, ADR-001, ADR-009) and worker transaction (ADR-004) behind the queue port in one local process; minimal read API, SDK and `ledger email` / `ledger recipient` with `--json` (ADR-011); `sim` duplicates + shuffle, invariants 1–2 | `pnpm sim` against the local process, then `ledger email` | M1 |
 | 2 — Durable ingest on AWS | App stack: HTTP API, ingest, SQS + DLQ, worker ESM (ADR-002, ADR-008), outage pause and resume (ADR-015), read API with bearer scopes (hashed `api_tokens`), health read; guardrails stack with budget, kill switch and trip drill (ADR-010); deploy and teardown commands with migrations (ADR-018) | Verify stage: one send to `delivered@resend.dev`, `ledger email`, `ledger health`; trip drill; teardown listing | M1 |
 | 3 — Operations and evidence on AWS | Alarms → SNS → email with one runbook entry each; DLQ inspect and redrive (ADR-008); simulator secret (ADR-016); `sim` burst, `--chaos db-outage` and poison runs on the deployed stack, invariants 1, 2, 4 | `pnpm sim --burst` and `--chaos db-outage` on AWS; `ledger dlq inspect`, `ledger dlq redrive` | M1 |
@@ -423,7 +424,7 @@ impacted recipients); it rides on the RS-U15 sends.
 | Reconcile competes with the team's sending for 10 req/s | One limiter at 2 req/s that yields on low `remaining` (ADR-012) |
 | Replays fail verification or land under a new id (RS-U01, RS-U20) | Settled in slice 4 by one Ask-first replay of a stored event, before recovery is called done |
 | Outcome precedence wrong for async bounces or `created_at` semantics | Oracle property test under both answers (ADR-003); RS-U10, RS-U11, RS-U12 in slice 0 |
-| PII or secrets leak through logs, responses or tool output | Test addresses only; ids in logs, never addresses or bodies (AWS-29); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
+| PII or secrets leak through logs, responses or tool output | gitleaks history scan in `pnpm verify` (slice 0); test addresses only; ids in logs, never addresses or bodies (AWS-29); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
 
 ## Open decisions
 

@@ -16,6 +16,9 @@ Two audiences. Ledger is designed for the first, and judged by the second.
 - **Reviewer:** a Resend engineer with about 30 minutes. Reads the README, runs the demo or reads
   its recorded output, and checks a few claims against their evidence. Arrives at a **milestone
   boundary** (M1, M2 or M3), timing unknown ([lens clause 3](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
+  **Access (owner, 2026-10-15):** recordings in the README. On request, the owner issues a
+  `read`-scoped token for the kept deploy and revokes it after the review. The deployed URL is
+  never published ([check-before-launch.md → CBL-20](check-before-launch.md#public-repo-hygiene)).
 
 Every product persona is an actor the self-service test traces. Each finished slice is walked by
 hand in every role that reaches it.

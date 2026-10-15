@@ -63,6 +63,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 - **Ships:**
   - [ ] pnpm workspace with strict TypeScript, Biome and Vitest; `pnpm verify` mirrors CI stage for stage and exits 0 only when every stage ran and passed.
   - [ ] GitHub Actions CI runs `pnpm verify` on every push and pull request; evidence: a green run on a pushed commit.
+  - [ ] `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
   - [ ] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
   - [ ] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity, oracle agreement (ADR-003).
   - [ ] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage.
@@ -70,7 +71,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [ ] README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
   - [ ] RS-U10, RS-U11, RS-U12 and RS-U19 proved safe either way by named property and schema tests, each [Unverified] row citing its test.
 - **UI surfaces:** `pnpm verify` locally · the CI run on a pushed commit · `pnpm sim` printing a projection.
-- **Ops:** owner approves the CI workflow (Ask-first: CI change) and each new dependency (Ask-first). No Resend or AWS step.
+- **Ops:** owner approves the CI workflow (Ask-first: CI change) and each new dependency, the gitleaks image included (Ask-first). Docker locally. No Resend or AWS step.
 - **Deferred tail:** Drizzle schema, ingest, worker and read path ([slice 1](#1--local-ledger-and-read-path)). Any AWS resource ([slice 2](#2--durable-ingest-on-aws)). Simulator runs against a live process ([slice 1](#1--local-ledger-and-read-path)) and on AWS ([slice 3](#3--operations-and-evidence-on-aws)).
 
 ### 1 — Local ledger and read path
