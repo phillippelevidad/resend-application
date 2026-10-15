@@ -85,7 +85,9 @@ by number. Adapted from [idea §5.9](../docs/idea.md#59-the-chaos-and-simulation
 
 **Accepted.** Ingest does only local work: decode the body to its exact bytes (`isBase64Encoded`,
 AWS-01), verify signature and timestamp on the raw body (RS-01, RS-02), read `type`, enqueue
-`{svixId, receivedAt, rawBody, headers subset}`, return exactly `200` with a fixed short body.
+`{svixId, receivedAt, source, rawBody, headers subset}` (`source` names which secret set verified
+the request, `live` or `simulated`, ADR-016; only ingest can set it), return exactly `200` with a
+fixed short body.
 `401` on a bad signature, `503` when the enqueue fails, so Resend retries (RS-10). Ingest MUST NOT
 depend on the database. The response body never echoes payload, PII or secrets, because Resend
 stores it (RS-12, [resend.md → Constraint 11](resend.md#constraints-and-sharp-edges)). The `401`
@@ -107,13 +109,13 @@ Rejected: SQS FIFO (orders arrival at our queue, which means nothing; costs thro
 
 ### ADR-003 — Projection is a pure function of the event set
 
-**Accepted.** `projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)` and folds;
-it is recomputed from the full event set on every new event. Status follows outcome precedence, not
-recency: terminal negatives (`bounced`, `failed`, `suppressed`) outrank `delivered`. Opens and
+**Accepted.** `projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)`, as Resend
+advises (RS-07), and folds; it is recomputed from the full event set on every new event. Status
+follows outcome precedence, not recency: terminal negatives (`bounced`, `failed`, `suppressed`) outrank `delivered`. Opens and
 clicks are counters plus first/last timestamps. `projectRecipient` derives from per-recipient email
 states, each folded from the events whose own `data.to` names that recipient (RS-27, RS-U21,
 [data-modeling.md → `email_recipients`](data-modeling.md#email_recipients--outcome-per-email-and-recipient)); a
-hard bounce comes from `bounce.type = Permanent`, never from the event type alone (RS-28,
+hard bounce comes from `bounce.type = Permanent`, never from the event type alone (RS-28, RS-35,
 [resend.md → Constraint 7](resend.md#constraints-and-sharp-edges)). Event-specific payload objects
 are optional in the Zod schemas (RS-26–RS-29). **Conditional:** `created_at` is used only as a
 sort key with `rank` and `svix_id` as tie-breaks, so state stays deterministic whether or not it
@@ -126,8 +128,11 @@ Rejected: incremental `UPDATE status = new` (correctness depends on arrival orde
 
 **Accepted.** Per message, one transaction: insert into `webhook_events` `ON CONFLICT (svix_id) DO
 NOTHING`; on conflict, commit as a duplicate; otherwise lock the email's `email_state` row,
-recompute projections, insert outbox rows, commit. A crash at any point is either nothing or
-everything. Unknown and non-email event types are stored raw, skipped by projections and counted
+recompute projections, insert outbox rows, commit. The transaction runs at READ COMMITTED (the
+Postgres default) and reads every projection input after it holds the email lock and the recipient
+locks; every projection row is created with `INSERT … ON CONFLICT DO NOTHING` before its
+`SELECT … FOR UPDATE`. A crash at any point is either nothing or everything.
+Unknown and non-email event types are stored raw, skipped by projections and counted
 (RS-25). Dedupe is on `svix_id`, which Resend's retries keep (RS-06, RS-08), never on the SQS
 `messageId`, which redrive changes (AWS-21). **Conditional:** a reconciler replay dedupes only if
 it carries the original `svix-id` (RS-U01); slice 4 MUST settle it.
@@ -151,6 +156,9 @@ Rejected: multi-database connectors (the Ingester's job); an analytics store; Dy
 transaction and delivered by the dispatcher (ADR-017) with retries and backoff. Alert emails carry
 an `Idempotency-Key` derived from `dedupe_key` (RS-24); keys live 24 h, so an alert's retry horizon
 stays under 24 h and past it the entry is marked dead ([resend.md → Constraint 8](resend.md#constraints-and-sharp-edges)).
+An alert's subject and body are rendered only from `outbox.payload`, so every retry sends identical
+bytes; `409 concurrent_idempotent_requests` is retried, and `409 invalid_idempotent_request` marks
+the entry dead with that name in `last_error` (RS-24).
 App callbacks are signed, with stable ids. The dispatcher sends with a `sending_access` key only
 ([integrations.md → Secrets layout](integrations.md#secrets-layout)).
 Rejected: calling third parties from the worker; dedupe in memory.
@@ -164,8 +172,10 @@ newest first (RS-14), skips events younger than a 10-minute grace window, stops 
 horizon (default 3 days, above the ≈ 27.6 h retry schedule, RS-09), diffs ids against
 `webhook_events`, and replays the missing ones (RS-16). A replay re-enters through ingest, so
 verification and dedupe apply unchanged. One failed replay never aborts a run; runs never overlap
-and stay inside a time budget below the Lambda timeout (AWS-03). Each run writes a `reconcile_runs`
-row. Same approach as Ingester [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13),
+(a run starts in one transaction that takes `pg_advisory_xact_lock` on a fixed reconcile key,
+refuses with `reconcile_in_progress` if an unfinished run is inside its time budget, and inserts its
+row) and stay inside a time budget below the Lambda timeout (AWS-03). Each run writes a
+`reconcile_runs` row. Same approach as Ingester [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13),
 cited, not claimed. **Conditional:** the id diff holds only if List Events ids are `svix-id`s
 (RS-U02) and a replay keeps the `svix-id` (RS-U01) and passes the timestamp window (RS-U20), all
 three MUST be settled in slice 4; recoverable range is bounded by List Events reach (RS-U03); the
@@ -180,8 +190,9 @@ on Postgres connections, batch size 10 with no batching window (AWS-17), and
 `ReportBatchItemFailures`, building the failure list from per-message results because an empty
 response deletes the whole batch (AWS-05). Visibility timeout is derived as 6 × worker timeout +
 batching window (AWS-08). `maxReceiveCount` is configurable, default 5 (AWS-09). The worker
-reserves no concurrency (AWS-16). DLQ messages are inspected and redriven by an `operate` action
-(`StartMessageMoveTask`, AWS-21).
+reserves no concurrency (AWS-16). DLQ messages are inspected by a `read` operation and redriven
+by an `operate` action (`StartMessageMoveTask`, AWS-21; scopes in
+[api-contract.md](api-contract.md#dlqlistmessages)).
 Rejected: unbounded concurrency; whole-batch retry; reserved concurrency as the valve (blocked by unpublished new-account quotas, AWS-U05).
 **Evidence:** pending — batch-failure unit test (slice 2); poison-message isolation, sim invariant 4, and `--burst 10000/10s` with zero loss on AWS (slice 3).
 
@@ -191,11 +202,12 @@ Rejected: unbounded concurrency; whole-batch retry; reserved concurrency as the 
 secret, first match wins (RS-02), and rejects `svix-timestamp` more than 5 minutes off (RS-02,
 RS-03). Resend signs with both the old and new secret for 24 h after a rotation (RS-04), so the set
 is required, not defensive: the adopter adds the new secret, rotates, retires the old one inside
-24 h. The loop ships with ingest in slice 1; slice 4 adds the rotation runbook and the retired-secret
-test. **Conditional:** how both signatures appear in the header (RS-U09) does not matter to a
-per-secret loop.
+24 h. Ingest re-reads the set at most every 5 minutes (a per-container cache TTL), so an added or
+retired secret takes effect within 5 minutes, with no redeploy. The loop ships with ingest in slice
+1; slice 4 adds the rotation runbook and the retired-secret test. **Conditional:** how both
+signatures appear in the header (RS-U09) does not matter to a per-secret loop.
 Rejected: one secret with a redeploy on rotation (drops deliveries for the redeploy window).
-**Evidence:** pending — unit tests with old, new and both signatures, forged and stale requests (slice 1); retired secret → `401` (slice 4).
+**Evidence:** pending — unit tests with old, new and both signatures, forged and stale requests (slice 1); retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
 
 ### ADR-010 — Serverless on AWS CDK: an app stack and a guardrails stack
 
@@ -244,7 +256,8 @@ Rejected: calling the `resend` SDK from apps directly; a limiter per caller.
 **Accepted.** `packages/core` imports nothing from AWS, Postgres or Resend. Ingest and worker meet
 at a queue port: slice 1 runs both in one local process with an in-process implementation, SQS
 implements it on AWS (slice 2), and a Postgres-backed queue (`FOR UPDATE SKIP LOCKED`, row locks in
-one transaction, pooler-safe) implements it for `docker compose up` with no AWS account (slice 2B).
+its own short claim transaction, so receive counts survive a failed attempt, pooler-safe) implements
+it for `docker compose up` with no AWS account (slice 2B).
 Rejected: AWS-only development (LocalStack as the only local path).
 **Evidence:** pending — lint rule on `packages/core` imports (slice 0); sim invariants pass in local mode (slice 2B).
 
@@ -252,8 +265,9 @@ Rejected: AWS-only development (LocalStack as the only local path).
 
 **Accepted.** A configurable job redacts personal data in raw payloads after N days. Redaction MUST
 keep every field projections read, so the source-of-truth rule survives: it replaces `to`, `from`
-and `subject` with their idempotent masks and nulls the fields no projection reads. Projections hold
-only keyed address hashes and masks, never raw PII (owner, 2026-10-15;
+and `subject` with their idempotent masks and nulls the fields no projection reads, in every event
+type, non-email and unknown types included. Projections hold only keyed address hashes and masks,
+never raw PII (owner, 2026-10-15;
 [data-modeling.md → PII & retention](data-modeling.md#pii--retention)). Resend itself keeps email
 data 30 days (RS-31).
 Rejected: deleting ledger rows (breaks recovery diffing and rebuilds).
@@ -286,7 +300,9 @@ Rejected: automatic DLQ redrive after recovery (needs a failure classification t
 
 **Accepted** (owner, 2026-10-15). An off-by-default deploy flag creates one extra secret,
 `ledger/simulator-signing-secret`, read by ingest only. Ingest verifies against it after the Resend
-set and stamps matching events `source = simulated`. Only the owner's deployment sets the flag, and
+set and stamps matching events `source = simulated`. The simulator generates fresh `svix_id`s and
+never reuses one captured from a real delivery, so a simulated event cannot displace a live one.
+Only the owner's deployment sets the flag, and
 that stack holds test-address data only ([about.md → Risk appetite](about.md#risk-appetite)). An
 adopter's stack therefore never accepts a second, test signing secret, and the simulator never
 targets a stack holding adopter data ([features.md → verify](features.md#adopter-lifecycle)). The
@@ -329,7 +345,7 @@ Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; conc
 | Lint / format | Biome | |
 | Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
 | Logging / metrics | Winston JSON; CloudWatch EMF; vended SQS, Lambda, API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30) |
-| Resend | `resend` Node SDK, only inside `packages/resend-client`; verification in `apps/ingest` | ADR-012 |
+| Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `apps/ingest` | ADR-012, ADR-009 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
 | MCP | Official MCP TypeScript SDK | ADR-011 |
 
@@ -382,7 +398,7 @@ claims, the demo and the deploy coherent.
 | 3 — Operations and evidence on AWS | Alarms → SNS → email with one runbook entry each; DLQ inspect and redrive (ADR-008); simulator secret (ADR-016); `sim` burst, `--chaos db-outage` and poison runs on the deployed stack, invariants 1, 2, 4 | `pnpm sim --burst` and `--chaos db-outage` on AWS; `ledger dlq inspect`, `ledger dlq redrive` | M1 |
 | 4 — Recovery | `packages/resend-client` (ADR-012); reconciler on the hourly cron (ADR-007); `ledger gaps`, `ledger reconcile [--dry-run]`; rotation runbook and retired-secret test (ADR-009) | `ledger gaps` → `ledger reconcile` → `ledger gaps` shows 0 missing | M1 |
 | 2B — Local-mode queue and docker compose | Postgres-backed queue behind the queue port; `docker compose up` runs the whole system (ADR-013) | `docker compose up`, then `pnpm sim` with invariants | M2 |
-| 5 — MCP server and contract hardening | MCP read tools and `explain_delivery`; operate tools unregistered without `operate`; redaction tests on tool output; error-registry mirror test; SDK retries for idempotent reads (ADR-011) | An agent answers "why did this delivery fail?" from MCP alone | M2 |
+| 5 — MCP server and contract hardening | MCP read tools and `explain_delivery`; operate tools unregistered without `operate`; redaction tests on tool output; error-registry mirror test; SDK retries for idempotent reads ([api-contract.md → Conventions](api-contract.md#conventions)) | An agent answers "why did this delivery fail?" from MCP alone | M2 |
 | 6 — Reactions | Outbox and dispatcher (ADR-006, ADR-017); signed app callback; alert email through a `sending_access` key with idempotency keys | `pnpm sim --chaos worker-crash`: invariant 3 holds | M2 |
 | 7 — Polish and retention | Retention job (ADR-014); `docs/results.md` with simulator results; runbook complete; README quick start; timed newcomer deploy ≤ 15 min | Timed README walkthrough from bootstrapped account to demo run | M2 |
 | 8 — npm release | SDK and CLI on npm with semver, after the final name is picked ([about.md → Open questions](about.md#open-questions)) | `npx` install of the published CLI against the deployed stack | M3 |
@@ -403,7 +419,7 @@ account are Ask-first.
 | Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19 |
-| 1 | RS-U21 | RS-U15, RS-U18 |
+| 1 | RS-U21, RS-U22 | RS-U15, RS-U18 |
 | 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, PG-U04 |
 | 3 | — | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
@@ -422,7 +438,7 @@ impacted recipients); it rides on the RS-U15 sends.
 
 | Risk | Mitigation |
 | --- | --- |
-| Cost runaway while the stack is kept up | Guardrails stack, kill switch on in the owner's deployment, overshoot bounded to about one day at the throttled rate (ADR-010, AWS-34); AWS-U01 and AWS-U02 settled in slice 2 |
+| Cost runaway while the stack is kept up | Guardrails stack, kill switch on in the owner's deployment, overshoot bounded to the budget's refresh window (billing lag plus up to 12 h) at the throttled rate (ADR-010, AWS-34); AWS-U01 and AWS-U02 settled in slice 2 |
 | Neon deletes an inactive Free project, losing the ledger (PG-U01) | Settled in slice 2 from Neon's docs or support; the hourly reconciler writes a row from slice 4; Aurora fallback trigger (ADR-005) |
 | Neon suspends the compute for quota (PG-U03) | The worker pauses and the queue holds events up to 13 days (ADR-015); quota use measured in slice 4; fallback trigger |
 | A database outage longer than SQS retention (13 days) | Queue-age alarm fires within the hour (slice 3); past retention, reconcile recovers only within List Events reach (RS-U03) |

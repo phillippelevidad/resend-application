@@ -75,9 +75,9 @@ and the sweep reads `outbox.next_attempt_at`.
 | Key | Absorbs | Where enforced |
 | --- | --- | --- |
 | `webhook_events.svix_id` (PK) | Svix retries, DLQ redrives, reconciler replays (same `svix-id`, RS-06, RS-08, RS-U01) | `INSERT … ON CONFLICT (svix_id) DO NOTHING` ([ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)) |
-| `email_state.email_id`, `email_recipients (email_id, address_hash)`, `recipient_state.address_hash` (PKs) | Concurrent workers on one key | Upsert under `SELECT … FOR UPDATE`: the email row first, then recipient rows in sorted `address_hash` order |
+| `email_state.email_id`, `email_recipients (email_id, address_hash)`, `recipient_state.address_hash` (PKs) | Concurrent workers on one key | `INSERT … ON CONFLICT DO NOTHING`, then `SELECT … FOR UPDATE`: the email row first, then recipient rows in sorted `address_hash` order; inputs read after the locks, at READ COMMITTED (ADR-004) |
 | `outbox.dedupe_key` (UNIQUE) | Worker retries re-emitting a reaction | Unique constraint; the Resend `Idempotency-Key` is derived from it ([ADR-006](architecture.md#adr-006--transactional-outbox-for-reactions), RS-24) |
-| `api_tokens.token_hash` (UNIQUE) | A token inserted twice by a re-run deploy command | Unique constraint |
+| `api_tokens.bootstrap` (partial UNIQUE `WHERE bootstrap`) | A re-run deploy command inserting a second first token | `INSERT … ON CONFLICT DO NOTHING`; `token_hash` stays UNIQUE as a collision guard only |
 
 A unique key MUST live in the migration, not only in the Drizzle schema file. The SQS `messageId`
 is never a key, because a redrive changes it (AWS-21).
@@ -98,7 +98,7 @@ is never a key, because a redrive changes it (AWS-21).
 | Field | Include when | Notes |
 | --- | --- | --- |
 | Natural PK (`svix_id`, `email_id`, `address_hash`) | **MUST** when the row is keyed by an external identity | The PK is the idempotency key |
-| `id` (`bigint GENERATED ALWAYS AS IDENTITY`) | **MUST** when there is no natural key (`outbox`, `reconcile_runs`, `api_tokens`, `local_queue_messages`) | Never a public identifier, never a sort key for anything a projection reads |
+| `id` (`bigint GENERATED ALWAYS AS IDENTITY`) | **MUST** when there is no natural key (`outbox`, `reconcile_runs`, `api_tokens`, `local_queue_messages`) | Never a public identifier, except `reconcile_runs.id` and `api_tokens.id`, which the read API exposes as `run_id` and `token_id` and pages on; never a sort key for anything a projection reads |
 | `created_at` / `received_at` | **MUST** on every table | `timestamptz default now()` |
 | `updated_at` | **MUST** on mutable rows; **MUST NOT** on append-only rows | Projections and `outbox` carry it; `webhook_events` does not |
 | `event_created_at` | **MUST** on any row derived from one event | Distinct from row time |
@@ -120,7 +120,8 @@ is never a key, because a redrive changes it (AWS-21).
   `webhook_events.type` has **no** `CHECK`, because unknown types are stored, not rejected (RS-25,
   ADR-004).
 - Surrogate keys are identity `bigint`, never `serial` or a UUID. Public identifiers are Resend's
-  (`svix_id`, `email_id`) or the outbox `dedupe_key`.
+  (`svix_id`, `email_id`), the outbox `dedupe_key`, and the run and token ids the read API exposes
+  (`run_id`, `token_id`).
 - Resend identifiers (`msg_…`, email ids) are stored verbatim as `text`.
 - Email addresses are normalized (trimmed, lowercased) by one function in `packages/core` before
   they are hashed or masked.
@@ -171,7 +172,9 @@ random bytes held by the deployer:
 
 A support engineer who knows the address can look it up: the read API normalizes and hashes the
 input (`ledger recipient <address>`, [features.md → J2](features.md#j2--support-lookup)). Whoever
-holds only a database dump cannot confirm a guessed address.
+holds only a dump of the projections cannot confirm a guessed address; `webhook_events.payload`
+holds raw addresses until the retention job masks them
+([ADR-014](architecture.md#adr-014--raw-payload-retention-and-redaction)).
 
 **Masks.** A mask is computed by one `packages/core` function and is readable by support, but it
 does not identify anyone.
@@ -188,7 +191,7 @@ redaction replace a raw value with its mask without changing any projection.
 
 | Location | PII held | Class |
 | --- | --- | --- |
-| `webhook_events.payload` | Raw `to`, `from`, `subject`, click `ipAddress` / `userAgent` / `link`, bounce `message` / `diagnosticCode`, `failed.reason` | Raw until the retention job (slice 7). It then masks `to`, `from` and `subject`, and nulls every other listed field, since no projection reads them ([ADR-014](architecture.md#adr-014--raw-payload-retention-and-redaction)) |
+| `webhook_events.payload` | Raw `to`, `from`, `subject`, `tags`, click `ipAddress` / `userAgent` / `link`, bounce `message` / `diagnosticCode`, `failed.reason`; in non-email events, contact `email`, `first_name`, `last_name` ([contact.created](https://resend.com/docs/webhooks/contacts/created)) and inbound metadata (RS-30) | Raw until the retention job (slice 7). It then keeps only what projections read: in outbound email events, `type`, `created_at`, `data.email_id`, `data.bounce.type` / `subType`, and `to`, `from`, `subject` replaced by their masks; in every other event type, unknown types included, `type` and `created_at`. Every other field, `tags` included, is nulled ([ADR-014](architecture.md#adr-014--raw-payload-retention-and-redaction)) |
 | `webhook_events.to_hashes` | Keyed hashes only | Kept |
 | Projections (`email_state`, `email_recipients`, `recipient_state`) | Hashes and masks only | Kept; holds no raw PII to redact |
 | `api_tokens` | Token hashes only | Kept; a revoked row stays as an audit record |
@@ -223,13 +226,14 @@ Load-bearing columns only. Every table also carries its
 | `type` | `text`, no `CHECK` | One of RS-25, or unknown. Unknown types are stored and counted, never rejected |
 | `event_created_at` | `timestamptz` | The top-level `created_at` (RS-26). Fold order for projections |
 | `received_at` | `timestamptz` | From the ingest envelope. Lag metric only |
-| `email_id` | `text` null | `data.email_id` for the outbound email types (RS-27). Null for every other type, `email.received` included (RS-30) |
+| `email_id` | `text` null | `data.email_id` for the outbound email types (RS-27). Null for every other type. `email.received` carries a `data.email_id` too ([emails/received](https://resend.com/docs/webhooks/emails/received)), but it names an inbound email, so it stays null and projections skip it ([Deferred](#deferred)) |
 | `to_hashes` | `text[]` null | Keyed hashes of `data.to`, in the same position. Feeds `email_recipients` after redaction has masked the raw `to` |
 | `source` | `text` `CHECK (live, simulated)` | Which secret verified the request. `simulated` only through the simulator secret ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) |
 | `payload` | `jsonb` | The parsed `{ type, created_at, data }` body (RS-26). Not the signed bytes |
 
-- **Source values:** a replay is indistinguishable from a live delivery, because it carries the
-  original `svix-id` and takes no special path (ADR-007). So `source` has no `replay` value.
+- **Source values:** `source` has no `replay` value: a replay takes no special path (ADR-007), and
+  it is expected to carry the original `svix-id` ([RS-U01](resend.md#unverified), which slice 4
+  MUST settle).
 - **Indexes:** `(email_id, event_created_at)` for projection loads. The reconcile diff is a
   primary-key lookup on `svix_id` (ADR-007). The retention job's scan index and its `redacted_at`
   column land with it in slice 7.
@@ -273,7 +277,7 @@ _Evidence: pending._
 | `address_masked` | `text` | What support sees |
 | `status` | `text` + `CHECK` | The same closed set as `email_state.status`, folded only from events whose own `data.to` lists this recipient |
 | `status_at` | `timestamptz` | The `event_created_at` of the deciding event |
-| `bounce_type`, `bounce_sub_type` | `text` null | From `data.bounce` (RS-28). A hard bounce is `Permanent` only (RS-U12) |
+| `bounce_type`, `bounce_sub_type` | `text` null | From `data.bounce` (RS-28), open strings. A hard bounce is `Permanent` only (RS-35) |
 
 - **Indexes:** `(address_hash)` btree for the per-address recompute of `recipient_state`.
 - **Locking:** the row is written under the email's lock.
@@ -315,11 +319,13 @@ _Evidence: pending._
 | `id` | identity `bigint` | Revocation target |
 | `name` | `text` | The operator's label |
 | `token_hash` | `text` UNIQUE | SHA-256 of the token. Tokens are 32 random bytes, so an unkeyed hash suffices; no plaintext at rest |
+| `bootstrap` | `boolean` not null, default `false`, partial UNIQUE `WHERE bootstrap` | Marks the deploy command's first `operate` token, so a re-run inserts none ([Idempotency keys](#idempotency-keys)) |
 | `scope` | `text` `CHECK (read, operate)` | The [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) scopes |
 | `revoked_at` | `timestamptz` null | Set once. A revoked token is rejected on the next request, with no redeploy |
 
-- **Issuance:** the deploy command inserts the first `operate` token through the direct URL it
-  already holds (ADR-018), and prints it once. This adds no secret and no idle cost (AWS-11).
+- **Issuance:** the deploy command inserts the first `operate` token, with `bootstrap = true` and
+  `ON CONFLICT DO NOTHING`, through the direct URL it already holds (ADR-018), and prints it once,
+  only when the insert happened. This adds no secret and no idle cost (AWS-11).
 - **Operations:** `token.create`, `token.list`, `token.revoke` (`operate`) and `token.getCurrent`
   (`read`), with no MCP surface ([api-contract.md](api-contract.md#tokencreate)).
 
@@ -342,6 +348,11 @@ _Evidence: pending (slice 2)._
 | `checked`, `missing`, `replayed`, `failed` | `int` | `missing > 0` is the loss signal |
 | `error_code` | `text` null | Why a run stopped, as a registered error code (for example `webhook_disabled`) |
 
+- **Start:** one transaction takes `pg_advisory_xact_lock` on a fixed key (transaction-scoped, so
+  pooler-safe), then checks for an unfinished run inside its time budget with a statement issued
+  after the lock, then inserts the new row. Locking the newest run row instead does not serialize
+  starts under READ COMMITTED: the waiter re-reads the row it locked, not the new one.
+
 _Schema: `packages/db/src/schema/reconcile-runs.ts` (once it exists)._
 _Evidence: pending._
 - Slice 4: a fake-API integration test where an outage outlasts the retry schedule. It expects
@@ -359,7 +370,9 @@ _Evidence: pending._
 | `visible_at`, `receive_count` | `timestamptz`, `int` | The visibility timeout and the `maxReceiveCount` threshold, mirroring SQS (AWS-08, AWS-09) |
 | `dead_at` | `timestamptz` null | Set past `maxReceiveCount`. Mirrors the DLQ, so inspect and redrive work locally (ADR-008) |
 
-- **Claiming:** rows are claimed with `FOR UPDATE SKIP LOCKED` inside one transaction, which is
+- **Claiming:** a row is claimed in its own short transaction (`FOR UPDATE SKIP LOCKED`,
+  `receive_count + 1`, `visible_at` = now + the visibility timeout, commit), processed in the
+  ledger transaction, then deleted, so a failed attempt never rolls back its count. This is
   pooler-safe ([ADR-013](architecture.md#adr-013--pure-core-and-local-mode)).
 - **Idempotency:** this table has no idempotency key by design. Delivery is at-least-once, exactly
   as with SQS, and the worker dedupes on `svix_id`.
@@ -426,5 +439,5 @@ _Evidence: pending (slice 6)._
 | --- | --- | --- | --- |
 | Projections for contact, domain, topic and inbox events | temporal | Stored raw in `webhook_events`; no consumer ([architecture.md → Deferred](architecture.md#deferred-yagni)) | An [api-contract.md](api-contract.md) operation or a reaction rule that reads contact, domain or topic state |
 | Inbound email projection, and `email_id` for `email.received` | temporal | `email.received` carries metadata only (RS-30); stored raw | M2 done **and** a row in [What this project must demonstrate](about.md#what-this-project-must-demonstrate) names inbound email |
-| Address-hash key rotation | temporal | After redaction, a hash cannot be recomputed. A leaked key only weakens the hash to unkeyed strength, so it exposes no raw data. `key_id` makes a later multi-key scheme possible | The key is suspected leaked, or an adopter asks to rotate it |
+| Address-hash key rotation | temporal | After redaction, a hash cannot be recomputed, so redacted rows can never be re-keyed. A leaked key reduces every stored hash to an unkeyed one, which a dictionary reverses ([Anti-patterns](#anti-patterns-must-not)), so a leaked key plus a database dump re-identifies redacted rows; unredacted rows already hold the raw address. `key_id` lets new rows use a new key | The key is suspected leaked, or an adopter asks to rotate it |
 | Per-tenant columns | categorical | One installation, one team ([architecture.md → Deferred (YAGNI)](architecture.md#deferred-yagni)) | Superseding ADR only |

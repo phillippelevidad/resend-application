@@ -61,7 +61,7 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   `isError: true`, with the error object as its text content. It is not a JSON-RPC protocol error
   ([MCP spec → Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)).
 - **Idempotency.** Reads are side-effect free, and the SDK retries them, and only them, on network
-  errors, `429` and `5xx`, with backoff (slice 5, ADR-011). `recipient.get` is a read sent as a
+  errors, `429` and `5xx`, with backoff (slice 5). `recipient.get` is a read sent as a
   `POST`, so the SDK retries it too. Each operate command states its own idempotency. Ledger's API
   takes no `Idempotency-Key` header in v0, because every command is either naturally idempotent or
   refuses to run concurrently.
@@ -92,8 +92,9 @@ The canonical registry, and the only place error codes are listed.
 [AGENTS.md → Error shape](../AGENTS.md#error-shape) keeps the shape and points here. A Zod enum in
 `packages/core` mirrors this table. The enum lands with the first error in slice 1, and the test
 that fails when the two drift lands in slice 5 (ADR-011). `docs` links a Resend page where Resend
-behavior is the cause. Otherwise it links the runbook entry `docs/runbook.md#<code>` in this repo,
-whose entries are owed by slice 3 and completed in slice 7.
+behavior is the cause. Otherwise it is the absolute URL of the runbook entry
+`docs/runbook.md#<code>` in this repo's public GitHub tree, built from one base-URL constant, whose
+entries are owed by slice 3 and completed in slice 7.
 
 | Code | HTTP | Meaning | Hint | Docs | Raised by |
 | --- | --- | --- | --- | --- | --- |
@@ -107,8 +108,8 @@ whose entries are owed by slice 3 and completed in slice 7.
 | `reconcile_in_progress` | 409 | Another reconcile run is unfinished and still inside its time budget; runs never overlap (ADR-007) | Wait for it: `ledger gaps` | runbook | `reconcile.start` |
 | `redrive_in_progress` | 409 | A DLQ redrive task is already running; SQS allows one per queue (AWS-21) | Wait for the DLQ depth in `ledger health` to fall | [Redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) | `dlq.startRedrive` |
 | `last_operate_token` | 409 | Revoking this token would leave no active `operate` token | Create another `operate` token first | runbook | `token.revoke` |
-| `webhook_disabled` | — (run outcome) | The Resend webhook is disabled, so replays will not be delivered (RS-11, ADR-007) | Re-enable it in the Resend dashboard, then run `ledger reconcile` | [Retries and replays](https://resend.com/docs/webhooks/retries-and-replays) | apps/reconciler → `reconcile_runs.error_code` |
-| `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, so the run stopped before its horizon (RS-19) | The next run continues. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | apps/reconciler via packages/resend-client |
+| `webhook_disabled` | — (run outcome) | The Resend webhook is disabled, so replays will not be delivered (RS-11, ADR-007) | Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile` | [Retries and replays](https://resend.com/docs/webhooks/retries-and-replays) | apps/reconciler → `reconcile_runs.error_code` |
+| `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, so the run stopped before its horizon (RS-19) | The next hourly run re-diffs from newest. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | apps/reconciler via packages/resend-client |
 | `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, restricted or suspended (RS-22) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
 | `resend_unavailable` | — (run outcome) | Resend's API answered `5xx` past the client's retries (RS-22) | The next scheduled run retries | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
 | `database_unavailable` | 503 | Postgres is unreachable | The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume` | runbook | packages/db through any database-reading operation; `worker.resumeEventSource` probe |
@@ -125,7 +126,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 #### {ns.verbName}
 
 - **Operation:** `{ns.verbName}` → `{VERB} /{path}/{param}` _(design intent; OpenAPI authoritative)_
-- **Surfaces:** SDK `ledger.{ns}.{verb}` · CLI `ledger {command} [--json]` · MCP `{tool_name}` | none
+- **Surfaces:** SDK `ledger.{resource}.{verb}` (plural for collections: `emails`, `recipients`, `tokens`; otherwise the namespace as written) · CLI `ledger {command} [--json]` · MCP `{tool_name}` | none
 - **Kind:** read `[resource | view-shaped]` · or **command**
 - **Scope:** `read` | `operate` · **Public contract:** yes (Ask-first)
 - **In / Out:** by reference to data-modeling.md sections. No field lists
@@ -147,7 +148,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 - **In / Out:** email id → [email_state](data-modeling.md#email_state--current-state-per-email) + its [email_recipients](data-modeling.md#email_recipients--outcome-per-email-and-recipient) rows + a timeline from [webhook_events](data-modeling.md#webhook_events--the-immutable-ledger). Each timeline item gives `svix_id`, type, `event_created_at` and the bounce type and sub-type. Raw bounce diagnostics and the payload are never returned (they can hold the address)
 - **Errors:** `validation_failed`, `email_not_found`, `database_unavailable`
 - **Idempotency / rate limit:** idempotent, and the SDK retries it. No Resend call
-- **Slices:** 1 — Local ledger and read path; 5 — MCP server and contract hardening
+- **Slices:** 1 — Local ledger and read path; 2 — Durable ingest on AWS; 5 — MCP server and contract hardening
 
 #### email.explainDelivery
 
@@ -169,7 +170,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 - **In / Out:** address in the body. It is normalized and hashed server-side ([PII & retention](data-modeling.md#pii--retention)) and comes back as [recipient_state](data-modeling.md#recipient_state--deliverability-per-address)
 - **Errors:** `validation_failed`, `recipient_not_found` (rather than `200 ok`, so an address never seen does not read as deliverable), `database_unavailable`
 - **Idempotency / rate limit:** idempotent, and the SDK retries it. No Resend call
-- **Slices:** 1 — Local ledger and read path; 5 — MCP server and contract hardening
+- **Slices:** 1 — Local ledger and read path; 2 — Durable ingest on AWS; 5 — MCP server and contract hardening
 
 #### health.get
 
@@ -245,7 +246,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 - **Surfaces:** SDK `ledger.reconcile.start` · CLI `ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait]` · MCP `reconcile`, with `dry_run` (registered only under [MCP least privilege](#conventions))
 - **Kind:** **command**. It starts one manual run of [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) asynchronously and answers `202` with the run. `dry_run` reports missing ids without replaying any. The CLI then polls `reconcile.getRun` until the run finishes, and exits `1` with the run's `error` if it stopped on one
 - **Scope:** `operate` · **Public contract:** yes (Ask-first)
-- **In / Out:** `dry_run` and `lookback` (default 72 h per ADR-007, at most 30 days, the span Resend keeps email data, RS-31) → a [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) row with `trigger = manual`
+- **In / Out:** `dry_run` and `lookback` (default 72 h per ADR-007, at most 30 days, a validation bound: Resend keeps email data 30 days (RS-31), and how far List Events reaches is [RS-U03](resend.md#unverified)) → a [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) row with `trigger = manual`
 - **Errors:** `forbidden`, `validation_failed`, `reconcile_in_progress`, `database_unavailable`. The run itself can end in `webhook_disabled`, `rate_limited`, `resend_auth_failed` or `resend_unavailable`
 - **Idempotency / rate limit:** repeating is safe in effect, because replays re-enter through ingest and dedupe on `svix_id`. That holds only if a replay keeps the original `svix-id` ([RS-U01](resend.md#unverified)), which slice 4 MUST settle. Runs never overlap (`reconcile_in_progress`). **It consumes the shared Resend team budget** (List Events, Retrieve Webhook, Replay Event) through `packages/resend-client` at 2 req/s (RS-19, RS-20, ADR-012). It runs asynchronously because the HTTP API's 30 s timeout is shorter than a run (AWS-02, AWS-03)
 - **Slices:** 4 — Recovery; 5 — MCP server and contract hardening
@@ -287,7 +288,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 
 - **Operation:** `token.revoke` → `POST /tokens/{token_id}/revoke` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.tokens.revoke` · CLI `ledger token revoke <token_id>` · MCP none
-- **Kind:** **command**. It sets `revoked_at`, and the row stays as an audit record. The next request with that token gets `401`, with no redeploy
+- **Kind:** **command**. It sets `revoked_at`, and the row stays as an audit record. The `last_operate_token` check runs in the revoking transaction after `SELECT … FOR UPDATE` on every active `operate` row, so two concurrent revokes cannot both pass it. The next request with that token gets `401`, with no redeploy
 - **Scope:** `operate` · **Public contract:** yes (Ask-first)
 - **In / Out:** token id → the revoked [api_tokens](data-modeling.md#api_tokens--read-api-bearer-tokens) row
 - **Errors:** `forbidden`, `validation_failed`, `token_not_found`, `last_operate_token` (so the installation is never locked out into hand-written SQL), `database_unavailable`
@@ -321,7 +322,7 @@ to a simulator run, or to a stated "not an operation".
 | Operator: is the pipeline healthy? | J1 verify, J7 | `health.get` |
 | Operator: poison message | J4 | `dlq.listMessages` → fix deployed → `dlq.startRedrive` → `health.get` |
 | Operator: database came back before the hourly resume | ADR-015 | `worker.resumeEventSource` |
-| Operator: issue or retire a token | [architecture.md → Open decisions](architecture.md#open-decisions) | `token.create`, `token.list`, `token.revoke` |
+| Operator: issue or retire a token | [about.md → Target personas](about.md#target-personas) (reviewer token), [api_tokens](data-modeling.md#api_tokens--read-api-bearer-tokens) | `token.create`, `token.list`, `token.revoke` |
 | Agent: explain why delivery failed | idea §4, J6 | `email.get` + `email.explainDelivery` over MCP. The MCP server picks its tools with `token.getCurrent` |
 | Secret rotation | J5 | Not an operation: runbook plus the `ingest.rejected{reason}` metric (ADR-009) |
 | First deploy, connect webhook, tear down | J1, [lifecycle](features.md#adopter-lifecycle) | Not operations: the deploy and teardown commands; the deploy command issues the first `operate` token |
