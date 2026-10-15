@@ -2,3 +2,6 @@
 # Kept locally, never published.
 about/
 tools/
+
+# Per-developer agent settings (template: AGENTS.local.example.md)
+AGENTS.local.md
