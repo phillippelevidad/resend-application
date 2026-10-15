@@ -11,6 +11,12 @@ ratified sentence or the decision lens) and 33 owner decisions (C).
 
 ## Owner decisions (C)
 
+**Outcome (2026-10-15):** the owner accepted the recommended option for all 33. They are applied,
+and the amended ADRs carry an `amended 2026-10-15` marker naming the items: ADR-004, 006, 007, 012,
+016, 017, 018. The lens rename (V2-19) re-scored the suite at 21/21. Design-doc approval is not a
+deploy approval: the new alarms, the runtime role and the gap script's live send stay Ask-first
+when a slice builds them.
+
 Each row: the question, the recommended option, and why. Full cards, with the alternatives and the
 exact edits each option implies, are in the run's local `stages/verified-v1.md` and
 `stages/verified-v2.md`.
