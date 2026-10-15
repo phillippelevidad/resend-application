@@ -441,11 +441,11 @@ const shipsBullets = (() => {
 // ---------------------------------------------------------------- 2. openspec validate
 
 {
-  const r = spawnSync("openspec", ["validate", changeName, "--strict"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    shell: true,
-  });
+  const r = spawnSync(
+    "npx",
+    ["--no-install", "openspec", "validate", changeName, "--type", "change", "--strict", "--no-interactive"],
+    { cwd: repoRoot, encoding: "utf8", shell: process.platform === "win32" },
+  );
   if (r.error || r.status === null) {
     record(
       "openspec",
