@@ -181,7 +181,7 @@ const TLDS = new Set([
   "localhost",
 ]);
 const FILE_EXTS =
-  /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml|prisma|css|scss|html|sh|env|lock|toml|txt|png|svg)$/i;
+  /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml|css|scss|html|sh|env|lock|toml|txt|png|svg)$/i;
 
 /**
  * A backticked token read as a mechanism name, or null when it is not one.
@@ -255,18 +255,8 @@ function git(argv) {
   return r.status === 0 ? r.stdout : null;
 }
 
-const SOURCE_ROOTS = [
-  "backend/src",
-  "backend/prisma",
-  "supabase",
-  "storefront/src",
-  "backoffice/src",
-  "admin/src",
-  "auth/src",
-  "packages/ui/src",
-  "packages/api-client/src",
-];
-const SOURCE_EXT = /\.(ts|tsx|js|mjs|sql|prisma|json)$/;
+const SOURCE_ROOTS = ["packages", "apps", "infra", "sim"];
+const SOURCE_EXT = /\.(ts|tsx|js|mjs|sql|json)$/;
 
 function collectSourceTokens() {
   const tokens = new Set();
@@ -278,7 +268,7 @@ function collectSourceTokens() {
       return;
     }
     for (const e of entries) {
-      if (e.name === "node_modules" || e.name === ".next" || e.name === "dist")
+      if (e.name === "node_modules" || e.name === "dist" || e.name === "cdk.out")
         continue;
       const p = join(dir, e.name);
       if (e.isDirectory()) walk(p);
@@ -871,7 +861,7 @@ const shipsBullets = (() => {
     const leaks = new Set();
     for (const m of d.text.matchAll(/`([A-Za-z0-9_./-]+)`/g)) {
       const t = m[1];
-      if (/\.(ts|tsx|sql|prisma|mjs|json)$/.test(t)) leaks.add(t);
+      if (/\.(ts|tsx|sql|mjs|json)$/.test(t)) leaks.add(t);
       else if (
         /^[A-Z][A-Za-z0-9]*(Command|Service|Repository|Controller|Guard|Module|Interceptor|Middleware|Dto)$/.test(
           t,
@@ -983,8 +973,8 @@ const shipsBullets = (() => {
     const all = artifacts.map((a) => a.text).join("\n");
     const triggers = [
       [
-        /schema\.prisma|supabase\/migrations|CREATE TABLE|ALTER TABLE|CREATE UNIQUE INDEX/i,
-        "DB schema change",
+        /(?:edit|chang|modif|rewrit)\w*[^.\n]{0,40}(?:applied|pushed|existing) migration/i,
+        "change to an already-pushed migration",
       ],
       [
         /package\.json|new dependency|add(?:ing)? a dependency/i,
@@ -992,8 +982,12 @@ const shipsBullets = (() => {
       ],
       [/\.github\/workflows|CI change/i, "CI change"],
       [
-        /OpenAPI|api-client|public contract|ApiHeader|security scheme/i,
+        /public contract|new (?:operation|route|error code|CLI (?:command|flag)|MCP tool)/i,
         "public contract change",
+      ],
+      [
+        /cdk deploy|new AWS resource|live Resend (?:account|write)/i,
+        "AWS deploy or live Resend write",
       ],
     ];
     const flagged = tasks.text.match(/Ask-first/gi)?.length ?? 0;
@@ -1023,24 +1017,25 @@ const shipsBullets = (() => {
       [
         /Model index|data-modeling/i,
         "the data-modeling **Model index** `Modeled` checkbox",
-        /CREATE TABLE|new table|schema\.prisma/i.test(all),
+        /CREATE TABLE|new table|pgTable\(/i.test(all),
       ],
       [
         /api-contract/i,
         "`.ai/api-contract.md`",
-        /operation|endpoint|OpenAPI/i.test(all),
+        /operation|endpoint|route|error code|CLI command|MCP tool/i.test(all),
       ],
       [
         /AGENTS\.md/i,
-        "the project `AGENTS.md` folder tree",
-        /new (file|folder|directory)|proxy\.ts|route segment/i.test(all),
+        "the root `AGENTS.md` **Projects** table",
+        /new (?:project|package|app|folder)\b|(?:apps|packages)\/[a-z-]+\/? (?:is )?(?:created|added|scaffolded)/i.test(
+          all,
+        ),
       ],
       [
         /\.env\.example/i,
         "`.env.example`",
         /env var|environment variable|process\.env|[A-Z_]{6,}=/.test(all),
       ],
-      [/views\.md/i, "`.ai/views.md`", /screen|surface|view|page/i.test(all)],
     ];
     for (const [re, label, owed] of duties)
       if (owed && !re.test(tasks.text))
@@ -1120,16 +1115,16 @@ const shipsBullets = (() => {
 
     const pairs = [
       [
-        /seed\.sql/i,
-        /\bmigration\b|\bbackfill\b/i,
-        "`seed.sql` edit",
-        "migration/backfill",
+        /\bmigration\b/i,
+        /\bbackfill\b/i,
+        "migration",
+        "backfill",
       ],
       [
-        /OpenAPI|api-contract\.md|public contract/i,
-        /generate:api-client|regenerat(?:e|ed|ing).{0,40}(?:api[- ]?client|\bclient\b)/i,
-        "contract change",
-        "client regeneration",
+        /api-contract\.md|public contract/i,
+        /packages\/sdk|SDK method|\bCLI command\b|\bMCP tool\b/i,
+        "contract entry",
+        "SDK / CLI / MCP surface",
       ],
     ];
     for (const [needFirst, needSecond, firstLabel, secondLabel] of pairs) {
@@ -1218,10 +1213,11 @@ const shipsBullets = (() => {
     }
   }
 
-  // §12 — UI surfaces. Each named view should reach tasks.md.
+  // §12 — surfaces (read API, SDK, CLI, MCP). Each named surface, operation or
+  // CLI command should reach tasks.md.
   const s12 = ppSection(12);
   if (s12 && tasks) {
-    const views = [];
+    const surfaces = new Set();
     for (const line of s12.text.split("\n")) {
       const m = /^###\s+12\.\d+\s+(.*)$/.exec(line);
       if (!m) continue;
@@ -1231,16 +1227,22 @@ const shipsBullets = (() => {
         .replace(/\(.*?\)/g, "")
         .replace(/[,*`].*$/, "")
         .trim();
-      if (tail.length > 3) views.push(tail);
+      if (tail.length > 3) surfaces.add(tail);
     }
-    const missing = views.filter(
-      (v) => !normalize(tasks.text).toLowerCase().includes(v.toLowerCase()),
+    // Operations (`email.get`) and CLI commands (`ledger email get`) named in backticks.
+    for (const m of s12.text.matchAll(
+      /`([a-z]+\.[a-z][A-Za-z]+|ledger(?: [a-z][a-z-]*)+)`/g,
+    ))
+      surfaces.add(m[1]);
+    const taskText = normalize(tasks.text).toLowerCase();
+    const missing = [...surfaces].filter(
+      (v) => !taskText.includes(v.toLowerCase()),
     );
     if (missing.length)
       record(
         "coverage",
         "READ",
-        `views the pre-proposal specified and tasks.md never names: ${missing.map((v) => `"${v}"`).join(", ")} — a screen with no task is a screen nobody builds`,
+        `surfaces the pre-proposal's §12 names and tasks.md never does: ${missing.map((v) => `"${v}"`).join(", ")} — an operation, command or tool with no task is one nobody builds`,
       );
   }
 
@@ -1319,7 +1321,7 @@ const shipsBullets = (() => {
       "value values type types kind kinds name names item items list lists data row rows table tables " +
       "column columns field fields state status active pending closed error errors page pages view views " +
       "read reads write writes command commands event events job jobs test tests spec specs " +
-      "monthly yearly slice slices tenant tenants operator operators seller sellers buyer buyers admin"
+      "monthly yearly slice slices operator operators recipient recipients webhook webhooks"
     ).split(/\s+/),
   );
   const candidates = new Map(); // token -> "artifact Lnn"
@@ -1389,7 +1391,8 @@ const shipsBullets = (() => {
     const VERBS = new Set(
       (
         "create get list add remove update delete publish verify activate suspend close unlock provision cancel send " +
-        "start stop drive manage upsert author ship pay refund accept reject submit approve mint exchange rotate set"
+        "start stop drive manage upsert author accept reject submit approve mint exchange rotate set " +
+        "redrive replay inspect explain revoke"
       ).split(/\s+/),
     );
     const ops = new Map();
@@ -1458,17 +1461,12 @@ const shipsBullets = (() => {
 
   trip(
     /redis[^.\n]{0,60}(queue|job queue|enqueue|as the queue)/i,
-    "Redis named as a queue. PG-Boss owns delivery (pp-backend → Never, ADR-017)",
+    "Redis named as a queue. SQS delivers and Postgres holds the truth, nothing else (pp-backend → Never, ADR-005)",
     "BLOCK",
   );
   trip(
-    /\btenant_id\b[^.\n]{0,60}(from the (?:body|request|client)|client-supplied|request field)/i,
-    "a client-supplied `tenant_id`, which is a MUST NOT everywhere",
-    "BLOCK",
-  );
-  trip(
-    /(business logic|the rule|validat\w+)[^.\n]{0,40}\b(in the BFF|in the proxy|server action)/i,
-    "business logic placed in a BFF — mutations live in backend",
+    /\bFIFO\b|MessageGroupId|order(?:ed)? by (?:arrival|received_at|insertion)/i,
+    "state order taken from transport — Resend promises no delivery order, so the projection orders by the event set (pp-backend → Never, ADR-002, ADR-003)",
   );
   trip(
     /\b(trigger|stored procedure|plpgsql function)\b[^.\n]{0,60}(comput|calculat|derive|enforce the rule)/i,
@@ -1479,71 +1477,13 @@ const shipsBullets = (() => {
     "a database view used as a contract (pp-database → Never)",
   );
   trip(
-    /global exception filter|route version/i,
-    "a global exception filter or route versioning (pp-backend → Never)",
+    /\bpgEnum\b/,
+    "a `pgEnum` — closed sets are `text` + `CHECK` (pp-database → Never)",
   );
   trip(
-    /@nestjs\/cqrs|BaseRepository|IRepository|BaseEntity|@Transactional/i,
-    "a framework abstraction pp-backend forbids by name",
+    /onDelete:\s*["']?cascade|ON DELETE CASCADE/i,
+    "a cascade — check it does not reach `webhook_events` or a projection (pp-database → Never)",
   );
-  trip(
-    /full[- ]text search|to_tsvector|postgres FTS/i,
-    "Postgres FTS on the search path, which is a MUST NOT",
-  );
-  trip(
-    /onDelete:\s*Cascade/i,
-    "`onDelete: Cascade` — check it does not cross an aggregate boundary or touch money/fiscal/audit rows",
-  );
-
-  // Money path: if the change touches it, pp-money binds and the artifacts must show it.
-  const moneyRe =
-    /\b(checkout|order|payment|split|payout|commission|fiscal[_ ]document|nota fiscal|reconciliation|refund|invoice|billing_)\w*/i;
-  const touchesMoney = all.some((a) => moneyRe.test(a.text));
-  if (touchesMoney) {
-    const t = all.map((a) => a.text).join("\n");
-    if (!/idempot/i.test(t))
-      record(
-        "patterns",
-        "BLOCK",
-        "the change touches the money path and no artifact says anything about idempotency — pp-money binds and wins over pp-backend and pp-database",
-      );
-    if (!/pp-money/.test(t))
-      record(
-        "patterns",
-        "READ",
-        "the money path is touched and no artifact cites `pp-money` — check the design was written under it",
-      );
-    if (
-      /\b(float|double|decimal|numeric)\b/i.test(t) &&
-      !/centavos|bigint/i.test(t)
-    )
-      record(
-        "patterns",
-        "READ",
-        "a non-integer money type is named without centavos/bigint nearby — money is integer centavos",
-      );
-  }
-
-  // Tenancy: a new table needs an RLS decision, stated.
-  if (
-    /CREATE TABLE|new table|gains? (?:a |three |two )?column/i.test(
-      all.map((a) => a.text).join("\n"),
-    )
-  ) {
-    const t = all.map((a) => a.text).join("\n");
-    if (!/apply_tenant_rls|RLS/i.test(t))
-      record(
-        "patterns",
-        "BLOCK",
-        "the change adds or alters a table and no artifact states an RLS decision — every table is tenant-scoped via `apply_tenant_rls` or global with explicit deny policies",
-      );
-    if (!/seed\.sql/i.test(t))
-      record(
-        "patterns",
-        "READ",
-        "schema moves and `supabase/seed.sql` is never mentioned — a backfill that assumes seeded rows have a shape they do not is the defect that blocks the migration",
-      );
-  }
 
   // ADR departures must be argued, never silent.
   if (design) {
@@ -1566,18 +1506,18 @@ const shipsBullets = (() => {
       );
   }
 
-  // PII / LGPD.
+  // PII.
   const t = all.map((a) => a.text).join("\n");
   if (
-    /\b(email|cpf|cnpj|phone|address|name of the (?:buyer|seller)|personal data)\b/i.test(
+    /\b(recipient address|email address|display name|subject line|personal data|raw payload)\b/i.test(
       t,
     ) &&
-    !/LGPD|PII/i.test(t)
+    !/PII|address_hash|address_masked|\bmask/i.test(t)
   )
     record(
       "patterns",
       "READ",
-      "personal data is named and no artifact answers the PII/LGPD question — legal basis, retention, and what must never be logged",
+      "personal data is named and no artifact answers the PII question — keyed hash plus mask, retention and redaction, and what must never be logged (data-modeling.md → PII & retention)",
     );
 }
 

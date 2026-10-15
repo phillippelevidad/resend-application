@@ -15,7 +15,7 @@ The signature class of this gate, because the pre-proposal was **already verifie
 | Shape | What you are looking at |
 | --- | --- |
 | A `§14` rule with no requirement | A MUST that survives in nobody's spec, so no scenario tests it and nothing fails if it is not built |
-| A `§12` view with no task | A screen the card promises, named in the pre-proposal, that `tasks.md` never asks anyone to build |
+| A `§12` surface with no task | An operation, CLI command or MCP tool the card promises, named in the pre-proposal, that `tasks.md` never asks anyone to build |
 | A `§22` doc edit with no task | The change lands leaving a ratified `.ai/` doc saying something the code now contradicts |
 | A `§8` column or `§10` operation that vanished | Usually the nullability, the index, or the idempotency answer — the parts that compress best and cost most |
 
@@ -23,7 +23,7 @@ For each item, decide between three: **covered by something that does not name i
 
 **What it costs.** The slice ships without a rule nobody notices until an integrator meets it, or with a doc that now lies. Neither is visible to `pnpm verify`.
 
-**How it closes.** Rung 3 — the pre-proposal settles it, and the repair is to restore it at the right altitude: a rule becomes a `### Requirement:` with a `#### Scenario:`, a view becomes a task, a doc edit becomes a task. Where the drop was deliberate and merely unstated, write the reason instead of restoring the work.
+**How it closes.** Rung 3 — the pre-proposal settles it, and the repair is to restore it at the right altitude: a rule becomes a `### Requirement:` with a `#### Scenario:`, a surface becomes a task, a doc edit becomes a task. Where the drop was deliberate and merely unstated, write the reason instead of restoring the work.
 
 ---
 
@@ -63,7 +63,7 @@ Distinct from A2: nothing here is *forbidden*, it is simply not how this codebas
 
 ## A4 — The four artifacts disagree
 
-**The tell.** Pick each concrete object the change touches — a column, a status, a route, a field, a policy, a button, an enum member — and read **every** mention of it across `proposal.md`, `design.md`, the deltas and `tasks.md`. Then compare. The gap is usually altitude: the proposal describes the intent, the design the mechanism, the spec the behaviour, the task the step, and one of them drifted while the others did not.
+**The tell.** Pick each concrete object the change touches — a column, a status, a route, a field, a scope, a CLI flag, a `CHECK` member — and read **every** mention of it across `proposal.md`, `design.md`, the deltas and `tasks.md`. Then compare. The gap is usually altitude: the proposal describes the intent, the design the mechanism, the spec the behaviour, the task the step, and one of them drifted while the others did not.
 
 This is the class a single-file reader cannot see, which is why pass 2 reads all four. The script hands you `orphans` as a starting point — named in a spec or the data model and in no task, or named only in `tasks.md` — but the contradictions themselves are reading work.
 
@@ -78,14 +78,14 @@ This is the class a single-file reader cannot see, which is why pass 2 reads all
 **The tell.** The change names a field, column, route, token claim, port, id or capability as though it were there. Grep it. Three shapes:
 
 - *Absent.* A gate written against a field the type does not carry. No column sourcing a state a row is promised. No enum member for a status the copy announces.
-- *Present but unreachable.* The row exists and no endpoint returns its id. The command exists and no screen has the button. The read exists and filters out exactly the rows the caller needs.
+- *Present but unreachable.* The row exists and no endpoint returns its id. The operation exists and no CLI command or MCP tool reaches it. The read exists and filters out exactly the rows the caller needs.
 - *Named in prose, never in code.* "Replay is gated on the **webhook being enabled**." Which field? Which response from which call? The sentence names nothing to grep, so it reads as settled and implements as nothing. **The sweep: take every gate, guard, cap and precondition the change states, and demand the name of what the code reads to decide it.**
 
 The script helps with the first shape only, listing every backticked identifier the repo has never heard of and separating the ones **grafted onto something that does exist** from the ones wholly new — which are usually just what the change builds. Its `freshness` list is the other half: anything that landed since the change was written makes its claim unverified again.
 
 **What it costs.** A slice the owner cannot hand-exercise, which the lens makes a MUST regardless of the fact that no integrator is watching, because the walk is how the slice is verified at all.
 
-**How it closes.** Rung 2 — the repo is the fact. The cheap repair is usually already half-built: a read that loads the row anyway can return its id; a route that exists needs a button; a claim the token already carries needs reading rather than adding. Write it as a decision in `design.md` with the reachability it restores, and add the task — a fix needing new backend code is a different conversation from one needing a field on an existing response.
+**How it closes.** Rung 2 — the repo is the fact. The cheap repair is usually already half-built: a read that loads the row anyway can return its id; an operation that exists needs its CLI command; a claim the token already carries needs reading rather than adding. Write it as a decision in `design.md` with the reachability it restores, and add the task — a fix needing new backend code is a different conversation from one needing a field on an existing response.
 
 ---
 
@@ -102,7 +102,7 @@ The script helps with the first shape only, listing every backticked identifier 
 | A requirement on event handling with no duplicate or out-of-order statement | State what holds on first delivery, and what a redelivery or a late event must not change |
 | A rule that reads as a description | Sharpen it until it can refuse something |
 
-*Tasks.* Each task states **how completion is checked, inside the task**. "Add the migration" is intent; "Add the migration, and verify it applies against a database freshly reset from the seed **and refuses** a second row with the same `svix_id`" is a task. A separate verification task is right only where the check spans several tasks.
+*Tasks.* Each task states **how completion is checked, inside the task**. "Add the migration" is intent; "Add the migration, and verify it applies against a freshly migrated database **and refuses** a second row with the same `svix_id`" is a task. A separate verification task is right only where the check spans several tasks.
 
 **What it costs.** A requirement with no failing test is a requirement that ships unbuilt and unnoticed — the change goes green with the behaviour absent.
 
@@ -114,12 +114,12 @@ The script helps with the first shape only, listing every backticked identifier 
 
 **The tell.** `tasks.md` read as a sequence rather than a list. The recurring shapes:
 
-- A migration before the `seed.sql` edit its backfill depends on — the migration blocks mid-apply on a fresh database, which is the most expensive place to find anything.
-- A route before the command it exposes, a screen before the read it calls, a client regeneration before the contract change it types.
-- An Ask-first task not flagged — a schema change, a new dependency, a CI change or a public-contract change that apply would commit without the owner.
+- A backfill before the expand migration it writes into, or a contract step shipped in the same deploy as its expand ([ADR-018](../../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)) — the migration blocks mid-apply, which is the most expensive place to find anything.
+- A route before the handler it exposes, an SDK method or CLI command before the `api-contract.md` entry it implements.
+- An Ask-first task not flagged — a change to a pushed migration, a new dependency, a CI change, a public-contract change, an AWS deploy or a live Resend write that apply would commit without the owner.
 - `pnpm verify` not last, or absent. Exit 0 with every stage run is the only definition of done.
 - A task bundling three independent things, so it cannot fail cleanly or land as one PR.
-- The doc-update duties `pp-workflow` owes missing entirely: the build-checklist `Status` line and `Ships` boxes in place, the data-modeling **Model index** `Modeled` checkbox, `api-contract.md`, `views.md`, the project `AGENTS.md` folder tree, `.env.example`.
+- The [doc-update duties `pp-workflow` owes](../../pp-workflow/SKILL.md#definition-of-done) missing entirely: the build-checklist `Status` line and `Ships` boxes in place, the data-modeling **Model index** `Modeled` checkbox, `api-contract.md`, the root `AGENTS.md` **Projects** table, `.env.example`.
 
 **What it costs.** A half-applied migration, or a build that stops at task 4 of 9 with the owner holding the pieces.
 
@@ -158,7 +158,7 @@ Read with the OpenSpec templates (`openspec instructions <artifact> --change <na
 | The deferred tail, each with a carrying slice or a countable trigger | "When demand warrants"; a deferral whose own trigger cannot fire without the deferred thing |
 | The self-service test, in writing | A8 — run it, do not read it |
 | **Impact**: apps, schema, contract, dependencies, env, AWS resources and cost, PII | `Ask-first` unmarked on schema or contract; cost silence where an AWS resource is added; `Not touched` with no reason |
-| Open questions surfaced, never resolved | An `about.md` open question answered here. Surface it and let the owner rule |
+| Open questions surfaced, never resolved | An [`about.md` open question](../../../../.ai/about.md#open-questions) answered here. Surface it, tagged `[Unverified]`, and let the owner rule in the owner-decision round |
 
 ### `specs/<capability>/spec.md`
 
@@ -167,7 +167,7 @@ Read with the OpenSpec templates (`openspec instructions <artifact> --change <na
 | A `## Purpose` on a new capability; none on a delta to an existing one | Script-checked |
 | Behaviour only — observable, testable, duplicate- and order-aware | A6: a class name, a file, an endpoint path, a library choice. `api-contract.md` is the only place operations get paths and verbs |
 | Every requirement with ≥1 WHEN/THEN scenario that could fail | Script-checked for shape; read for substance |
-| The domain vocabulary from [`about.md`](../../../../.ai/about.md), and `pp-ux-copy`'s forbidden terms honoured | A term the copy rules forbid, reaching the spec and then the screen |
+| The [domain vocabulary](../../../../.ai/about.md#domain-vocabulary) from `about.md` | A term outside it reaching the spec, then the CLI output and the docs |
 | Duplicate and out-of-order expectations stated | "What holds on first delivery" written, "what a redelivery or a late event must not change" omitted |
 
 ### `design.md`
