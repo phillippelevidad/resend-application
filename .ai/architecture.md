@@ -428,10 +428,5 @@ impacted recipients); it rides on the RS-U15 sends.
 
 ## Open decisions
 
-- **Read API token operations.** Storage is settled: hashed rows in `api_tokens`, the first
-  `operate` token inserted by the deploy command, revocation without a redeploy (owner, 2026-10-15;
-  [data-modeling.md → `api_tokens`](data-modeling.md#api_tokens--read-api-bearer-tokens)). The
-  create, list and revoke operations and their surfaces are owned by
-  [api-contract.md](api-contract.md) (step 9).
 - **Neon paid plan if the Free quota is hit.** Owner decision when PG-U03 or a quota suspension
   fires ([integrations.md → Open decisions](integrations.md#open-decisions)).

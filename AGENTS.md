@@ -235,6 +235,8 @@ One shape everywhere: read API, SDK, CLI `--json`, MCP tools ([idea §5.7](docs/
 ```
 
 `code` is stable and machine-readable. Changing or removing one is a public contract change (Ask first).
+The codes, their HTTP statuses and their raising components are registered in
+[.ai/api-contract.md → Error codes](.ai/api-contract.md#error-codes), the only list.
 
 ## Data model
 

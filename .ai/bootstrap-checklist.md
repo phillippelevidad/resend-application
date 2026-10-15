@@ -110,7 +110,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 9 — `api-contract.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** `explain_delivery` is a server route over a pure `packages/core` function; token create/list/revoke are `operate` routes plus `ledger token …`, with no MCP tool; DLQ inspect is `read`-scoped, carries no PII, and has an MCP tool (`inspect_dlq`). Defaults accepted: unknown recipient → `404 recipient_not_found`; Resend's list envelope with an `after` cursor; worker resume as an operate route plus CLI, with no MCP; slice-1 auth is skipped only on loopback; `401` for a bad token and `403 forbidden` for a missing scope; the error-code registry as written.
 - **Produces:** [api-contract.md](api-contract.md) — every operation with its surfaces (route, SDK, CLI, MCP), scopes, errors, and the error-code registry.
 - **Depends on:** 3, 7, 8.
 - **Note:** the post-propose gate BLOCKs any change citing an operation missing from this file, so it MUST be final before the first `opsx:propose`.
@@ -144,7 +145,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 ### Step 14 — Adapt the `wf-*` skills to Ledger
 
 - **Status:** `[ ]`
-- **Produces:** the script and reference fixes the de-branding pass deferred — `check.mjs` source roots (`packages`, `apps`, `infra`, `sim`), Prisma → Drizzle `pgTable`, tenant/RLS/money/LGPD tripwires replaced or removed, `VERBS` gains `redrive`/`replay`/`inspect`/`explain`, `views.md` and BFF duties removed, the self-service stages, missing `pp-*`/`wf-open-question` references resolved.
+- **Produces:** the script and reference fixes the de-branding pass deferred — `check.mjs` source roots (`packages`, `apps`, `infra`, `sim`), Prisma → Drizzle `pgTable`, tenant/RLS/money/LGPD tripwires replaced or removed, `VERBS` gains `redrive`/`replay`/`inspect`/`explain`/`revoke` (`token.revoke` is invisible to the gate until then), `views.md` and BFF duties removed, the self-service stages, missing `pp-*`/`wf-open-question` references resolved.
 - **Depends on:** 7, 8, 9, 10.
 
 ### Step 15 — Install OpenSpec

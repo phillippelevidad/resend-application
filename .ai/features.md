@@ -37,15 +37,15 @@ what the [self-service test](about.md#guiding-principles) is argued against.
 
 ## Journeys
 
-Operation names are provisional until [api-contract.md](api-contract.md) lists every surface named
-here.
+Every surface named here resolves to an operation in [api-contract.md](api-contract.md), or is
+listed there as not an operation ([Coverage](api-contract.md#coverage)).
 
 ### J1 — First deploy
 
 - **Actor:** application developer adopting Ledger.
 - **Trigger:** wants recipient deliverability without writing webhook plumbing.
 - **Steps:** deploy → connect webhook → one test send to `delivered@resend.dev` → `ledger email <id>` shows `delivered`.
-- **Surfaces:** deploy command; `email.get`; health read.
+- **Surfaces:** deploy command; `email.get`; `health.get`.
 - **Evidence:** timed README walkthrough ([success metrics](about.md#success-metrics)) · polish · M2.
 
 ### J2 — Support lookup
@@ -69,7 +69,7 @@ here.
 - **Actor:** operator.
 - **Trigger:** DLQ depth alarm > 0.
 - **Steps:** `ledger dlq inspect` → fix deployed → `ledger dlq redrive` → depth returns to 0.
-- **Surfaces:** DLQ inspect and redrive operations.
+- **Surfaces:** `dlq.listMessages` (`ledger dlq inspect`), `dlq.startRedrive` (`ledger dlq redrive`), `health.get`.
 - **Evidence:** poison-isolation integration test + simulator invariant 4 · durable ingest · M1.
 
 ### J5 — Secret rotation
@@ -85,7 +85,7 @@ here.
 - **Actor:** AI agent acting for support.
 - **Trigger:** "Did delivered@resend.dev get the confirm email? Why not?"
 - **Steps:** MCP read tools fetch state and timeline → deterministic explanation with a next step, no hidden LLM call.
-- **Surfaces:** MCP `get_email_status`, `explain_delivery`; operate tools unregistered without the `operate` scope.
+- **Surfaces:** MCP `get_email_status` (`email.get`), `explain_delivery` (`email.explainDelivery`); operate tools unregistered without the `operate` scope, decided at startup through `token.getCurrent`.
 - **Evidence:** MCP tool tests; test that operate tools are absent under a read token; redaction test on tool output · interfaces · M2.
 
 ### J7 — Burst
@@ -93,7 +93,7 @@ here.
 - **Actor:** application developer, indirectly (a broadcast).
 - **Trigger:** thousands of webhooks in seconds, up to the [ceiling](about.md#platform-scale-assumptions) of 10,000 in 10 s.
 - **Steps:** ingest keeps returning `200` → queue depth rises → worker drains at the bounded rate.
-- **Surfaces:** `pnpm sim --burst 10000/10s` (owner demo, [ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)); health read.
+- **Surfaces:** `pnpm sim --burst 10000/10s` (owner demo, [ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)); `health.get`.
 - **Evidence:** simulator invariants after burst · durable ingest · M1; published p50/p99 ingest latency and drain time in `docs/results.md` · M3.
 
 ## Ingest
@@ -124,7 +124,7 @@ here.
 
 - One contract, four surfaces: read API, SDK, CLI, MCP ([api-contract.md](api-contract.md)). evidence: contract tests · interfaces · M2.
 - One error shape everywhere ([error shape](../AGENTS.md#error-shape)). evidence: registry-mirror test · interfaces · M2.
-- MCP read-only by default; no secrets and optional redaction in tool output. evidence: tool-registration and redaction tests · interfaces · M2.
+- MCP read-only by default; no secrets and masks only in tool output ([api-contract.md → Conventions](api-contract.md#conventions)). evidence: tool-registration and redaction tests · interfaces · M2.
 - SDK and CLI published to npm with semver. evidence: published package versions · M3.
 
 ## Operations
@@ -134,7 +134,7 @@ here.
 
 ## Evidence harness
 
-- `ledger simulate` with duplicate, shuffle, burst and chaos knobs; four invariants checked after every run. evidence: the run output itself · local v0 · M1 (duplicates, shuffle), durable ingest · M1 (burst, chaos).
+- `pnpm sim` ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) with duplicate, shuffle, burst and chaos knobs; four invariants checked after every run. evidence: the run output itself · local v0 · M1 (duplicates, shuffle), durable ingest · M1 (burst, chaos).
 - Real-AWS burst numbers published in `docs/results.md`. evidence: the results doc · M3.
 
 ## Ingester parity (reference, non-binding)

@@ -205,6 +205,8 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Smaller Resend gaps ([RS-U13, U15–U19](resend.md#unverified)).** List Events visibility lag, test-address event sequences, idempotency-key scope, invalid-key status code, orphaned `listen` webhooks, the `email.suppressed` object. Each row names its slice. `[Unverified]`
 - **Per-event recipient lists ([RS-U21](resend.md#unverified)).** Whether a bounce on a multi-recipient email lists only the impacted recipients in `data.to`. If not, a healthy co-recipient would read `hard_bounced`. Settled by one Ask-first two-recipient send. · *local v0 · M1*, MUST be settled `[Unverified]`
 
+- **MCP SDK line and tool annotations.** The MCP TypeScript SDK's `main` is now v2, published as split packages (`@modelcontextprotocol/server`, `@modelcontextprotocol/client`), while `@modelcontextprotocol/sdk` is the v1.x maintenance line ([SDK README](https://github.com/modelcontextprotocol/typescript-sdk)). The annotation fields that [api-contract.md → Conventions](api-contract.md#conventions) sets (`readOnlyHint`, `destructiveHint`, `idempotentHint`) were read in the 2025-06-18 spec; whether the 2026-07-28 spec keeps them unchanged was not checked. Annotations are untrusted hints and scope is enforced by the read API, so this is safe either way. The package is picked when slice 5 adds the dependency (Ask-first). · *interfaces · M2* `[Unverified]`
+
 **Scope questions (deferred on a tripwire):**
 
 - **Inngest adapter (§10.7).** A second worker implementation as a comparison. Tripwire: M2 is done **and** a row in [What this project must demonstrate](#what-this-project-must-demonstrate) names a claim only it can prove.

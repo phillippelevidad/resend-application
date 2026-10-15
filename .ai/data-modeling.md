@@ -320,8 +320,8 @@ _Evidence: pending._
 
 - **Issuance:** the deploy command inserts the first `operate` token through the direct URL it
   already holds (ADR-018), and prints it once. This adds no secret and no idle cost (AWS-11).
-- **Operations:** the token operations and their surfaces are owned by
-  [api-contract.md](api-contract.md).
+- **Operations:** `token.create`, `token.list`, `token.revoke` (`operate`) and `token.getCurrent`
+  (`read`), with no MCP surface ([api-contract.md](api-contract.md#tokencreate)).
 
 _Schema: `packages/db/src/schema/api-tokens.ts` (once it exists)._
 _Evidence: pending (slice 2)._
