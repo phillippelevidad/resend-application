@@ -15,8 +15,8 @@ portfolio project, built as part of an application to Resend. Not affiliated wit
 
 **Apply when:** choosing infra, dependencies or patterns, scoping a phase, or writing anything that
 claims a behavior. Do NOT re-litigate decisions recorded in [docs/idea.md](docs/idea.md) (verify
-then enqueue; SQS standard, not FIFO; projection recomputed from the event set; Postgres only;
-outbox for reactions) without a superseding decision written into that doc.
+then enqueue; SQS standard, not FIFO; projection recomputed from the event set; Postgres only,
+because dedupe, row locks and the outbox commit in one transaction; outbox for reactions) without a superseding decision written into that doc.
 
 - **Every reliability claim MUST carry its evidence.** A behavior in the docs or the README is
   backed by a unit test, a property test, an integration test or a simulator invariant
@@ -33,7 +33,7 @@ outbox for reactions) without a superseding decision written into that doc.
   PRs are not planned.
 - **Cost brake — MUST.** This runs on a personal AWS account. Serverless, pay-per-use, near-zero
   idle cost. No always-on resources (NAT gateways, provisioned RDS, idle containers) without a
-  stated, measured reason. Everything torn down with one command.
+  stated, measured reason in an ADR. Everything torn down with one command.
 - **Stay close to Resend's public stack** ([tech stack](https://resend.com/handbook/engineering/what-is-our-tech-stack)):
   TypeScript, Postgres + Drizzle, Zod, Vitest, Biome, pnpm, AWS CDK, GitHub Actions. A deviation
   needs one line of reasoning in the doc that introduces it.
@@ -47,9 +47,10 @@ outbox for reactions) without a superseding decision written into that doc.
    it. The ceiling caps owner operations as well as engineering: one owner, no on-call, so a manual
    step that recurs per deploy, per demo or per review walk MUST be scripted.
 2. **Reversible-cheap over optimal-expensive.** Sort every deferral by its stated reason.
-   **Temporal** (cost, sequencing): defer with a countable threshold or a named observable event,
-   never "when demand warrants". **Categorical** (the reason holds at every point below the
-   ceiling, e.g. SQS FIFO, multi-database, multi-tenant): reject. Only a superseding ADR reopens it.
+   **Temporal** (build cost, sequencing): defer with a countable threshold or a named observable
+   event, never "when demand warrants". **Categorical** (the reason holds at every point below the
+   ceiling, e.g. SQS FIFO, multi-database, multi-tenant, an always-on charge in a kept-up deploy):
+   reject. Only a superseding ADR reopens it.
 3. **Reviewers arrive at milestone boundaries.** Every finished milestone
    ([M1–M3](.ai/about.md#milestones)) MUST leave the README claims, the demo and the deploy
    coherent. Inside a milestone, MUST NOT argue from adopter or reviewer harm in the gap between
@@ -67,7 +68,8 @@ outbox for reactions) without a superseding decision written into that doc.
    infrastructure depth no claim depends on. Learning AWS counts only when an ADR or a test makes
    it visible.
 6. **Spend anyway**, whatever clauses 1–5 say, when the absence causes any of: lost events;
-   duplicate effects; order-dependent state; security or PII exposure, MCP tool output included;
+   duplicate effects; order-dependent state (order comes from the projection, never from transport:
+   Resend promises no delivery order); security or PII exposure, MCP tool output included;
    misstating Resend behavior or implying affiliation; a budget-alarm gap.
 7. **Deploy and keep.** Real deploys stay up until the owner tears them down, because review
    timing is unknown. Idle cost MUST stay near zero ([target](.ai/about.md#success-metrics)).

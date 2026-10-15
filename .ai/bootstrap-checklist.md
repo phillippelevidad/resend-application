@@ -58,7 +58,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 2 — `decision-lens-suite.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Produces:** [decision-lens-suite.md](decision-lens-suite.md).
 - **Depends on:** 1.
 - **Done when:** the lens from step 1 reproduces every case's verdict **and** its reason from its own text; score recorded.
