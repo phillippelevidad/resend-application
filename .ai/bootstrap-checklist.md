@@ -81,7 +81,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 5 — `aws.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** region us-east-2; the budget and kill switch live in a separate guardrails stack (removed by `cdk destroy --all`); the kill switch is an SNS-triggered Lambda (reserved concurrency 0, ESM disabled, route throttle) with a scripted re-arm; it ships in every deployment, off by default, and the owner's deployment turns it on. Cap stays USD 50 ([about.md](about.md#success-metrics)).
 - **Produces:** [aws.md](aws.md) — AWS service limits and semantics Ledger relies on, as `AWS-NN` facts, plus the cost shape and the budget-alarm design.
 - **Depends on:** 1. MAY run in parallel with 3 and 4.
 
@@ -98,7 +99,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 - **Produces:** [architecture.md](architecture.md) — ADRs, system shape, Deferred (YAGNI), the build order with final slice IDs mapped to milestones M1–M3, risks.
 - **Depends on:** 2, 3, 4, 5, 6.
 - **Owner input:** the M1 slice cut, including how the MVP CLI reads state (see the conflict noted in the file).
-- **MUST:** every `RS-UNN` row in [resend.md](resend.md#unverified) and every unverified bullet in [about.md](about.md#open-questions) lands in the slice it names, or moves with a recorded reason. Constraint 4 in resend.md (`401` does not stop retries) supersedes the idea §5.2 rationale.
+- **MUST:** every `RS-UNN` row in [resend.md](resend.md#unverified) and every unverified bullet in [about.md](about.md#open-questions) lands in the slice it names, or moves with a recorded reason. Constraint 4 in resend.md (`401` does not stop retries) supersedes the idea §5.2 rationale. Every `AWS-UNN` row in [aws.md](aws.md#unverified) lands in its slice the same way. [aws.md → Constraint 4](aws.md#constraints-and-sharp-edges) (a DB outage drains into the DLQ, contradicting idea §6.4 as worded) is resolved by an ADR here.
 
 ### Step 8 — `data-modeling.md`
 

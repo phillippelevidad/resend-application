@@ -80,8 +80,8 @@ Four gaps shape the design:
 Resend signs every delivery the Svix way (RS-01, RS-03). The SDK's `webhooks.verify` checks one
 secret per call and enforces a 5-minute timestamp window (RS-02). During the 24 h after a
 rotation, both secrets verify (RS-04). Any `full_access` key can read the secret (RS-05).
-**Consequence for Ledger:** ingest verifies the raw body (preserved by API Gateway,
-[aws.md](aws.md)) against each configured secret in turn and accepts the first match, so a rotation
+**Consequence for Ledger:** ingest verifies the raw body (decoded from API Gateway's payload,
+[AWS-01](aws.md#api-gateway-http-api)) against each configured secret in turn and accepts the first match, so a rotation
 drops nothing. The 5-minute window is the replay-attack guard. The secret never appears in logs,
 the CLI or MCP output.
 

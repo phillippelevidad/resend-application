@@ -134,8 +134,9 @@ this decides *whose exposure* may run thin meanwhile.
 - **Budget cap over continuity (owner deployment):** when the hard cap trips, the kill switch stops
   compute. Webhooks that fail meanwhile are recovered by `ledger reconcile`, but only while List
   Events still holds them (reach `[Unverified]`, see [Open questions](#open-questions)). This is
-  tolerable only in the owner's own demo deployment. Whether an adopter's deployment ships the
-  kill switch, and with what default, is decided in [aws.md](aws.md#budget-alarms).
+  tolerable only in the owner's own demo deployment. So every deployment ships the kill switch
+  **off by default**, and the owner's deployment turns it on; budget alerts are on everywhere
+  ([aws.md → Budget alarms](aws.md#budget-alarms)).
 
 **Never tolerable:**
 
@@ -199,6 +200,8 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Failure responses and timeout ([RS-U07, RS-U08](resend.md#unverified)).** Whether a `401` stops Resend's retries (it contradicts [idea §5.2](../docs/idea.md#52-ingest)), and Resend's delivery timeout. · *durable ingest · M1* `[Unverified]`
 - **Rotation header format ([RS-U09](resend.md#unverified)).** How both signatures appear during the 24 h overlap. Security-relevant. Safe either way with per-secret verification. · *recovery · M1* `[Unverified]`
 - **Test sends without a verified domain ([RS-U14](resend.md#unverified)).** Decides whether the [verify stage](features.md#adopter-lifecycle) needs a verified domain. · *durable ingest · M1* `[Unverified]`
+- **Kill-switch reach ([AWS-U01, AWS-U02](aws.md#unverified)).** Whether the budget deploys from us-east-2 and reaches a us-east-2 topic, and whether a route throttle of `0` stops API Gateway billing after a trip. Together they decide whether the hard cap holds. Settled by the first guardrails deploy and the trip drill. · *durable ingest · M1*, MUST be settled `[Unverified]`
+- **Smaller AWS gaps ([AWS-U03–U07](aws.md#unverified)).** Idle ESM polling cost, when the body is base64-encoded, the account concurrency quota, secret deletion on teardown, free-tier coverage. Each is safe either way and names its slice. `[Unverified]`
 - **Smaller Resend gaps ([RS-U13, U15–U19](resend.md#unverified)).** List Events visibility lag, test-address event sequences, idempotency-key scope, invalid-key status code, orphaned `listen` webhooks, the `email.suppressed` object. Each row names its slice. `[Unverified]`
 
 **Scope questions (deferred on a tripwire):**
