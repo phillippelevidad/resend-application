@@ -103,7 +103,7 @@ It also builds **four worklists**, and this is where the expensive defects hide:
 
 Three questions, in this order:
 
-1. **What left?** Walk the `coverage` worklist item by item. For each, decide: covered by something that does not name it, deliberately dropped with a stated reason, or gone. Only the third is a finding — but it is the one that ships a slice missing a rule nobody notices until an integrator does.
+1. **What left?** Walk the `coverage` worklist item by item. For each, decide: covered by something that does not name it, deliberately dropped with a stated reason, or gone. Only the third is a finding — but it is the one that ships a slice missing a rule nobody notices until an adopter does.
 2. **What changed meaning?** The `Ships` bullets are script-checked verbatim. Judge the rest: a MUST softened to "should", a gate condition rewritten from "not `active`" to "`pending` only", a decision restated with its teeth removed.
 3. **What was redecided?** Every `D<n>` in `design.md` that the pre-proposal did not carry, and every one whose content moved. A new decision is not a defect — it is a decision **nothing has checked**, so give it the scrutiny the pre-proposal's got: what authority settles it, and what does it rule out?
 

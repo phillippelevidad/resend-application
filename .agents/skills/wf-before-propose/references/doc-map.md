@@ -52,7 +52,7 @@ Run these in phase 2. Each answers one question, cheaply.
 | Does the migration exist, and what does it already do? | List the migrations folder under `packages/db/` (chronological), then grep it for the table name. The unique keys idempotency rests on (`svix_id`, the outbox `dedupe_key`) must be in the migration, not only in the schema file |
 | Is the idempotency key in place for it? | `grep -rn 'PRIMARY KEY\|UNIQUE' <migrations folder> \| grep <table>` |
 | Does the project folder exist? | `ls packages/ apps/` — projects are folders (`core/`, `db/`, `resend-client/`, `ingest/`, `worker/`, `reconciler/`, …). Then `ls` the project for its layout |
-| Does the operation already exist? | `grep -rn '<operationName>' packages/ apps/ --include=*.ts` and check the OpenAPI surface it exports |
+| Does the operation already exist? | `grep -rn '<operationName>' packages/ apps/ --include=*.ts` and check its entry in `.ai/api-contract.md` |
 | Is the capability already specified? | `find openspec/specs -name spec.md` — the directory path **is** the capability path. An existing one means the delta is `MODIFIED`, a missing one means `ADDED` |
 | What did the previous slices actually ship? | `ls openspec/changes/archive/` — read the nearest slice's `proposal.md`, `design.md` and `tasks.md` for the house shape and for decisions already taken |
 | Is a change already open on this? | `ls openspec/changes/` — anything outside `archive/` is in flight |
@@ -67,5 +67,5 @@ Two things to look for beyond existence:
 ## What not to read
 
 - Do not read `data-modeling.md`, `api-contract.md`, `resend.md` or `aws.md` end to end. They run long; anchors and the `Slices:` grep get you the same facts for a fraction of the context.
-- Do not read `node_modules`, generated code (OpenAPI output, migration snapshots), or migration SQL you are not checking a specific fact in.
+- Do not read `node_modules`, generated code (`cdk.out`, Drizzle migration snapshots), or migration SQL you are not checking a specific fact in.
 - Do not summarize a `pp-*` skill or an `.ai/` section through a sub-agent. Their exact wording binds, and the summary drops it.

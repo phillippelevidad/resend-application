@@ -7,16 +7,16 @@ description: Adversarially verifies the code `opsx:apply` actually wrote — fir
 
 **Owns:** verifying the diff against the change, the ratified `.ai/` docs and the binding `pp-*` skills · the correctness and security hunt over the diff · the `pnpm verify` gate and its honest result · repairing what those settle, one commit per fix · the doc duties the change owes · `VERIFICATION.md` · the owner round · the done-or-not verdict.
 
-**Does not own:** implementing a task nobody built (→ `opsx:apply`) · verifying the change artifacts before code exists (→ [`wf-after-propose-check`](../wf-after-propose-check/SKILL.md), which already ran) · archiving (→ `opsx:archive`) · ratifying a new or superseding decision into `.ai/` (→ [`wf-open-question`](../wf-open-question/SKILL.md) mode 3) · writing the code-level rules (→ the [`pp-*` skills](../../../AGENTS.md#patterns-and-practices), which this skill only enforces).
+**Does not own:** implementing a task nobody built (→ `opsx:apply`) · verifying the change artifacts before code exists (→ [`wf-after-propose-check`](../wf-after-propose-check/SKILL.md), which already ran) · archiving (→ `opsx:archive`) · ratifying a new or superseding decision into `.ai/` (→ record it under [about.md → Open questions](../../../.ai/about.md#open-questions) tagged `[Unverified]` and put it to the owner in the owner-decision round) · writing the code-level rules (→ the [`pp-*` skills](../../../AGENTS.md#patterns-and-practices), which this skill only enforces).
 
-**Precedence:** a ratified `.ai/` decision and a binding `pp-*` rule both outrank anything the change or the code says, and [`pp-money`](../pp-money/SKILL.md) wins wherever it collides with `pp-backend` or `pp-database`. The [decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) and the [risk appetite](../../../.ai/about.md#risk-appetite) outrank this skill's own reasoning. The slice card's `Ships` list is still the scope contract — repairs may complete it, never widen it.
+**Precedence:** a ratified `.ai/` decision and a binding `pp-*` rule both outrank anything the change or the code says, and correctness of event handling (no loss, no duplicate effects, order-independent state) outranks everything else ([decision lens → Tie-break](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized)). The [decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) and the [risk appetite](../../../.ai/about.md#risk-appetite) outrank this skill's own reasoning. The slice card's `Ships` list is still the scope contract — repairs may complete it, never widen it.
 
 ## Why this exists
 
 Three gates already ran, and all three read **documents**. This one reads **code**, which diverges from its plan in ways no document review can predict. Four structural facts, each a defect class:
 
 1. **A ticked box is a claim, not evidence.** `opsx:apply` ticks the task it just worked on. Nothing between that tick and the archive checks that the code behind it does what the task said — and the ticks accumulate fastest exactly where the builder was most tired.
-2. **`pnpm verify` green is the floor, not the ceiling.** Exit 0 proves the suite that *exists* passes. It cannot see a requirement nobody wrote a test for, a screen state nobody wrote at all, an outbox `dedupe_key` that is present but not unique, a `.ai` doc that now lies, or a flow the owner cannot walk. Every one of those ships green.
+2. **`pnpm verify` green is the floor, not the ceiling.** Exit 0 proves the suite that *exists* passes. It cannot see a requirement nobody wrote a test for, a recovery path nobody exercised, an outbox `dedupe_key` that is present but not unique, a `.ai` doc that now lies, or a flow the owner cannot walk. Every one of those ships green.
 3. **A divergence is not automatically a defect — a *silent* one always is.** The plan was written by someone who had not seen the code. Sometimes the implementation is simply right and the plan was wrong. That is allowed. What is not allowed is that nothing records it, because the next slice reads the plan and the docs, never the diff.
 4. **This is the last moment anything is cheap.** After `opsx:archive` the change artifacts stop being read and `.ai/` becomes the only memory. A doc that lies here lies forever, and slice N+1 is built on it.
 
@@ -41,18 +41,18 @@ Every finding here is a **divergence between two things that were supposed to ag
 | --- | --- | --- |
 | **1 — the code is wrong** | a ratified `.ai/` doc, a binding `pp-*` `Always`/`Never`, a spec delta's scenario, or plain correctness settles it | Fix the code. Cite the `doc.md#anchor` or the skill's rule, quoted verbatim, or the `file:line` that proves the bug. One commit |
 | **2 — the plan was wrong and the code is right** | the implementation made the better call and the repo or a binding rule proves it | Keep the code. Write the departure and its reason into `design.md`, and correct `tasks.md` / the spec delta so they describe what exists. **Never leave it silent** |
-| **3 — a ratified doc now contradicts working code** | rung 1 or 2 settled which is right, and a `.ai/` doc says otherwise | Correct the doc — but only the **duties this change owes** (status and `Ships` boxes, the `Modeled` index, `api-contract.md`, `views.md`, a folder tree, `.env.example`) or a plain factual correction. A *decision* changing is rung 5 |
-| **4 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument into the artifact**, not just the report. Build cost and testability are the reasons that survive; [integrator harm in the gap is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
+| **3 — a ratified doc now contradicts working code** | rung 1 or 2 settled which is right, and a `.ai/` doc says otherwise | Correct the doc — but only the **duties this change owes** (status and `Ships` boxes, the `Modeled` index, `api-contract.md`, the root `AGENTS.md` Projects table, `.env.example`) or a plain factual correction. A *decision* changing is rung 5 |
+| **4 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument into the artifact**, not just the report. Build cost and testability are the reasons that survive; [adopter or reviewer harm in the gap is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
 | **5 — two lawful paths still stand, or the repair is Ask-first** | both survive every rung above, or the fix is a DB schema change, a new dependency, a CI change or a public-contract change | Do not pick silently and do not commit. Prepare the fix, hold it for the owner round |
-| **6 — a legal, fiscal or commercial unknown** | no research settles it | Do not decide. Route it to [`wf-open-question`](../wf-open-question/SKILL.md) and record it in [about.md → Open questions](../../../.ai/about.md#open-questions) as a task, not an edit |
+| **6 — an unverified Resend behaviour, or a legal or commercial unknown** | no research settles it | Do not decide. Record it in [about.md → Open questions](../../../.ai/about.md#open-questions) tagged `[Unverified]`, and put it to the owner in the owner-decision round |
 
 **Three hard stops, and none of them bend:**
 
 - **Never disable, skip, or loosen a gate to make it green.** That is the [`Never` tier](../../../AGENTS.md#permissions) — no approval path exists. A failing stage *is* the finding.
-- **Never invent a fact** to justify a repair — a price, a rate, a provider behaviour, a statute, a build estimate. That is rung 5 or 6, never rung 4.
-- **Never edit an applied migration** ([`pp-database` → Never](../pp-database/SKILL.md)); a schema fix is a new forward migration, and it is Ask-first.
+- **Never invent a fact** to justify a repair — a price, a rate limit, a Resend or AWS behaviour, a build estimate. That is rung 5 or 6, never rung 4.
+- **Never edit an applied migration** ([`pp-database` → Never](../pp-database/SKILL.md#never)); a schema fix is a new forward migration, and it is Ask-first.
 
-**If you are implementing rather than repairing, stop.** Unticked tasks, a whole group with no code behind it, or a slice whose UI surfaces do not exist is an *apply* job. Say so, point at `opsx:apply`, and do not quietly become it.
+**If you are implementing rather than repairing, stop.** Unticked tasks, a whole group with no code behind it, or a slice whose API, CLI or MCP surface does not exist is an *apply* job. Say so, point at `opsx:apply`, and do not quietly become it.
 
 ## Committing the repairs
 
@@ -72,7 +72,7 @@ Every finding here is a **divergence between two things that were supposed to ag
 | [findings.md](references/findings.md) | Passes 2, 3 and 5 — the seven finding classes, each with its tell, what it costs after archive, and how it closes; plus the doc-duty ledger |
 | [diff-review.md](references/diff-review.md) | Pass 4 — the per-surface correctness and security checklists, and the brief to hand each helper reader verbatim |
 
-Load [`pp-workflow`](../pp-workflow/SKILL.md) and [`pp-general`](../pp-general/SKILL.md) alongside this skill, always. Load the task-relevant `pp-*` skills **for every surface the diff touches** — that is not optional, it is what pass 4 checks against. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for the `.ai/` anchors; use it rather than re-deriving them.
+Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill, always. Load [`pp-database`](../pp-database/SKILL.md) and [`pp-backend`](../pp-backend/SKILL.md) **for every surface the diff touches** — that is not optional, it is what pass 4 checks against. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for the `.ai/` anchors; use it rather than re-deriving them.
 
 ## Pipeline
 
@@ -92,9 +92,9 @@ Find the change: the directory the user named, else the newest under `openspec/c
 
 Establish the **diff range**, because everything downstream is scoped by it: `git merge-base main HEAD`, unless the user names a base. Confirm it with `git diff --stat <base>...HEAD` and say the number out loud in the report — a reviewer who does not know what was read cannot judge what was missed.
 
-**Read nothing that was generated.** A lock file, the emitted OpenAPI document, `packages/api-client/`, build output and binary assets are the *shadow* of a decision taken somewhere else, and reading them spends the budget the files carrying decisions need. The script excludes them from every worklist — but it counts them, because their presence or absence answers duty questions the reading cannot ([diff-review.md → What not to read](references/diff-review.md#what-not-to-read)).
+**Read nothing that was generated.** A lock file, Drizzle Kit's `meta/` snapshots, `cdk.out/`, build output and binary assets are the *shadow* of a decision taken somewhere else, and reading them spends the budget the files carrying decisions need. The script excludes them from every worklist — but it counts them, because their presence or absence answers duty questions the reading cannot ([diff-review.md → What not to read](references/diff-review.md#what-not-to-read)).
 
-**Start `pnpm verify` in the background now.** It needs Docker and it is the slowest thing in the run, so it should be burning wall-clock while you read rather than after. If Docker is not up, say so plainly and treat the gate as **not run** — [exit 0 with every stage run is the only definition of done](../pp-workflow/references/definition-of-done.md), and a partial run is not a lesser pass, it is no pass.
+**Start `pnpm verify` in the background now.** It needs Docker and it is the slowest thing in the run, so it should be burning wall-clock while you read rather than after. If Docker is not up, say so plainly and treat the gate as **not run** — [exit 0 with every stage run is the only definition of done](../pp-workflow/SKILL.md#definition-of-done), and a partial run is not a lesser pass, it is no pass.
 
 Then read the **whole slice card** in [`build-checklist.md`](../../../.ai/build-checklist.md) from the file, and the change's `REVIEW.md` if it has one — its *"What this review could not confirm"* section is a worklist written specifically for this gate, by the last reader who had the whole change in their head. Finally make the verify-vs-implement call above, once, before spending anything.
 
@@ -105,7 +105,7 @@ node .agents/skills/wf-after-apply-check/scripts/check.mjs                    # 
 node .agents/skills/wf-after-apply-check/scripts/check.mjs <change> --base <ref>
 ```
 
-It runs `openspec validate --strict` and then everything that tool cannot: unticked tasks, every backticked identifier the change promised that the tree does not contain, the doc duties `pp-workflow` owes checked one by one against the actual files, generated-artifact coupling (a contract change with no regenerated client, a `schema.prisma` change with no migration), and a set of tripwire greps over **added lines only** — a client-supplied `tenant_id`, raw unparameterised SQL, a new table with no RLS, `GRANT ALL`, a hardcoded secret shape, `process.env` in a client component, float arithmetic on money, a suppressed type error, a skipped test, PII in a log, and stray `TODO`/`NUL`/scratch residue.
+It runs `openspec validate --strict` and then everything that tool cannot: unticked tasks, every backticked identifier the change promised that the tree does not contain, the doc duties `pp-workflow` owes checked one by one against the actual files, schema coupling (a `packages/db` schema change with no new migration, an edited migration, a new table with no app-role grant), and a set of tripwire greps over **added lines only** — raw unparameterised SQL (`sql.raw`), `GRANT ALL`, a hardcoded secret shape, a suppressed type error, a skipped test, `console.*` where the logger belongs, and stray `TODO`/`NUL`/scratch residue.
 
 It also builds **five worklists**, and this is where the expensive defects hide:
 
@@ -113,7 +113,7 @@ It also builds **five worklists**, and this is where the expensive defects hide:
 - **`undeclared`** — files in the diff that no task names. Either scope crept or a task's text is wrong; both matter.
 - **`duties`** — each doc obligation with its verdict, so the ones that are genuinely discharged stop costing you reading.
 - **`unconfirmed`** — the bullets `REVIEW.md` said it could not confirm, lifted verbatim. Every one of them is now checkable.
-- **`surfaces`** — the diff bucketed into schema / backend / frontend / tests-docs, with line counts. This is the split you hand the helpers in pass 4.
+- **`surfaces`** — the diff bucketed into schema / backend / sdk-cli-mcp / tests-docs, with line counts. This is the split you hand the helpers in pass 4.
 
 `BLOCK` items are wrong as written. `READ` items are for your judgement — the script says "this is the shape of a defect", not "this is one". **A clean run is not a finished slice.** It means the cheap defects are gone and the reading can start.
 
@@ -131,11 +131,11 @@ The change artifacts are archived and forgotten; `.ai/` is the memory. This pass
 
 Two directions, and both matter:
 
-**Do the docs still describe the system?** Take every `.ai/` statement the slice touched — the model sections, the ADRs, `api-contract.md`'s operation entries, `views.md`'s screen rows, the vocabulary in `about.md` — and check it against the code that now exists. A doc that describes an earlier plan is [B3](references/findings.md), the most expensive class in this file, because it is invisible and it compounds.
+**Do the docs still describe the system?** Take every `.ai/` statement the slice touched — the model sections, the ADRs, `api-contract.md`'s operation entries and error codes, the vocabulary in `about.md` — and check it against the code that now exists. A doc that describes an earlier plan is [B3](references/findings.md), the most expensive class in this file, because it is invisible and it compounds.
 
-**Were the duties discharged?** The `duties` worklist gives you the mechanical verdict; you judge the substance. [findings.md](references/findings.md) carries the full ledger, but the ones routinely missed are the `Modeled` checkbox, an `api-contract.md` entry whose *scope or transition* changed rather than its name, and the project `AGENTS.md` folder tree after a new folder appeared.
+**Were the duties discharged?** The `duties` worklist gives you the mechanical verdict; you judge the substance. [findings.md](references/findings.md) carries the full ledger, but the ones routinely missed are the `Modeled` checkbox, an `api-contract.md` entry whose *scope or errors* changed rather than its name, and the root `AGENTS.md` Projects table after a new project appeared.
 
-Then run the **self-service test** yourself rather than reading the proposal's answer: walk `deploy → point the Resend webhook → ingest → query → recover → tear down` for the stages this slice touches, and at each step ask *who has to do something by hand for this to work?* A fallback the code introduced but the deferred tail does not name is scope that quietly left the plan.
+Then run the **self-service test** yourself rather than reading the proposal's answer: walk [`deploy → connect the webhook → ingest → query → recover → tear down`](../../../.ai/about.md#guiding-principles) for the stages this slice touches, and at each step ask *who has to do something by hand for this to work?* A fallback the code introduced but the deferred tail does not name is scope that quietly left the plan.
 
 ### Pass 4 — The diff itself: bugs, then a hostile reader
 
@@ -145,19 +145,19 @@ Open [diff-review.md](references/diff-review.md). Split the diff by the script's
 
 Two lenses per surface, and they are not the same lens:
 
-- **Correctness** asks *what input makes this wrong?* The recurring shapes here are read-then-write races, a missing transaction boundary, an outbox row outside its transaction, a handler that is not idempotent under at-least-once delivery, an off-by-one in a cap, a null the type system was told could not happen, a screen state nobody wrote, and state that started depending on arrival order somewhere in the middle.
-- **Security** asks *what would a hostile caller do with this?* And in this codebase the first question is always **verification at the edge** — nothing unverified reaches the queue — and every other class is downstream of it. Then authorization before the command runs, a client-supplied value trusted, PII in a log or a URL, a secret in the tree, an unvalidated input, and a storage path or object id that belongs to somebody else.
+- **Correctness** asks *what input makes this wrong?* The recurring shapes here are read-then-write races, a missing transaction boundary, an outbox row outside its transaction, a handler that is not idempotent under at-least-once delivery, an off-by-one in a cap, a null the type system was told could not happen, a recovery path that replays into a non-idempotent handler, and state that started depending on arrival order somewhere in the middle.
+- **Security** asks *what would a hostile caller do with this?* And in this codebase the first question is always **verification at the edge** — nothing unverified reaches the queue — and every other class is downstream of it. Then authorization before the command runs, a client-supplied value trusted, PII in a log, a URL or an MCP tool result, a secret in the tree, an unvalidated input, and an `operate` command reachable with a `read` token.
 
-The finding that matters most is the one `pnpm verify` structurally cannot see: **a policy that exists but permits, a guard that runs but checks the wrong thing, a test that asserts the happy path only.** Those pass every stage and they are exactly what this pass is for.
+The finding that matters most is the one `pnpm verify` structurally cannot see: **a constraint that exists but is too wide, a scope check that runs but checks the wrong thing, a test that asserts the happy path only.** Those pass every stage and they are exactly what this pass is for.
 
 ### Pass 5 — The walk: can the owner actually use this?
 
 [`WALKTHROUGH.md`](../../../.ai/build-checklist.md#how-to-work-this-checklist) is the slice's own acceptance script, and this is the last chance to find out it does not work. Read it against the code, step by step:
 
-- **Does each step's mechanism exist and connect?** The URL is routed, the button calls the action, the action reaches the command, the command returns what the screen renders, the seed row the step names is in `seed.sql`. The failure shape is a capability that exists on the server and is unreachable from the screen.
-- **Does the copy on the step match the copy in the code?** A walkthrough quoting a user-facing string the code does not contain means one of them moved, and the owner will find out mid-walk.
+- **Does each step's mechanism exist and connect?** The CLI command exists, it calls the SDK method, the SDK reaches a routed operation, the operation returns what the step expects, and the fixture or simulator scenario the step names exists. The failure shape is a capability that exists in the API and is unreachable from the CLI.
+- **Does the output on the step match the output in the code?** A walkthrough quoting a CLI message, an error `code` or a `hint` the code does not contain means one of them moved, and the owner will find out mid-walk.
 - **Does every step that cannot be completed today name the slice that carries it, inline?** That rule has teeth: an unwalkable step with no destination *is* the slice not being done, and `pnpm verify` cannot see it.
-- **Does every role on the card's `UI surfaces` line have a path?** A claimed flow no role can reach is [a finding against this slice](../../../.ai/build-checklist.md#how-to-work-this-checklist), not a note for a later one.
+- **Does every surface the card claims have a path?** A claimed flow no command, route or simulator run can reach is [a finding against this slice](../../../.ai/build-checklist.md#how-to-work-this-checklist), not a note for a later one.
 
 Where the walkthrough is wrong and the code is right, fix the walkthrough. Where the code cannot support the walk, that is a rung-1 code fix — or, if it is real unbuilt scope, the slice is not done and you say so.
 
@@ -165,7 +165,7 @@ Where the walkthrough is wrong and the code is right, fix the walkthrough. Where
 
 Apply the fix ladder, one commit per fix, per [Committing the repairs](#committing-the-repairs). Rules:
 
-- **Fix at the layer that owns the rule.** A business rule goes in `packages/core`, never in the CLI, the MCP server or a handler. A copy fix goes where the string lives. A behaviour that changed goes in the spec delta *and* the code.
+- **Fix at the layer that owns the rule.** A business rule goes in `packages/core`, never in the CLI, the MCP server or a handler. An error-copy fix goes where the `message` or `hint` lives. A behaviour that changed goes in the spec delta *and* the code.
 - **Fix every occurrence.** Many files describe the same objects; a contradiction closed in one is a contradiction still.
 - **A repair that needs a schema change, a new dependency, a CI change or a contract change is Ask-first.** Prepare it — write the migration, stage the edit — and hold it for the owner round. Do not commit it.
 - **Re-run the script after editing**, and **re-run `pnpm verify` after the last code commit.** A repair pass that ends without a green gate has not ended.
@@ -184,7 +184,7 @@ Then write **`VERIFICATION.md`** in the change directory — at most ~30 lines, 
 - <what you decided under rungs 1–4, and the one sentence that would change it>
 
 ## What this verification could not confirm
-- <the thing only a browser, the owner, or a professional can settle>
+- <the thing only a live deploy, a real Resend account, or the owner can settle>
 ```
 
 That last section is the point of the file: `opsx:archive` and slice N+1 should know which claims were verified and which were taken on trust.
@@ -223,7 +223,7 @@ Your call (<n>, ideally 0)
   <B, only if genuinely live> — <what it means, what it costs>
 
 What I could not check
-- <the browser step, the failed lookup, the pass you cut, the thing only you know>
+- <the live-deploy step, the failed lookup, the pass you cut, the thing only you know>
 
 Done. Run `opsx:archive`.  ·or·  <what is still open and what closes it>
 ```

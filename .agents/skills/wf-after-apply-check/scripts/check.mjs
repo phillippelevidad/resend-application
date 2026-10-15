@@ -9,8 +9,8 @@
 // the slice card, the pre-apply `REVIEW.md`, and the diff itself.
 //
 // It reports only what a machine can decide with certainty: an unticked task, an identifier the
-// change promised that the tree does not contain, a doc duty nobody discharged, a `CREATE TABLE`
-// with no RLS, a suppressed type error, a skipped test. What it cannot decide it turns into a
+// change promised that the tree does not contain, a doc duty nobody discharged, a Drizzle schema
+// change with no migration, a suppressed type error, a skipped test. What it cannot decide it turns into a
 // worklist for the reading passes rather than a verdict.
 //
 // Generated and binary files are counted as *evidence* and never listed for reading — a lock
@@ -209,8 +209,21 @@ if (!base) {
   process.exit(2);
 }
 
+// Drizzle Kit's `meta/` snapshots and journal are emitted alongside each migration; the `.sql`
+// file is the reviewable thing.
 const NOISE =
-  /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|\.pnp\.cjs)$|(^|\/)(node_modules|dist|build|coverage|\.next|\.turbo)\/|(^|\/)packages\/api-client\/|\.(snap|map|tsbuildinfo|min\.js|png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf|eot|pdf|zip|mp4|webm)$|(^|\/)openapi\.(json|ya?ml)$|(^|\/)prisma\/generated\//i;
+  /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|\.pnp\.cjs)$|(^|\/)(node_modules|dist|build|coverage|cdk\.out|\.turbo)\/|^packages\/db\/(drizzle|migrations)\/meta\/|\.(snap|map|tsbuildinfo|min\.js|png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf|eot|pdf|zip|mp4|webm)$/i;
+
+// Migrations live under `packages/db/`; the exact folder is not named yet, so accept both.
+const MIGRATION = /^packages\/db\/(drizzle|migrations)\/.*\.sql$/;
+const TEST_FILE = /\.(spec|test)\.[jt]sx?$/;
+// The Drizzle schema: `packages/db/src/schema/**`, or any `packages/db/src` file declaring a table.
+const isSchemaFile = (p) => {
+  if (!/^packages\/db\/src\/.*\.ts$/.test(p) || TEST_FILE.test(p)) return false;
+  if (p.startsWith("packages/db/src/schema/")) return true;
+  const full = join(repoRoot, p);
+  return existsSync(full) && /\bpgTable\s*\(/.test(readFileSync(full, "utf8"));
+};
 
 const parseDiff = (text) => {
   const files = new Map();
@@ -267,15 +280,19 @@ const noisePaths = allPaths.filter((p) => NOISE.test(p));
 const readable = allPaths.filter((p) => !NOISE.test(p));
 
 const bucketOf = (p) => {
-  if (/^supabase\/|^backend\/prisma\//.test(p)) return "schema";
-  if (/\.(spec|test)\.[jt]sx?$/.test(p)) return "tests-docs";
-  if (/^backend\//.test(p)) return "backend";
-  if (/^(storefront|backoffice|admin|auth|packages\/ui)\//.test(p))
-    return "frontend";
+  if (TEST_FILE.test(p)) return "tests-docs";
+  if (/^packages\/db\//.test(p)) return "schema";
+  if (/^(apps\/(cli|mcp)|packages\/sdk)\//.test(p)) return "sdk-cli-mcp";
+  if (/^(apps|packages|infra|sim|scripts)\//.test(p)) return "backend";
   return "tests-docs";
 };
 
-const buckets = { schema: [], backend: [], frontend: [], "tests-docs": [] };
+const buckets = {
+  schema: [],
+  backend: [],
+  "sdk-cli-mcp": [],
+  "tests-docs": [],
+};
 for (const p of readable) buckets[bucketOf(p)].push(p);
 
 const addedOf = (p) => diffFiles.get(p)?.added ?? [];
@@ -298,24 +315,6 @@ for (const [name, list] of Object.entries(buckets))
 
 // generated files are evidence, not reading
 {
-  const clientTouched = noisePaths.some((p) =>
-    p.startsWith("packages/api-client/"),
-  );
-  const contractTouched = readable.some((p) =>
-    /^backend\/src\/.*\.(controller|schema|dto)\.ts$/.test(p),
-  );
-  if (contractTouched && !clientTouched)
-    record(
-      "generated",
-      "BLOCK",
-      "backend controller/schema files changed and `packages/api-client/` did not — `pnpm generate:api-client` was not run in this change (pp-workflow → Always)",
-    );
-  if (clientTouched && !contractTouched)
-    record(
-      "generated",
-      "READ",
-      "`packages/api-client/` changed with no controller/schema change in the diff — confirm the regeneration was not picking up unrelated drift",
-    );
   const lock = noisePaths.find((p) =>
     /(pnpm-lock\.yaml|package-lock\.json)$/.test(p),
   );
@@ -327,15 +326,24 @@ for (const [name, list] of Object.entries(buckets))
       `${lock} changed — a dependency moved, which is **Ask-first**. Read ${pkgs.length ? pkgs.join(" ") : "the package.json diff (none in this range — check why)"}, never the lock`,
     );
   }
-  const prismaChanged = readable.includes("backend/prisma/schema.prisma");
+  const schemaChanged = readable.filter(isSchemaFile);
   const migrationAdded = readable.some(
-    (p) => p.startsWith("supabase/migrations/") && nameStatus.get(p) === "A",
+    (p) => MIGRATION.test(p) && nameStatus.get(p) === "A",
   );
-  if (prismaChanged && !migrationAdded)
+  if (schemaChanged.length && !migrationAdded)
     record(
       "generated",
       "BLOCK",
-      "`backend/prisma/schema.prisma` changed and no migration was added under `supabase/migrations/` — the drift stage should have caught this",
+      `the \`packages/db\` schema changed (${schemaChanged.join(" ")}) and no migration was added under \`packages/db/(drizzle|migrations)/\` — the drift stage should have caught this`,
+    );
+  const editedMigrations = readable.filter(
+    (p) => MIGRATION.test(p) && nameStatus.get(p) === "M",
+  );
+  if (editedMigrations.length)
+    record(
+      "generated",
+      "BLOCK",
+      `existing migration(s) edited: ${editedMigrations.join(" ")} — a pushed migration is never edited; the fix is a new forward migration, Ask-first (pp-database → Never)`,
     );
 }
 
@@ -409,20 +417,26 @@ if (tasks) {
 
 // ---------------------------------------------------------------- source tree index
 
-const SOURCE_ROOTS = [
-  "backend/src",
-  "backend/prisma",
-  "supabase",
-  "storefront/src",
-  "backoffice/src",
-  "admin/src",
-  "auth/src",
-  "packages/ui/src",
-  "scripts",
+const SOURCE_ROOTS = ["packages", "apps", "infra", "sim", "scripts"];
+// The planned layout — root AGENTS.md → Projects.
+const PROJECTS = [
+  "packages/core",
+  "packages/db",
+  "packages/resend-client",
+  "packages/sdk",
+  "apps/ingest",
+  "apps/worker",
+  "apps/dispatcher",
+  "apps/reconciler",
+  "apps/api",
+  "apps/cli",
+  "apps/mcp",
+  "infra",
+  "sim",
 ];
-const SOURCE_EXT = /\.(ts|tsx|js|mjs|sql|prisma|json)$/;
+const SOURCE_EXT = /\.(ts|tsx|js|mjs|sql|json)$/;
 const FILE_EXTS =
-  /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml|prisma|css|scss|html|sh|env|lock|toml|txt|png|svg)$/i;
+  /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml|css|html|sh|env|lock|toml|txt|png|svg)$/i;
 
 const sourceTokens = (() => {
   const tokens = new Set();
@@ -434,7 +448,9 @@ const sourceTokens = (() => {
       return;
     }
     for (const e of entries) {
-      if (["node_modules", ".next", "dist", "generated"].includes(e.name))
+      if (
+        ["node_modules", "dist", "cdk.out", "coverage", "meta"].includes(e.name)
+      )
         continue;
       const p = join(dir, e.name);
       if (e.isDirectory()) walk(p);
@@ -474,7 +490,7 @@ function cleanToken(raw) {
       "value values type types kind kinds name names item items list lists data row rows " +
       "column columns field fields state status active pending closed error errors page pages " +
       "read reads write writes command commands event events job jobs test tests spec specs " +
-      "tenant tenants operator operators seller sellers buyer buyers admin"
+      "email emails recipient recipients webhook webhooks token tokens scope scopes"
     ).split(/\s+/),
   );
   // A line that defers something, rules it out, or routes it to another slice is naming a
@@ -658,17 +674,23 @@ const sliceId = (() => {
       "could not resolve the slice id from the change — check the card by hand",
     );
 
-  // data-modeling Model index: every new Prisma model ticked
-  const newModels = addedOf("backend/prisma/schema.prisma")
-    .map((a) => /^model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/.exec(a.text)?.[1])
-    .filter(Boolean);
+  // data-modeling Model index: every new Drizzle table ticked
+  const newModels = [
+    ...new Set(
+      readable
+        .filter(isSchemaFile)
+        .flatMap((p) => addedOf(p))
+        .map(
+          (a) =>
+            /\bpgTable\s*\(\s*["'`]([a-z_][a-z0-9_]*)["'`]/.exec(a.text)?.[1],
+        )
+        .filter(Boolean),
+    ),
+  ];
   if (newModels.length && dataModeling) {
     const untickedModels = newModels.filter((m) => {
-      const snake = m.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
       const row = dataModeling.lines.find(
-        (l) =>
-          (l.includes(`\`${snake}\``) || l.includes(`\`${m}\``)) &&
-          /^\s*\|/.test(l),
+        (l) => l.includes(`\`${m}\``) && /^\s*\|/.test(l),
       );
       return !row || !/\[x\]/i.test(row);
     });
@@ -681,15 +703,15 @@ const sliceId = (() => {
     record(
       "duties",
       "READ",
-      `${newModels.length} new Prisma model(s) in this change: ${newModels.join(", ")} — each also owes a \`###\` section in data-modeling.md that matches the migration`,
+      `${newModels.length} new Drizzle table(s) in this change: ${newModels.join(", ")} — each also owes a \`###\` section in data-modeling.md that matches the migration`,
     );
   }
 
   // api-contract: operation-shaped names the change introduces
   if (apiContract) {
-    // `proxy.ts` is a file and `crypto.randomBytes` is a library call; neither is an operation.
+    // `handler.ts` is a file and `crypto.randomBytes` is a library call; neither is an operation.
     const NOT_AN_OP =
-      /^(prisma|crypto|console|process|storage|path|fs|os|util|url|http|https|zod|next|react|node|math|json|object|array|string|number|date|promise|window|document|globalThis)$/i;
+      /^(drizzle|sql|db|tx|crypto|console|process|path|fs|os|util|url|http|https|zod|z|vi|fc|cdk|aws|node|math|json|object|array|string|number|date|promise|globalThis)$/i;
     const ops = new Set();
     for (const doc of artifacts)
       for (const m of doc.text.matchAll(
@@ -716,16 +738,9 @@ const sliceId = (() => {
       );
   }
 
-  // env vars — every project keeps its own `.env.example`
+  // env vars — the root `.env.example`, plus any a project keeps of its own
   {
-    const examples = [
-      "backend",
-      "storefront",
-      "backoffice",
-      "admin",
-      "auth",
-      ".",
-    ]
+    const examples = [".", ...PROJECTS]
       .map((p) => join(repoRoot, p, ".env.example"))
       .filter((p) => existsSync(p))
       .map((p) => readFileSync(p, "utf8"))
@@ -750,34 +765,30 @@ const sliceId = (() => {
       );
   }
 
-  // folder trees
+  // project folders — root AGENTS.md → Projects is the one table
   {
-    const newDirs = new Set();
+    const rootAgents = loadDoc("AGENTS.md", join(repoRoot, "AGENTS.md"));
+    const newProjects = new Set();
     for (const p of readable) {
       if (nameStatus.get(p) !== "A") continue;
-      const parts = p.split("/");
-      if (parts.length < 3) continue;
-      newDirs.add(parts.slice(0, parts.length - 1).join("/"));
+      const m = /^((?:apps|packages)\/[^/]+|infra|sim)\//.exec(p);
+      if (m) newProjects.add(m[1]);
     }
-    const projects = ["backend", "storefront", "backoffice", "admin", "auth"];
-    const unnamed = [];
-    for (const d of newDirs) {
-      const proj = projects.find((p) => d.startsWith(`${p}/`));
-      if (!proj) continue;
-      const agents = loadDoc(
-        `${proj}/AGENTS.md`,
-        join(repoRoot, proj, "AGENTS.md"),
-      );
-      if (!agents) continue;
-      const leaf = d.split("/").pop();
-      if (!agents.text.includes(leaf))
-        unnamed.push(`${d} (→ ${proj}/AGENTS.md)`);
-    }
+    const unnamed = [...newProjects].filter(
+      (d) => rootAgents && !rootAgents.text.includes(`**${d}**`),
+    );
     if (unnamed.length)
       record(
         "duties",
+        "BLOCK",
+        `project folder(s) with added files that root AGENTS.md → Projects does not list: ${unnamed.join(" · ")} — the table is updated as projects land`,
+      );
+    const strays = [...newProjects].filter((d) => !PROJECTS.includes(d));
+    if (strays.length)
+      record(
+        "duties",
         "READ",
-        `folder(s) whose leaf name no project AGENTS.md tree mentions: ${unnamed.slice(0, 15).join(" · ")}${unnamed.length > 15 ? " …" : ""} — the tree duty is per added/removed/repurposed folder`,
+        `project folder(s) outside the planned layout: ${strays.join(" · ")} — a new project is a layout decision; confirm the Projects table was updated deliberately`,
       );
   }
 
@@ -824,24 +835,17 @@ const sliceId = (() => {
 
 const tripwires = [
   {
-    id: "client tenant_id",
-    level: "BLOCK",
-    where: /^(backend|storefront|backoffice|admin|auth)\//,
-    re: /tenant_?[Ii]d\s*[:=][^;\n]*\b(req|request)\.(body|query|params|headers)|\b(body|query|params|headers)\.[a-zA-Z]*[Tt]enant_?[Ii]d/,
-    why: "a client-supplied `tenant_id` — the `Never` with no exceptions anywhere in this repo",
-  },
-  {
     id: "raw sql",
     level: "BLOCK",
-    where: /^backend\//,
-    re: /\$(queryRawUnsafe|executeRawUnsafe)\b|Prisma\.raw\(/,
-    soften: /\.(spec|test)\.[jt]sx?$/,
-    why: "unparameterised raw SQL; RLS does not protect against injection",
+    where: /^(apps|packages|infra|sim|scripts)\//,
+    re: /\bsql\.raw\s*\(|\.unsafe\s*\(/,
+    soften: TEST_FILE,
+    why: "unparameterised raw SQL — Drizzle's `sql` template binds parameters, `sql.raw` does not",
   },
   {
     id: "grant all",
     level: "BLOCK",
-    where: /^supabase\//,
+    where: MIGRATION,
     re: /GRANT\s+ALL\b/i,
     why: "`GRANT ALL` — grant the narrowest privileges the table needs, per command",
   },
@@ -852,20 +856,6 @@ const tripwires = [
     re: /(sk_live_|sk_test_|xoxb-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY)|((password|secret|api_?key|access_?token)\s*[:=]\s*["'][^"'$\s]{16,}["'])/i,
     soften: /\.(spec|test)\.[jt]sx?$|(^|\/)(seed\.sql|fixtures?)\b/,
     why: "a credential shape in the tree — a key in a fixture is a key in the history",
-  },
-  {
-    id: "public secret",
-    level: "BLOCK",
-    where: /./,
-    re: /NEXT_PUBLIC_[A-Z0-9_]*(SECRET|PRIVATE|SERVICE|PASSWORD)/,
-    why: "a server-only value under a `NEXT_PUBLIC_` name reaches the browser bundle",
-  },
-  {
-    id: "dangerous html",
-    level: "READ",
-    where: /^(storefront|backoffice|admin|auth|packages)\//,
-    re: /dangerouslySetInnerHTML/,
-    why: "stored XSS wherever the content is user-authored or comes from a webhook payload",
   },
   {
     id: "suppressed type error",
@@ -886,20 +876,10 @@ const tripwires = [
   {
     id: "console",
     level: "READ",
-    where:
-      /^(backend\/src|storefront\/src|backoffice\/src|admin\/src|auth\/src)\//,
+    // The CLI prints to stdout on purpose; everywhere else Winston is the interface.
+    where: /^(apps\/(?!cli\/)[^/]+|packages\/[^/]+)\/src\//,
     re: /console\.(log|info|debug|warn)\s*\(/,
     why: "the logger is the interface, and PII must never reach a log line",
-  },
-  {
-    id: "float money",
-    level: "BLOCK",
-    where: /^(backend|storefront|backoffice|admin)\//,
-    re: /(price|amount|total|valor|fee|commission|payout|centavos)[A-Za-z_]*\s*[:=][^;\n]*(parseFloat|Number\.parseFloat|toFixed|\/\s*100(?!\d))|(parseFloat|toFixed)\([^)]*(price|amount|total|valor)/i,
-    // Money is integer end-to-end in the backend; the display layer is where centavos
-    // legitimately become an R$ string, so a hit there is a read, not a block.
-    soften: /^(storefront|backoffice|admin|auth|packages)\//,
-    why: "money stopped being an integer somewhere in this line",
   },
   {
     id: "residue",
@@ -911,15 +891,15 @@ const tripwires = [
   {
     id: "control char",
     level: "BLOCK",
-    where: /\.(ts|tsx|js|mjs|sql|prisma|json|md)$/,
+    where: /\.(ts|tsx|js|mjs|sql|json|md)$/,
     re: new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]"),
     why: "a control byte written into a source file — the known failure mode of shell-based editing on this machine",
   },
 ];
 
 // A hit in a place where the pattern is the *correct* thing to do is still worth seeing, and
-// is still wrong as a BLOCK: an isolation test reaches for raw SQL on purpose, and a UI
-// formatter divides centavos by 100 because that is exactly what pp-ux-copy asks for.
+// is still wrong as a BLOCK: a migration test reaches for raw SQL on purpose, and a fixture
+// carries a fake key shape so the verifier has something to reject.
 for (const t of tripwires) {
   const hits = allAdded.filter(
     (a) => t.where.test(a.path) && t.re.test(a.text),
@@ -945,142 +925,90 @@ for (const t of tripwires) {
   }
 }
 
-// process.env inside a client component
-{
-  const clientLeaks = [];
-  for (const p of readable) {
-    if (!/^(storefront|backoffice|admin|auth|packages)\/.*\.tsx?$/.test(p))
-      continue;
-    const full = join(repoRoot, p);
-    if (!existsSync(full)) continue;
-    const text = readFileSync(full, "utf8");
-    if (!/^\s*["']use client["']/m.test(text)) continue;
-    for (const a of addedOf(p))
-      if (/process\.env\.(?!NEXT_PUBLIC_)/.test(a.text))
-        clientLeaks.push(`${p}:${a.n}`);
-  }
-  if (clientLeaks.length)
-    record(
-      "patterns",
-      "BLOCK",
-      `a server-side \`process.env\` value read inside a "use client" file: ${clientLeaks.slice(0, 8).join(" · ")}`,
-    );
-}
+// ---------------------------------------------------------------- app-role grants on every new table
 
-// ---------------------------------------------------------------- RLS on every new table
-
+// pp-database's gate asks for the app role's grants on every new table. The role name is not
+// fixed yet, so this accepts any `GRANT … ON <table> … TO` and leaves the role to the reader.
 {
-  const migrations = readable.filter((p) =>
-    p.startsWith("supabase/migrations/"),
-  );
-  const migText = migrations
+  const migText = readable
+    .filter((p) => MIGRATION.test(p))
     .map((p) => {
       const full = join(repoRoot, p);
       return existsSync(full) ? readFileSync(full, "utf8") : "";
     })
     .join("\n");
   const created = [
-    ...migText.matchAll(
-      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi,
+    ...new Set(
+      [
+        ...migText.matchAll(
+          /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?public"?\.)?"?([a-z_][a-z0-9_]*)"?/gi,
+        ),
+      ].map((m) => m[1]),
     ),
-  ].map((m) => m[1]);
-  for (const t of new Set(created)) {
-    if (/^pgboss/i.test(t)) continue;
-    const enabled = new RegExp(
-      `ALTER\\s+TABLE[^;]*\\b${t}\\b[^;]*ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`,
-      "i",
-    ).test(migText);
-    const forced = new RegExp(
-      `ALTER\\s+TABLE[^;]*\\b${t}\\b[^;]*FORCE\\s+ROW\\s+LEVEL\\s+SECURITY`,
-      "i",
-    ).test(migText);
-    const helper = new RegExp(`apply_tenant_rls\\s*\\(\\s*'${t}'`, "i").test(
-      migText,
-    );
-    const policy = new RegExp(
-      `CREATE\\s+POLICY[^;]*\\bON\\s+(?:public\\.)?${t}\\b`,
-      "i",
-    ).test(migText);
-    if (helper) continue;
-    if (!enabled)
-      record(
-        "rls",
-        "BLOCK",
-        `\`${t}\` is created with no \`ENABLE ROW LEVEL SECURITY\` and no \`apply_tenant_rls\` — every policy on it is inert`,
-      );
-    else if (!forced)
-      record(
-        "rls",
-        "BLOCK",
-        `\`${t}\` enables RLS but never forces it — the table owner bypasses every policy`,
-      );
-    if (!policy && !helper)
-      record(
-        "rls",
-        "BLOCK",
-        `\`${t}\` has RLS but no \`CREATE POLICY\` — it denies everyone, including \`ledger_api\``,
-      );
-    const denies =
-      new RegExp(
-        `REVOKE\\s+ALL[^;]*\\b${t}\\b[^;]*FROM[^;]*(anon|authenticated)`,
-        "i",
-      ).test(migText) || helper;
-    if (!denies)
-      record(
-        "rls",
-        "READ",
-        `\`${t}\` does not revoke from \`anon\`/\`authenticated\` — check whether the Data API can reach it`,
-      );
+  ];
+  for (const t of created) {
     const grant = new RegExp(
-      `GRANT[^;]*\\bON\\b[^;]*\\b${t}\\b[^;]*TO[^;]*ledger_api`,
+      `GRANT[^;]*\\bON\\b[^;]*\\b${t}\\b[^;]*\\bTO\\b`,
       "i",
     ).test(migText);
     if (!grant)
       record(
-        "rls",
+        "grants",
         "READ",
-        `\`${t}\` has no \`ledger_api\` grant in this change — works locally as superuser, fails as the API role`,
+        `\`${t}\` is created with no \`GRANT … TO\` the app role in this change — works as the owner, fails as a narrower role. Confirm which role the deployed Lambdas connect as`,
       );
   }
   if (created.length)
     record(
-      "rls",
+      "grants",
       "READ",
-      `${new Set(created).size} table(s) created in this change: ${[...new Set(created)].join(", ")}`,
+      `${created.length} table(s) created in this change: ${created.join(", ")}`,
     );
 }
 
 // ---------------------------------------------------------------- mandatory-tier tests
 
+// pp-workflow → Test tiers: these surfaces owe an integration test against real Postgres.
 {
-  const specs = readable.filter((p) => /\.(spec|test)\.[jt]sx?$/.test(p));
+  const specs = readable.filter((p) => TEST_FILE.test(p));
   const integration = specs.filter((p) => /integration/.test(p));
+  const src = readable.filter(
+    (p) => /^(apps|packages|sim)\//.test(p) && !TEST_FILE.test(p),
+  );
+  const srcAdded = addedLines(src);
   const triggers = [];
-  if (readable.some((p) => p.startsWith("supabase/migrations/")))
-    triggers.push("a migration (tenant isolation)");
-  if (allAdded.some((a) => /@UseGuards|CanActivate|\.guard\.ts/.test(a.text)))
-    triggers.push("an auth boundary");
-  if (allAdded.some((a) => /Idempotency-?Key|dedupe_key/i.test(a.text)))
+  if (readable.some((p) => MIGRATION.test(p))) triggers.push("a migration");
+  if (
+    srcAdded.some((a) =>
+      /\b(Authorization|Bearer)\b|\bscopes?\b[^;\n]*\b(read|operate)\b|["'`]operate["'`]/.test(
+        a.text,
+      ),
+    )
+  )
+    triggers.push("an auth boundary (token scopes)");
+  if (
+    srcAdded.some((a) =>
+      /\bsvix_?[Ii]d\b|dedupe_?[Kk]ey|onConflictDo(Nothing|Update)|ON\s+CONFLICT/.test(
+        a.text,
+      ),
+    )
+  )
     triggers.push("idempotency");
   if (
-    allAdded.some((a) =>
+    srcAdded.some((a) =>
       /transition|state_machine|\.transition\b/i.test(a.text),
     )
   )
     triggers.push("a state transition");
-  if (
-    readable.some((p) =>
-      /(payment|payout|checkout|order|split|commission|fiscal|reconcil)/i.test(
-        p,
-      ),
-    )
-  )
-    triggers.push("the money path");
+  if (src.some((p) => /projec/i.test(p)))
+    triggers.push("an order-independent projection");
+  if (src.some((p) => /(outbox|dispatch|reconcil|redrive|replay|dlq)/i.test(p)))
+    triggers.push("the correctness path (outbox, reconcile, redrive, replay)");
   if (triggers.length && !integration.length)
     record(
       "tests",
       "BLOCK",
-      `this change touches ${triggers.join(", ")} — the mandatory test tier — and adds no \`*.integration.spec.ts\``,
+      `this change touches ${triggers.join(", ")} — the mandatory test tier — and adds no integration test (\`*.integration.{spec,test}.ts\`)`,
     );
   else
     record(
@@ -1159,7 +1087,7 @@ const order = [
   "tasks",
   "diff",
   "generated",
-  "rls",
+  "grants",
   "patterns",
   "tests",
   "duties",

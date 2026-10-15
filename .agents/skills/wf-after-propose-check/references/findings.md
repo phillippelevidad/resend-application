@@ -127,7 +127,7 @@ The script helps with the first shape only, listing every backticked identifier 
 
 ---
 
-## A8 — Scope drifted, or a human is still on the integrator's path
+## A8 — Scope drifted, or a human is still on the adopter's path
 
 **The tell.** Two things the change is contractually bound to get right, both cheap to check and both routinely quietly wrong.
 
@@ -135,7 +135,7 @@ The script helps with the first shape only, listing every backticked identifier 
 
 *The self-service test.* Do not read the proposal's answer — run it. Walk `deploy → connect the webhook → ingest → query → recover → tear down` for the stages this change touches, and at each step ask *who running Ledger has to do something by hand for this to work?* The fallbacks that hide: an owner script (the command's own comment often says so), a database query to find an id the product never shows, a manual replay or approval, an unbounded wait with no in-product diagnosis.
 
-Then place it: **off** the integrator's path it costs owner hours, is correctly cheap, and defers on a tripwire. **In** their path to a working ledger it costs time-to-first-event and adoption — and it must be admitted, not answered with "escalate only on measured pain", because that pain is never measured; the adopter leaves instead of reporting it.
+Then place it: **off** the adopter's path it costs owner hours, is correctly cheap, and defers on a tripwire. **In** their path to a working ledger it costs time-to-first-event and adoption — and it must be admitted, not answered with "escalate only on measured pain", because that pain is never measured; the adopter leaves instead of reporting it.
 
 **What it costs.** A slice sized at 1–3 days that is not; a bullet the owner ticks having never built it; or a proposal claiming a self-service flow the product does not have, with the claim already carried into the specs.
 

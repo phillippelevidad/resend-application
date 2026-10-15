@@ -11,16 +11,15 @@ A large share of any diff in this repo is byproduct — a file that changed *bec
 | Excluded | Why |
 | --- | --- |
 | `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` | A dependency decision is visible in `package.json`; the lock is its shadow |
-| `packages/api-client/**` (generated client) | Emitted by `pnpm generate:api-client` from the OpenAPI export. The generator is the reviewable thing |
-| The exported OpenAPI document (`openapi.json` / `openapi.yaml`) | Emitted from the controllers and Zod schemas. Review those |
-| `**/dist/**`, `**/build/**`, `**/.next/**`, `**/.turbo/**`, `**/coverage/**`, `**/node_modules/**` | Build output |
+| `packages/db/(drizzle\|migrations)/meta/**` (Drizzle snapshots and journal) | Emitted by `drizzle-kit` from the `pgTable` schema. The schema and the migration SQL are the reviewable things |
+| `cdk.out/**` | Synthesized CloudFormation. Review the CDK app in `infra/` |
+| `**/dist/**`, `**/build/**`, `**/.turbo/**`, `**/coverage/**`, `**/node_modules/**` | Build output |
 | `*.snap`, `*.min.js`, `*.map`, `*.tsbuildinfo` | Derived artifacts |
 | `*.png *.jpg *.jpeg *.gif *.webp *.avif *.ico *.svg *.woff *.woff2 *.ttf *.pdf` | Binary or asset content; a diff tool has nothing useful to say about it |
-| `prisma/generated/**`, any path a codegen step writes | Same reason as the client |
 
 **But do not drop them silently — they are evidence.** Their *presence or absence* answers duty questions the reading cannot:
 
-- `packages/api-client/**` changed while the backend contract changed → the client was regenerated. Unchanged while controllers moved → [B4](findings.md), and the drift stage of `pnpm verify` should have caught it, so check why it did not.
+- Drizzle `meta/` changed while the `packages/db` schema changed → a migration was generated; read its SQL. Schema changed and no migration was added → [B4](findings.md), and the script raises it as a BLOCK. A `meta/` change with no schema change → someone ran the generator by hand or edited a snapshot; find out which.
 - `pnpm-lock.yaml` changed → a dependency moved. That is **Ask-first**; confirm it was approved, and read the `package.json` line, not the lock.
 - A new binary asset appeared → check where it is served from and whether it belongs in the repo at all.
 
@@ -38,7 +37,7 @@ Paste this, filling the three slots. Do not paraphrase it; the constraints are w
 You are reviewing one surface of an implemented change in this repo.
 Read-only: do not edit, do not commit, do not run the test suite.
 
-Surface: <schema | backend | frontend | tests-docs>
+Surface: <schema | backend | sdk-cli-mcp | tests-docs>
 Files:   <the file list from the `surfaces` worklist — these only, nothing else>
 Base:    git diff <base>...HEAD -- <those paths>
 
@@ -60,44 +59,45 @@ coordinator holds those and their exact wording is what binds.
 
 ---
 
-## Schema — `supabase/migrations/`, `backend/prisma/schema.prisma`, `supabase/seed.sql`
+## Schema — `packages/db/**` (the Drizzle `pgTable` schema, migrations under `drizzle/` or `migrations/`, seeds)
 
-Load [`pp-database`](../../pp-database/SKILL.md). The [new-table recipe](../../pp-database/references/new-table-recipe.md) is the checklist the migration either satisfies or does not.
+Load [`pp-database`](../../pp-database/SKILL.md). Its [new-table recipe](../../pp-database/SKILL.md#new-table-recipe) is the checklist the schema and migration either satisfy or do not; its [`Never` list](../../pp-database/SKILL.md#never) and [data-modeling.md → Anti-patterns](../../../../.ai/data-modeling.md#anti-patterns-must-not) are the hard edges.
 
 ### Correctness
 
 | Read for | The bug when it is absent |
 | --- | --- |
-| Base fields on every new table | A table that cannot be audited, versioned or deduped later without a migration against live rows |
+| [Base fields](../../../../.ai/data-modeling.md#base-fields--the-checklist-for-every-new-model) on every new table — `updated_at` on mutable rows only, never on `webhook_events` | A table that cannot be audited or deduped later without a migration against live rows, or an append-only table that pretends it mutates |
 | Every column's nullability matching the code that writes it | A `NOT NULL` the command never sets, or a nullable the reader assumes present |
-| Enum members matching every value the code writes | A write that fails at runtime on a value the enum does not carry |
-| Every idempotency key (`svix_id`, `dedupe_key`) backed by a unique constraint, on exactly the columns the key means | A dedupe that is accidentally too narrow or too wide — the same event stored twice, or two distinct reactions collapsed into one |
+| Every closed set as `text` + `CHECK`, its members matching the Zod enum in `packages/core` and every value the code writes; no `pgEnum`; no `CHECK` on `webhook_events.type` | A write that fails at runtime on a value the `CHECK` does not carry, or an unknown event type rejected instead of stored |
+| Every idempotency key (`svix_id`, `dedupe_key`) backed by a primary key or unique constraint, on exactly the columns the key means | A dedupe that is accidentally too narrow or too wide — the same event stored twice, or two distinct reactions collapsed into one |
 | `NULLS NOT DISTINCT` where two nulls must collide, plain where they must not | The subtlest constraint bug there is, and it only appears with real data |
-| `onDelete` on every FK: `Restrict` across an aggregate boundary and onto ledger or audit rows | A cascade that deletes history |
+| No foreign key or cascade between `webhook_events` and a projection | A cascade that deletes history, or a projection that can no longer be rebuilt from the ledger alone |
 | Each index serving a query that exists, and each hot query having one | A sequential scan on the table the read API hits on every request |
-| A `set_updated_at` trigger on every table carrying `updated_at`, reusing the existing function | A column that only moves when the ORM writes it, and lies after any raw update |
+| Every projection column with a source in the event set | A column nothing can recompute, so a rebuild silently loses it |
 | Backfill **failure** behaviour, stated and implemented | "Backfill from X" with no answer for a row where X is absent. It must fail loudly, not invent a value |
-| `seed.sql` extended before any migration whose backfill reads it, and covering ≥2 emails with interleaved events | The migration blocks mid-apply on a fresh database, or order-independence tests pass because there is only one email |
-| The Prisma / Supabase authority split | `schema.prisma` owns table and column shape; `supabase/migrations/` owns RLS, functions and helpers |
+| Seeds and fixtures covering ≥2 emails with interleaved events | Order-independence tests pass because there is only one email |
+| Expand/contract: the migration is safe to run before the code that needs it ([ADR-018](../../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)) | A deploy that breaks the running version between the migration and the code |
+| A migration for every schema change, generated from the `pgTable` schema | The script raises this as a BLOCK; the schema and the database disagree on the next deploy |
 
 ### Security
 
 | Read for | The hole when it is absent |
 | --- | --- |
-| `ALTER TABLE … ENABLE ROW LEVEL SECURITY` **and** `… FORCE` on every new table | Policies below it are inert. This is the single highest-value line in any migration in this repo |
-| A policy that actually **filters** — read the predicate, do not check that a policy exists | A permissive policy passes every test that asserts "a policy is present" and leaks everything |
-| `apply_tenant_rls` called, or a hand-written block that reproduces all of it — including the `anon`/`authenticated` revoke and the deny policies | Multiple permissive policies are OR'd, so a second policy **widens** access rather than narrowing it |
-| `ledger_api` granted the **narrowest** privileges the table needs, and `USAGE` on each new enum | Works locally as superuser, fails as the API role — or worse, an append-only table that silently accepts an `UPDATE` affecting zero rows |
-| A global (non-tenant) table carrying explicit deny policies for untrusted roles | The reason `outbox_deny_untrusted_roles` had to exist |
-| No business logic in a trigger or stored procedure | The only sanctioned DB-side logic is RLS, `apply_tenant_rls` and `set_updated_at` |
-| No money, fiscal, stock, state or unbounded array in a `jsonb` column; no identifying PII in a typed money/fiscal/state column | Both are `pp-database` `Never` entries with named alternatives |
-| No edit to a migration that has already been applied | A forward migration is the only fix. Editing one that has run anywhere is a `Never` |
+| The app role granted the **narrowest** privileges each new table needs (`GRANT … ON <table> … TO`) | Works locally as superuser and fails as the deployed role — or an append-only table that silently accepts an `UPDATE` |
+| No raw address, subject or display name in any column other than `webhook_events.payload` — `dedupe_key`, `outbox.payload` and `last_error` included; addresses as `address_hash` (keyed HMAC) + `address_masked` | PII copied into every projection and every reaction row, beyond the retention job's reach |
+| No unkeyed hash of an address and no plaintext token at rest | A plain SHA-256 of an address is reversible by dictionary |
+| `jsonb` only for the raw event payload, the outbox payload and the local queue envelope | A `jsonb` field a query filters on or a projection reads, which no constraint can check |
+| No business logic in a trigger or stored procedure, and no view used as an API | Logic that the pure core and its property tests never see |
+| No secret, API key or real recipient address in a table, seed, fixture or migration — Resend test addresses only | A credential or a real person's address in a public repo's history |
+| All SQL pooler-safe ([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)) | A session-level feature that works against a direct connection and breaks behind the pooler |
+| No edit to a migration that has already been applied | A forward migration is the only fix, and it is Ask-first. The script raises an edited migration as a BLOCK |
 
 ---
 
-## Backend — `backend/src/**`
+## Backend — `apps/**`, `packages/**`, `infra/`, `sim/`, `scripts/` (minus `packages/db`, `packages/sdk`, `apps/cli`, `apps/mcp`)
 
-Load [`pp-backend`](../../pp-backend/SKILL.md), and [`pp-money`](../../pp-money/SKILL.md) too if the diff touches checkout, order, payment, split, payout, commission, promotion, fiscal, reconciliation, return, dispute or `billing_*` — **it wins wherever it collides.**
+Load [`pp-backend`](../../pp-backend/SKILL.md).
 
 ### Correctness
 
@@ -105,12 +105,12 @@ Load [`pp-backend`](../../pp-backend/SKILL.md), and [`pp-money`](../../pp-money/
 | --- | --- |
 | Every worker query inside the one ledger transaction, with the **transactional client** passed all the way down | A query that escapes the transaction reads outside the `FOR UPDATE` lock on the email. It looks correct and it loses updates |
 | A **constraint**, not a read, deciding every cap, quota and uniqueness rule | The read-then-write race: two concurrent submits both count `n-1` and both insert |
-| Every state move as a named command driving **one persisted transition** | A `status` written directly; a mutation that is not a transition; a generic transition endpoint |
+| Every projection row written by recomputing it from the event set, never patched (`SET status = $new`) | A `status` that reflects the last message processed rather than the events stored |
 | Every side effect as an **outbox row in the same transaction** | The notification fires and the commit does not, or the reverse |
 | Every worker handler idempotent on `dedupe_key`; every outbound Resend send carrying an idempotency key derived from it | At-least-once is the delivery contract. "It will only run once" is not a design |
 | The whole write inside one transaction where two tables must agree | A half-written aggregate that no test with one row will ever produce |
 | Error shape: the one `{ error: { code, message, hint, docs } }` shape, validation through Zod | A hand-rolled error body the SDK, the CLI's `--json` and the MCP tools cannot read |
-| List reads on the standard pagination envelope | A second pagination shape reaching the generated client |
+| List reads on the standard pagination envelope ([api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions)) | A second pagination shape the hand-written SDK, the CLI and the MCP tools each have to special-case |
 | No Resend API call outside `packages/resend-client` | A call that bypasses the shared rate-limit budget, untestable without the vendor |
 | No app importing another app; nothing in `packages/core` importing AWS, Postgres or Resend | The import graph is the boundary check, and it is greppable |
 | SQS for delivery and Postgres for truth, **only** | A cache, a second queue or an in-memory map treated as source of truth |
@@ -121,45 +121,39 @@ Load [`pp-backend`](../../pp-backend/SKILL.md), and [`pp-money`](../../pp-money/
 | Read for | The hole when it is absent |
 | --- | --- |
 | Every command **authorized before it runs**, on the caller's scope — especially an `operate` command | The check that was assumed to live in the guard and lives nowhere |
-| A guard that checks the right thing — read the predicate, not the decorator | A guard that runs, passes, and asserts the wrong scope or the wrong role set |
-| `tenant_id` derived from the resolved server-side context, never from a body, query or header | The `Never` that has no exceptions anywhere in this repo |
-| Every id from the request proven to belong to the caller's tenant before it is read or written | The classic IDOR: RLS saves you on a scoped table and does not on a global one |
+| A guard that checks the right thing — read the predicate, not the decorator | A guard that runs, passes, and asserts the wrong scope |
+| The caller's scope (`read` / `operate`) resolved server-side from its bearer token, never from a body, query or header | A client that grants itself `operate` |
 | Every request body through a Zod schema, with bounds on anything unbounded | An array field with no max, an integer with no range |
-| No raw SQL built by concatenation; `$queryRaw` parameterised, `$queryRawUnsafe` absent | Injection, and RLS does not save you from it |
-| No PII in a log, span, error message, analytics event or URL | Log `svix_id` plus `email_id` and look the record up |
+| No raw SQL built by concatenation; Drizzle's `sql` template parameterised, `sql.raw(` and `.unsafe(` absent or fed only constants | Injection |
+| No PII in a log, span, error message, outbox payload, `last_error` or URL | Log `svix_id` plus `email_id` and look the record up |
 | No secret in the tree; every credential from env or Secrets Manager | A key in a fixture is a key in the history |
-| Webhook handlers verifying their signature before doing anything | An endpoint anyone can post to |
-| Uploads bounded by type and size, and written to a **tenant-prefixed** path | One tenant's storage key reaching another tenant's object |
+| Webhook handlers verifying their signature against the **raw** body, with every active secret and the timestamp tolerance, before enqueueing | An endpoint anyone can post to, or one that verifies a re-serialised body |
 
 ---
 
-## Frontend — `storefront/`, `backoffice/`, `admin/`, `auth/`, `packages/ui`
+## Surfaces — SDK, CLI, MCP — `packages/sdk/**`, `apps/cli/**`, `apps/mcp/**`
 
-Load [`pp-frontend`](../../pp-frontend/SKILL.md) and [`pp-ux-copy`](../../pp-ux-copy/SKILL.md).
+Load [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp). [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions) binds every surface, and the [error-code registry](../../../../.ai/api-contract.md#error-codes) is the only list of codes.
 
 ### Correctness
 
 | Read for | The bug when it is absent |
 | --- | --- |
-| **All four states on every view** — empty, loading, error, success | Empty is the first state every new integrator sees, and it is the one that is missing |
-| Mutations in the backend, never the BFF | A Server Action doing business logic; the BFF is session, host resolution and orchestration only |
-| API-error → **form-field** mapping per failure | Every backend refusal rendering as one generic banner, leaving the user nowhere to go |
-| Route-segment `error` and `loading` boundaries | One thrown read blanking a whole console |
-| The pt-BR copy actually written and matching `pp-ux-copy`'s vocabulary, with its forbidden terms absent | A term the copy rules forbid, shipped to a screen |
-| Brazilian formatting and masks — CPF/CNPJ, CEP, phone, dates — and `R$` rendered from integer centavos | Money formatted from a float, or a mask that accepts an invalid document |
-| A disabled control carrying a **readable reason**, wired with `aria-describedby` | A greyed button whose only explanation is its colour |
-| Reads through the generated API client, server-side | A hand-copied DTO that drifts on the next contract change |
+| The CLI and the MCP server calling the read API **only through `packages/sdk`** — no import of `packages/db`, no direct `fetch` | A second contract that drifts from the first on the next change |
+| Every failure path mapped to a **registered** `code` with a written `message` and `hint` | A raw stack trace, or a code the registry does not carry — itself an unapproved contract change |
+| CLI exit codes `0` / `1` / `2` as the contract states, and `--json` printing exactly the one error shape | A script that treats a usage error as success, or cannot parse the failure |
+| Every operation the surface exposes registered in [api-contract.md](../../../../.ai/api-contract.md), with its scope | A command or tool nobody approved — adding or changing one is Ask-first |
+| The SDK written by hand against the contract, its types matching the response the API actually returns | A field the SDK promises and the API never sends |
+| List commands and tools following the pagination envelope, not truncating silently | A CLI that shows the first page and calls it the whole answer |
 
 ### Security
 
 | Read for | The hole when it is absent |
 | --- | --- |
-| Tenant resolved **server-side from the host**, and inbound tenant headers **stripped before stamping** | A client-supplied `tenant_id` reaching the API carrying the BFF's authority |
-| No `process.env` server value read in a `"use client"` file, and no secret in a `NEXT_PUBLIC_` name | A secret in the browser bundle, permanently |
-| No `dangerouslySetInnerHTML` over anything a user or a webhook payload can carry | Stored XSS on any page that renders it |
-| Session cookies `httpOnly`, `secure`, `sameSite` | The whole session model resting on one flag |
-| `noindex` where a surface must not be indexed | A pre-launch page indexed on the day it opens |
-| Ids in a URL not treated as authorization | The screen shows what the API returns; the API decides who may see it |
+| Masks only, never a raw address, subject or body — **MCP tool output included** | PII handed to a model's context, and from there to wherever it goes next |
+| `operate` MCP tools registered only with an `operate` token **and** `--enable-operate` | A read-only assistant that can trigger a replay |
+| The token read from `LEDGER_TOKEN`, never a `--token` flag | A bearer token in shell history and process listings |
+| Addresses sent only in request bodies, never in a path or query string | An address in every access log between the client and the API |
 
 ---
 
@@ -169,7 +163,7 @@ Load [`pp-frontend`](../../pp-frontend/SKILL.md) and [`pp-ux-copy`](../../pp-ux-
 
 | Read for | The bug when it is absent |
 | --- | --- |
-| An **integration test against real Postgres** for every mandatory-tier surface the diff touched | Idempotency, order-independent projections, outbox delivery, reconcile and replay, state transitions, auth boundaries. `pp-general` owns the tier; nothing else is negotiable |
+| An **integration test against real Postgres** for every mandatory-tier surface the diff touched | Idempotency on `svix_id` and the outbox `dedupe_key`, order-independent projections, outbox delivery, reconcile and replay, DLQ redrive, migrations, auth boundaries (bearer-token scopes `read` / `operate`). [`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) owns the tier; nothing else is negotiable |
 | An idempotency test that would **fail** if the dedupe were dropped — it must assert one row and one effect after a duplicate delivery, not just that the insert runs | The test that passes against a table with no unique constraint |
 | A test per spec `#### Scenario:` — the WHEN/THEN is the test | A requirement with no failing test ships unbuilt and green |
 | Assertions on the **refusal**, not only the happy path | Half of these findings are a refusal that returns 200 |

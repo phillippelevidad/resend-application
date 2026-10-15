@@ -14,7 +14,7 @@ The signature class of this gate. `opsx:apply` ticks the task it just worked on,
 
 | Shape | What you are looking at |
 | --- | --- |
-| Nothing was built | The script's `unbuilt` worklist names it. A migration, a command, a screen the task promised and the tree does not hold |
+| Nothing was built | The script's `unbuilt` worklist names it. A migration, a handler, a CLI command the task promised and the tree does not hold |
 | Something was built, and it is not what the task said | The names match, the behaviour does not. A cap enforced at a different number, a refusal that returns 200, a field written but never read |
 | **The task's own verification clause was never run** | The task said *"verify a duplicate `svix_id` leaves exactly one `outbox` row"* and no test asserts it. The box is ticked on the code existing, not on the check passing |
 
@@ -36,7 +36,7 @@ The third shape is what makes this class worth a dedicated pass. Every well-writ
 
 **What it costs.** The next slice reads `design.md`, `.ai/` and the archived spec — never the diff. A silent departure means the *plan* is what gets built on, and the code underneath it is a surprise waiting for whoever touches it next. Worse, an undocumented departure that happens to be right still costs: it will be "corrected" back by someone who trusts the doc.
 
-**How it closes.** Rung 1 if a binding rule or a ratified doc says the code is wrong — fix the code. Rung 2 if the code is right — keep it, and write the departure into `design.md` with its reason, correct `tasks.md` and the spec delta so they describe what exists, and where it supersedes an ADR, say that too. Never edit `.ai/` to ratify a *decision* from this skill; that is rung 5 or [`wf-open-question`](../../wf-open-question/SKILL.md).
+**How it closes.** Rung 1 if a binding rule or a ratified doc says the code is wrong — fix the code. Rung 2 if the code is right — keep it, and write the departure into `design.md` with its reason, correct `tasks.md` and the spec delta so they describe what exists, and where it supersedes an ADR, say that too. Never edit `.ai/` to ratify a *decision* from this skill; that is rung 5, or an entry under [about.md → Open questions](../../../../.ai/about.md#open-questions) tagged `[Unverified]` and put to the owner in the owner-decision round.
 
 ---
 
@@ -49,13 +49,12 @@ The most expensive class in this file, because it is invisible, it compounds, an
 - A **model section** in [data-modeling.md](../../../../.ai/data-modeling.md) describing columns, nullability or enum members the migration did not produce.
 - An **ADR** whose stated mechanism the implementation replaced.
 - An **`api-contract.md` entry** whose operation changed its **scope or transition** — a rename is obvious, a scope change is not, and the contract records operation identity precisely so scope changes are visible.
-- A **[views.md](../../../../.ai/views.md) row** listing reads, actions or actors the screen does not have.
-- A **vocabulary term** in [about.md](../../../../.ai/about.md) the UI now contradicts, or a **non-goal** the slice quietly crossed.
+- A **vocabulary term** in [about.md](../../../../.ai/about.md) a CLI command, MCP tool or error message now contradicts, or a **non-goal** the slice quietly crossed.
 - A **deferred-tail bullet** on the slice card describing something that in fact shipped, or a shipped bullet describing something deferred.
 
 **What it costs.** Every future agent reads these docs *instead of* the code — that is the entire premise of the `.ai/` corpus. A false line there is a defect injected into every slice that follows, and it is discovered when a schema built on it fails, months later.
 
-**How it closes.** Rung 3, and the boundary matters: **correct a fact, never ratify a decision.** A column list that does not match the migration, a `Modeled` box, a status line, an operation's scope, a folder tree — those are corrections and they belong in this change. A *decision* changing — a new ADR, a superseded one, an open question answered — is rung 5 or 6: prepare it, name it, and let the owner or [`wf-open-question`](../../wf-open-question/SKILL.md) rule. Edit `.ai/` in its own house style: RFC 2119, current-state only, no changelog, cross-reference rather than repeat.
+**How it closes.** Rung 3, and the boundary matters: **correct a fact, never ratify a decision.** A column list that does not match the migration, a `Modeled` box, a status line, an operation's scope, a folder tree — those are corrections and they belong in this change. A *decision* changing — a new ADR, a superseded one, an open question answered — is rung 5 or 6: prepare it, name it, record it under [about.md → Open questions](../../../../.ai/about.md#open-questions) tagged `[Unverified]`, and put it to the owner in the owner-decision round. Edit `.ai/` in its own house style: RFC 2119, current-state only, no changelog, cross-reference rather than repeat.
 
 ---
 
@@ -63,21 +62,20 @@ The most expensive class in this file, because it is invisible, it compounds, an
 
 Mechanical, cheap, and skipped constantly, because every one of these lands at the end of a long implementation session.
 
-The full ledger, from [`pp-workflow` → definition of done](../../pp-workflow/references/definition-of-done.md):
+The full ledger, from [`pp-workflow` → definition of done](../../pp-workflow/SKILL.md#definition-of-done):
 
 | If the change… | It must also contain | The miss to look for |
 | --- | --- | --- |
-| Alters the backend HTTP contract | A regenerated API client (`packages/api-client`) in the same diff | Controllers changed, `packages/api-client` untouched — the drift stage catches it, so a green gate means it was regenerated, not that it was *reviewed* |
-| Adds, renames, or changes an operation's transition/scope | The [api-contract.md](../../../../.ai/api-contract.md) entry | A scope change with the name unchanged. Never enumerate DTO fields there — OpenAPI owns the wire |
+| Adds, renames, or changes an operation, its scope or its error codes | The [api-contract.md](../../../../.ai/api-contract.md) entry naming the operation, its scope and its errors, and the Ask-first approval | A scope change with the name unchanged, or a new failure path whose `code` is not in the [registry](../../../../.ai/api-contract.md#error-codes) |
 | Lands a table in the schema + migration | The ticked `Modeled` box in [data-modeling.md → Model index](../../../../.ai/data-modeling.md#model-index) | The single most-missed duty in the repo, and the only place "is this table real yet?" is answerable |
-| Adds, removes, or repurposes a folder | The project `AGENTS.md` folder tree | A new `apps/<name>/` or `packages/<name>/` folder that no tree names |
+| Adds, removes, or repurposes a project folder | The [root `AGENTS.md` → Projects](../../../../AGENTS.md#projects) table | A new `apps/<name>/` or `packages/<name>/` folder that the table does not name, or one still marked planned after it landed |
 | Completes or advances a slice item | The [build-checklist](../../../../.ai/build-checklist.md) `Status` line and `Ships` boxes, updated **in place** | A marker moved into the heading (which other docs anchor to), or a changelog note added where only status belongs |
 | Ratifies or contradicts a documented decision | The `.ai` doc corrected in the same change — not appended to | See B3, and mind the rung-3/rung-5 boundary |
 | Makes or supersedes a cross-cutting decision | A new or superseding ADR in [architecture.md](../../../../.ai/architecture.md) | Rung 5. Prepare it, do not ratify it |
 | Leaves a question unresolved | The [about.md → Open questions](../../../../.ai/about.md#open-questions) entry, and the slice marked `[!]` with a one-line reason | A slice ticked `[x]` over a question the implementation actually raised |
 | Ships a slice | `WALKTHROUGH.md` in the change directory, before the `Status` line is ticked | See B7 |
 | Introduces an env var | `.env.example`, and the boot-time assertion if it is required | Works on the machine that wrote it, fails on the next one |
-| Touches a mandatory-tier surface | An integration test against real Postgres | Idempotency, order-independent projections, outbox delivery, reconcile and replay, state transitions, auth boundaries. `pp-general` owns the tier |
+| Touches a mandatory-tier surface | An integration test against real Postgres | Idempotency on `svix_id` and the outbox `dedupe_key`, order-independent projections, outbox delivery, reconcile and replay, DLQ redrive, migrations, auth boundaries (bearer-token scopes `read` / `operate`). [`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) owns the tier |
 
 **What it costs.** Individually small; collectively the reason the docs stop being trustworthy, which is the reason the next slice needs a human.
 
@@ -96,7 +94,6 @@ The full ledger, from [`pp-workflow` → definition of done](../../pp-workflow/r
 - **Not idempotent under at-least-once delivery.** SQS redelivers. A handler that assumes one execution is a bug with a schedule.
 - **A cap off by one.** A three-level tree that admits four, a "never the last one" that admits zero. These live in the exact code the walkthrough exercises, so they are cheap to find and embarrassing to ship.
 - **A null the types were told could not happen.** A non-null assertion, an `as` cast, a Zod schema looser than the column.
-- **A screen state nobody wrote.** Empty, loading, error, success — all four are required, and empty is the first one every new integrator sees.
 - **State that started depending on arrival order.** Anywhere in the chain, including a projection that takes the latest row instead of folding the whole event set.
 
 **What it costs.** It reaches the owner's walkthrough at best, and a real user at worst. Neither is visible to any gate that ran before this one.
@@ -114,10 +111,10 @@ Every other security class in this codebase is downstream of the ingest edge. An
 1. **Verification at the edge.** Every ingest path verifies the signature against the **raw** body and rejects a timestamp outside the tolerance **before** it enqueues — a check that runs but verifies a re-serialised body passes every test that only signs what it parses. A rotation keeps every active secret in the list. Nothing writes to the ledger from a path that skipped verification.
 2. **Authorization before the command runs**, on the caller's scope (`read` / `operate`) — and especially on an operate tool, which must not even be registered without the scope.
 3. **A client-supplied value trusted.** A scope, a role, an `email_id`, a `svix_id`, from a body, a query string or a header, where the verified request or the token should have supplied it.
-4. **An id from somewhere else.** A route parameter, a storage path, a media key, a webhook payload id — used to read or write without proving the caller owns it.
+4. **An id from somewhere else.** A route parameter, a queue message field, a webhook payload id — used to read or write before the token's scope or the payload's signature has been checked.
 5. **PII where it must not be.** A log line, a span, an error message, an analytics event, a URL, an MCP tool result. Log `svix_id` plus `email_id` and look the record up.
-6. **A secret in the tree**, or an env var read in a `"use client"` component, or a server-only value reaching the browser bundle.
-7. **Unvalidated input.** A body without a Zod schema, a raw query built by concatenation, an upload with no type or size limit.
+6. **A secret in the tree**, or a token taken from a `--token` flag instead of `LEDGER_TOKEN`, or a signing secret written to a log.
+7. **Unvalidated input.** A body without a Zod schema, a raw query built by concatenation or through `sql.raw(` / `.unsafe(`.
 
 **What it costs.** The one class where the [decision lens](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) says spend regardless: security exposure is on the "spend anyway" list, alongside lost events and duplicate effects. Cost is not an argument here.
 
@@ -127,14 +124,14 @@ Every other security class in this codebase is downstream of the ingest edge. An
 
 ## B7 — The slice cannot be walked
 
-The owner [exercises every finished slice by hand in every role](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized). That walk is how the slice is verified at all, which is why an unwalkable slice is not done even though no integrator is watching.
+Every finished slice [MUST still be hand-walkable through the CLI, the API or the simulator](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), because the walk is how the slice is verified at all. An unwalkable slice is not done even though no adopter is watching. `WALKTHROUGH.md` is numbered steps, each with the exact CLI command, API request or `pnpm sim` run and its expected output ([build-checklist.md → How to work this checklist](../../../../.ai/build-checklist.md#how-to-work-this-checklist)).
 
 **The tell.** Read `WALKTHROUGH.md` against the code:
 
-- A step whose **mechanism does not connect** end to end — the route exists, the button does not; the command exists, no screen calls it; the read exists and filters out exactly the rows the step needs; the seed row the step names is not in `seed.sql`.
-- A step **quoting copy the component does not contain.** One of the two moved, and the owner finds out mid-walk.
+- A step whose **mechanism does not connect** end to end — the route exists, the CLI command does not; the SDK method exists, no command or tool calls it; the read exists and filters out exactly the rows the step needs; the fixture or simulator scenario the step names does not exist.
+- A step **quoting output the code does not produce** — a field, an error `code`, a `hint`, an exit code. One of the two moved, and the owner finds out mid-walk.
 - A step that **cannot be completed today and names no destination slice.** That rule is explicit and it has teeth: an unwalkable step with no named destination *is* the slice not being done.
-- A **role on the card's `UI surfaces` line with no path.** A claimed flow no role can reach is a finding against this slice, not a note for a later one.
+- A **self-service stage the card claims with no step** — `deploy → connect the webhook → ingest → query → recover → tear down`. A claimed stage no command reaches is a finding against this slice, not a note for a later one.
 
 **What it costs.** The owner loses the session they set aside to test the slice, and finds out the slice was never testable. That is the most expensive fifteen minutes in this workflow.
 
