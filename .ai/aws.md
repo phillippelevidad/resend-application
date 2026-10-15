@@ -24,8 +24,8 @@ ids, ARNs, endpoint URLs or notification addresses. Deploying is Ask-first
 
 The serverless shape fits. At idle, nothing in the app stack bills by the hour. What costs money while
 idle is a handful of per-month line items (secrets, metrics, alarms, log storage), all listed in
-[Cost shape](#cost-shape), plus the Postgres host ([integrations.md](integrations.md#postgres-host)).
-The idle estimate excluding Postgres is well under USD 2/month, against the
+[Cost shape](#cost-shape). The Postgres host, Neon Free, sits outside AWS and bills nothing
+([integrations.md](integrations.md#decision--neon)). The idle estimate is under USD 2/month, against the
 ≤ USD 5 target ([about.md → Success metrics](about.md#success-metrics)). Four facts shape the
 design:
 
@@ -129,6 +129,23 @@ design:
 | AWS-39 | Bootstrap creates an S3 staging bucket (`DeletionPolicy: Retain`, versioned, noncurrent versions expire after 30 days), an ECR repository, IAM roles and an SSM version parameter. "The current default is no KMS key". The docs advise: "do not delete and recreate the environment's bootstrap stack." | Bootstrap is a prerequisite, not part of Ledger's stacks. Teardown leaves it by default ([Teardown](#teardown)). Ledger ships no Docker assets, so the ECR repository stays empty. | cdk/bootstrapping-env; cdk/bootstrap-template | 2026-10-15 |
 | AWS-40 | Lambda `logRetention`: "Deprecated: use `logGroup` instead". The docs call it "a legacy API and we strongly recommend you move away from it". Reading `fn.logGroup` adds a custom resource. | Each function gets an explicit `logs.LogGroup` (30 days, `DESTROY`) passed as `logGroup`. No `logRetention`, and no custom-resource Lambdas whose own log groups would outlive the stack. | cdk/lambda.Function | 2026-10-15 |
 
+### Aurora and RDS (Postgres fallback and rejected options)
+
+The Postgres host is Neon ([integrations.md → Decision](integrations.md#decision--neon)). These
+facts back its fallback (Aurora Serverless v2 + Data API) and the two rejected AWS options.
+
+| Id | Fact | Consequence for Ledger | Source | Checked on |
+| --- | --- | --- | --- | --- |
+| AWS-41 | Scale to zero is a minimum capacity of 0 ACU. Aurora PostgreSQL "must be running at least version 16.3, 15.7, 14.12, or 13.15". `SecondsUntilAutoPause`: "The minimum interval that you can set is 300 seconds (five minutes). That's the default … The maximum … is 86,400 seconds (one day)." | A fallback cluster runs PG ≥ 16.3 with `serverlessV2MinCapacity: 0`. | aurora/serverless-v2-auto-pause | 2026-10-15 |
+| AWS-42 | "If any user-initiated connections are open … the instance won't pause." Aurora's own health-check connections "aren't counted". "If you send a request to your cluster through the RDS Data API, Aurora resumes the writer instance." After maintenance, "Aurora waits at least 20 minutes before pausing that instance again." | Every tick that touches the database wakes it for ≥ 300 s. The hourly reconciler alone keeps it awake ≈ 10 % of the month ([integrations.md → Cadence](integrations.md#cadence-and-the-database)). | aurora/serverless-v2-auto-pause | 2026-10-15 |
+| AWS-43 | "the typical time to resume might be approximately 15 seconds". After more than 24 h paused, "the resume time can be 30 seconds or longer." "While an Aurora serverless instance is auto-paused, its instance charge is zero … AWS still charges for Aurora storage." The Data API returns `DatabaseResumingException` while resuming. | Ingest never touches the database, so a resume never fails a delivery. Worker and reconciler timeouts would need ≥ 30 s and a retry on `DatabaseResumingException`. | aurora/serverless-v2-auto-pause; rds-data/begin-transaction | 2026-10-15 |
+| AWS-44 | us-east-2: "USD 0.12 per Aurora Capacity Unit hour running Aurora PostgreSQL Serverless v2" (Standard), USD 0.16 on I/O-Optimized. Storage: "$0.10 per RDS GB-month of consumed storage (Aurora PostgreSQL)". I/O: "$0.20 per RDS million I/O requests". Backup storage up to 100 % of the cluster size is free. | Awake 10 % of the month at 0.5 ACU: 73 h × 0.5 × 0.12 ≈ USD 4.38, plus storage. With the rest of the stack this breaks the ≤ USD 5 idle target, one reason the fallback lost ([integrations.md](integrations.md#decision--neon)). | PL:AmazonRDS; aurora/pricing | 2026-10-15 |
+| AWS-45 | The Data API "provides a secure HTTP endpoint" and lets Lambda reach the cluster "without your needing to configure a Lambda function to access resources in a VPC". In us-east-2 it supports Aurora PostgreSQL 17.4+, 16.1+, 15.3+, 14.8+ and 13.11+, serverless and provisioned, but not T instance classes. It needs a Secrets Manager secret (`secretArn`) plus IAM. "The response size limit is 1 MiB." Statements time out after 45 s by default. Price: USD 0.35 per 1M requests up to 1B, payloads "metered at 32KB per request". The free tier is 1M requests/month for the first year only. | Reachable from a Lambda outside a VPC, so no NAT (AWS-13). It costs one more secret (AWS-11). | rds-data/overview; rds-data/regions; rds-data/limitations; rds-data/timeouts; PL:AmazonRDS | 2026-10-15 |
+| AWS-46 | "A transaction can run for a maximum of 1 hour … A transaction times out if no calls use its transaction ID in three minutes", and it is then rolled back. Connections are pooled, and AWS "runs the `DISCARD ALL` statement" before reusing one. No page says a transaction stays on one connection. | Worker transactions are short, so both limits are fine. Whether `FOR UPDATE` locks hold across calls is AWS-U08. | rds-data/begin-transaction; rds-data/session-management | 2026-10-15 |
+| AWS-47 | CDK `DatabaseCluster` `removalPolicy` defaults to "RemovalPolicy.SNAPSHOT (remove the cluster and instances, but retain a snapshot of the data)". `serverlessV2MinCapacity`: "The smallest value that you can use is 0" on versions that support auto-pause. `enableDataApi` defaults to `false`. | A fallback cluster sets `removalPolicy: DESTROY` and `enableDataApi: true`. Otherwise teardown leaves a billed snapshot. | cdk/rds.DatabaseCluster | 2026-10-15 |
+| AWS-48 | RDS Proxy: "Your RDS Proxy must be in the same virtual private cloud (VPC) as the database. The proxy can't be publicly accessible." "If your Aurora cluster has an associated RDS Proxy … any Aurora serverless instances in such a cluster won't automatically pause." us-east-2 price: USD 0.015 per ACU-hour of the underlying Serverless v2 instance, or per vCPU-hour for provisioned instances. | Rejected for the life of the project: it needs a VPC, hence NAT (AWS-13), and it disables auto-pause ([decision-lens-suite case 9](decision-lens-suite.md)). | rds-proxy/limitations; rds-proxy/pricing; PL:AmazonRDS | 2026-10-15 |
+| AWS-49 | Aurora DSQL "uses optimistic concurrency control (OCC) … evaluates conflicts at commit time". `SELECT … FOR UPDATE` works by "optimistic conflict detection at commit time rather than locking", and the losing transaction gets `SQLSTATE 40001`. "DDL and DML operations require separate transactions". "A transaction can modify up to 3,000 rows". | Rejected: the worker's lock-then-project transaction ([idea §5.3](../docs/idea.md#53-worker-and-the-event-ledger)) needs locks that block. | dsql/concurrency-control; dsql/postgresql-compatibility | 2026-10-15 |
+
 ## Cost shape
 
 us-east-2, from the facts above. "Idle" means no webhook traffic, with only the scheduled ticks
@@ -141,19 +158,19 @@ type**, which is the [success metric](about.md#success-metrics). The result is r
 | Lambda, arm64, all functions | 0 (scheduled ticks fit the free tier) | $0.20 / 1M + $0.0000133334 / GB-s (AWS-20) | Cost Explorer: Lambda |
 | SQS queue + DLQ | ≈ 0: est. 0.13–0.65M polls inside the 1M free tier; ≤ USD 0.26 without it (AWS-24) | $0.40 / 1M requests | Cost Explorer: SQS requests (AWS-U03) |
 | EventBridge Scheduler | 0 (AWS-26) | $1.00 / 1M after 14M free | Cost Explorer: EventBridge |
-| **Secrets Manager** | **$0.40 per secret** (AWS-11): USD 0.40–1.20 for 1–3 secrets | $0.05 / 10k calls | Cost Explorer: Secrets Manager |
+| **Secrets Manager** | **$0.40 per secret** (AWS-11): USD 1.20 for 3 secrets in M1, 1.60 for 4 from M2 ([integrations.md → Secrets layout](integrations.md#secrets-layout)) | $0.05 / 10k calls | Cost Explorer: Secrets Manager |
 | CloudWatch custom metrics (EMF) | 0 in hours with no emission. Metrics emitted by every scheduled run cost $0.30 each beyond 10 free (AWS-12) | — | Cost Explorer: CloudWatch `MetricMonitorUsage` |
 | CloudWatch alarms | 0 for ≤ 10; $0.10 each beyond (AWS-28) | — | Cost Explorer: CloudWatch `AlarmMonitorUsage` |
 | CloudWatch Logs | ≈ 0: scheduled-run logs only, 30-day retention, inside 5 GB free (AWS-29) | $0.50 / GB ingested | Cost Explorer: CloudWatch Logs |
 | SNS (alerts, trip topic) | 0 (AWS-31) | — | Cost Explorer: SNS |
 | AWS Budgets | 0, plain budget (AWS-32) | — | — |
 | CDK bootstrap bucket | a few MB of S3 storage; S3 price not researched | — | Cost Explorer: S3 |
-| **Postgres host** | see [integrations.md](integrations.md#postgres-host) | | The largest idle-cost risk. A scheduled tick that queries it can keep a scale-to-zero host awake ([Constraint 3](#constraints-and-sharp-edges)) |
+| **Postgres host** (Neon Free, outside AWS) | 0: Free never bills; at its 100 CU-h quota the compute suspends instead ([integrations.md](integrations.md#decision--neon)) | — | Neon usage page: CU-hours used, against the ≤ 30 CU-h idle wake budget ([PG-U03](integrations.md#unverified), [Constraint 3](#constraints-and-sharp-edges)) |
 | NAT gateway | **rejected**: ≈ USD 32.85 (AWS-13) | $0.045 / GB | Must not appear |
 | Public IPv4, customer-managed KMS key | **none**: $3.65/IP, $1/key (AWS-13, AWS-31) | | Must not appear |
 
-**Estimate, excluding Postgres:** ≈ USD 0.40–1.50/month, almost all of it Secrets Manager. If the
-owner's account is not on the always-free tiers, add ≤ USD 0.30 (AWS-U07).
+**Estimate:** ≈ USD 1.20–1.90/month, almost all of it Secrets Manager. Postgres adds 0 on Neon
+Free. If the owner's account is not on the always-free tiers, add ≤ USD 0.30 (AWS-U07).
 
 ## Budget alarms
 
@@ -210,7 +227,7 @@ tears down ([features.md → tear down](features.md#adopter-lifecycle)). This li
 | Secrets in their recovery window | Deletion waits 7–30 days (AWS-11) | Cost-free while pending (AWS-11). If a redeploy needs the same name before the window ends, `ForceDeleteWithoutRecovery` (AWS-U06) |
 | Messages in the queue and DLQ | Queues default to `DESTROY` (AWS-38) | Deleted with the stack. Teardown is deliberate, and the events live in Postgres |
 | CDKToolkit bootstrap stack, staging bucket, ECR repo, roles | `DeletionPolicy: Retain` (AWS-39) | Normally kept; AWS advises not to delete and recreate it. To remove it fully: empty the versioned bucket, then delete the `CDKToolkit` stack |
-| Postgres database | External to AWS stacks | Per host, see [integrations.md](integrations.md#postgres-host) |
+| Postgres database (Neon) | External to AWS stacks | Bills nothing on Free. Deleting the Neon project removes the data. It is optional and recoverable for 7 days ([integrations.md](integrations.md#decision--neon)) |
 | Resend webhook | Lives in Resend | The adopter deletes it, or Resend retries a dead endpoint and then auto-disables it ([RS-09, RS-11](resend.md#facts)) |
 | SNS email subscription | Deleted with its topic | Nothing to do |
 
@@ -228,8 +245,9 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 3. **Scheduled ticks can wake the database.** The dispatcher and reconciler run on schedules
    (AWS-10). *Impact:* a tick that opens a Postgres connection every few minutes can keep a
    scale-to-zero host from ever idling. That host's idle cost then becomes its active cost.
-   *Resolution:* cadence and host are decided together in [integrations.md](integrations.md#postgres-host),
-   and the idle measurement in [Cost shape](#cost-shape) confirms it.
+   *Resolution:* the host is Neon Free, which cannot bill. Database-touching ticks run at most
+   hourly and share one schedule, inside a ≤ 30 CU-h/month wake budget
+   ([integrations.md → Cadence](integrations.md#cadence-and-the-database)). PG-U03 measures it.
 4. **A database outage drains into the DLQ.** Every failed receive counts toward `maxReceiveCount`
    (AWS-09), so with 5 receives and a visibility timeout of a few minutes (AWS-08), a database
    outage longer than ~15–30 min moves events to the DLQ instead of holding them in the source
@@ -258,6 +276,7 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 | AWS-U05 | The owner's account concurrency quota | New-account quotas are reduced and unpublished (AWS-16) | `aws lambda get-account-settings` before the first deploy (read-only) | *durable ingest · M1*. Safe either way (no reserved concurrency except the kill switch's `0`; `MaximumConcurrency` ≤ quota) |
 | AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | *durable ingest · M1*. Safe on cost (no charge while pending, AWS-11) |
 | AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change | The first month's bill | *durable ingest · M1*. Safe either way (≤ USD 0.30/month at idle) |
+| AWS-U08 | `SELECT … FOR UPDATE` locks taken in a Data API transaction hold across its later calls | AWS-46 says connections are pooled and `DISCARD ALL` runs between uses. No page says a transaction is pinned to one connection | A two-transaction lock test against a real fallback cluster | Not owed while Neon holds. The ADR that switches to the Aurora fallback MUST settle it ([integrations.md](integrations.md#decision--neon)) |
 
 ## Sources
 
@@ -326,7 +345,14 @@ Price List offer file
 | cdk/bootstrapping-env | [cdk/v2/guide/bootstrapping-env.html](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping-env.html) | AWS-39 | 2026-10-15 |
 | cdk/bootstrap-template | [aws-cdk-cli bootstrap-template.yaml](https://github.com/aws/aws-cdk-cli/blob/main/packages/aws-cdk/lib/api/bootstrap/bootstrap-template.yaml) (template version 32) | AWS-39 | 2026-10-15 |
 | cdk/lambda.Function | [aws_lambda.Function](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_lambda.Function.html) | AWS-40 | 2026-10-15 |
-| PL:AmazonApiGateway, AWSLambda, AWSQueueService, AWSEvents, AWSSecretsManager, AmazonCloudWatch, AmazonSNS, awskms | Price List offer files, us-east-2 | AWS-15, AWS-20, AWS-24, AWS-26, AWS-11, AWS-12, AWS-28, AWS-29, AWS-31 | 2026-10-15 |
+| aurora/serverless-v2-auto-pause | [AmazonRDS/…/aurora-serverless-v2-auto-pause.html](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2-auto-pause.html) | AWS-41, AWS-42, AWS-43 | 2026-10-15 |
+| aurora/pricing | [aws.amazon.com/rds/aurora/pricing](https://aws.amazon.com/rds/aurora/pricing/) (N. Virginia examples only; Ohio prices from `PL:AmazonRDS`) | AWS-44 | 2026-10-15 |
+| rds-data/overview, regions, limitations, timeouts | [data-api.html](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.html), [Data_API regions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.Data_API.html), [data-api.limitations.html](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.limitations.html), [data-api-timeouts.html](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api-timeouts.html) | AWS-45 | 2026-10-15 |
+| rds-data/begin-transaction, session-management | [API_BeginTransaction.html](https://docs.aws.amazon.com/rdsdataservice/latest/APIReference/API_BeginTransaction.html), [data-api.session-management.html](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.session-management.html) | AWS-43, AWS-46, AWS-U08 | 2026-10-15 |
+| cdk/rds.DatabaseCluster | [aws_rds.DatabaseCluster](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_rds.DatabaseCluster.html), [RemovalPolicy](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.RemovalPolicy.html) | AWS-47 | 2026-10-15 |
+| rds-proxy/limitations, pricing | [rds-proxy.html](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy.html), [aws.amazon.com/rds/proxy/pricing](https://aws.amazon.com/rds/proxy/pricing/) | AWS-48 | 2026-10-15 |
+| dsql/concurrency-control, postgresql-compatibility | [working-with-concurrency-control.html](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-concurrency-control.html), [unsupported features](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-postgresql-compatibility-unsupported-features.html) | AWS-49 | 2026-10-15 |
+| PL:AmazonApiGateway, AWSLambda, AWSQueueService, AWSEvents, AWSSecretsManager, AmazonCloudWatch, AmazonSNS, awskms, AmazonRDS | Price List offer files, us-east-2 | AWS-15, AWS-20, AWS-24, AWS-26, AWS-11, AWS-12, AWS-28, AWS-29, AWS-31, AWS-44, AWS-45, AWS-48 | 2026-10-15 |
 
 ## Learning notes
 

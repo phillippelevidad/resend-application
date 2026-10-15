@@ -278,7 +278,8 @@ from the 10k burst; a learning log of the AWS and distributed-systems decisions.
 
 ## Open decisions
 
-- **Postgres host** — owned by [integrations.md](integrations.md) (step 6). Drives the next item.
+- **Postgres host** — decided in [integrations.md](integrations.md#decision--neon): Neon Free,
+  public TLS endpoint, Aurora Serverless v2 + Data API as the fallback. Drives the next item.
 - **Lambda inside or outside a VPC.** A VPC-only database needs NAT or VPC endpoints for SQS,
   Secrets Manager and Resend's API; NAT breaks the cost brake. Preview lean: outside a VPC, TLS to a
   managed host, if integrations.md picks one that allows it.

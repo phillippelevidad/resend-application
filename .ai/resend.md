@@ -11,7 +11,7 @@ on. Code, ADRs and tests cite `RS-NN` instead of restating it. Research current 
 verification in `apps/ingest`
 **Env:** `RESEND_API_KEY` (the name the SDK examples and the Resend CLI read, RS-33). Signing
 secrets live in Secrets Manager ([features.md → connect webhook](features.md#adopter-lifecycle));
-their names are fixed in [integrations.md](integrations.md)
+their names are fixed in [integrations.md → Secrets layout](integrations.md#secrets-layout)
 
 **Rules for this file (MUST).** `RS-NN` and `RS-UNN` ids are stable: never renumber, never reuse; a
 retired fact keeps its row, struck through, with the reason. Every `[Unverified]` row names the
@@ -147,8 +147,9 @@ simulator traffic is the default local loop.
 ## Constraints and sharp edges
 
 1. **Shared 10 req/s budget** (RS-19, RS-20). *Impact:* reconcile and the dispatcher compete with
-   the team's sending. *Resolution:* one client-side limiter with headroom. The default cadence is
-   set in [integrations.md](integrations.md).
+   the team's sending. *Resolution:* one client-side limiter, 2 req/s by default, that yields
+   when `ratelimit-remaining` runs low. Reconcile runs hourly
+   ([integrations.md → Locked rules](integrations.md#locked-rules-must)).
 2. **A disabled endpoint stops delivery** (RS-11). Whether it also swallows replays is RS-U04.
    *Impact:* replays may go nowhere. *Resolution:* Retrieve Webhook before replaying, then
    `webhook_disabled` with a re-enable hint. This is safe under either answer.
@@ -185,8 +186,9 @@ simulator traffic is the default local loop.
    *Resolution:* harmless only if RS-U01 holds. Otherwise it blocks recovery.
 10. **No read-only key** (RS-05, RS-18). *Impact:* the reconciler's key can read the signing secret
     and make every write: a security exposure. *Resolution:* the key stays in Secrets Manager and
-    never appears in logs or the CLI or MCP output. The key layout (least privilege per caller) is
-    decided in [integrations.md](integrations.md).
+    never appears in logs or the CLI or MCP output. Only the reconciler holds the `full_access`
+    key. The dispatcher sends with a `sending_access` key
+    ([integrations.md → Secrets layout](integrations.md#secrets-layout)).
 11. **Resend stores ingest's response bodies** (RS-12). *Impact:* anything ingest echoes is
     readable through List Attempts and the dashboard. *Resolution:* ingest responds with a fixed
     short body: no payload echo, no PII, no secret.

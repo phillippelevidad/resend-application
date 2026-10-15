@@ -88,10 +88,10 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 6 — `integrations.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Produces:** [integrations.md](integrations.md) — Resend calling discipline, the relationship to the Webhook Ingester, and the Postgres host decision.
 - **Depends on:** 4, 5.
-- **Owner input:** the Postgres host pick (recommendation required).
+- **Owner input (2026-10-15):** Postgres host is Neon Free (`aws-us-east-2`), a non-AWS account accepted, Aurora Serverless v2 + Data API as the fallback. Reconcile runs hourly. Secrets are split by trust boundary (`full_access` for the reconciler only, `sending_access` for the dispatcher from M2).
 
 ### Step 7 — `architecture.md`
 
@@ -99,7 +99,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 - **Produces:** [architecture.md](architecture.md) — ADRs, system shape, Deferred (YAGNI), the build order with final slice IDs mapped to milestones M1–M3, risks.
 - **Depends on:** 2, 3, 4, 5, 6.
 - **Owner input:** the M1 slice cut, including how the MVP CLI reads state (see the conflict noted in the file).
-- **MUST:** every `RS-UNN` row in [resend.md](resend.md#unverified) and every unverified bullet in [about.md](about.md#open-questions) lands in the slice it names, or moves with a recorded reason. Constraint 4 in resend.md (`401` does not stop retries) supersedes the idea §5.2 rationale. Every `AWS-UNN` row in [aws.md](aws.md#unverified) lands in its slice the same way. [aws.md → Constraint 4](aws.md#constraints-and-sharp-edges) (a DB outage drains into the DLQ, contradicting idea §6.4 as worded) is resolved by an ADR here.
+- **MUST:** every `RS-UNN` row in [resend.md](resend.md#unverified) and every unverified bullet in [about.md](about.md#open-questions) lands in the slice it names, or moves with a recorded reason. Constraint 4 in resend.md (`401` does not stop retries) supersedes the idea §5.2 rationale. Every `AWS-UNN` row in [aws.md](aws.md#unverified) and every `PG-UNN` row in [integrations.md](integrations.md#unverified) lands in its slice the same way. The dispatcher's trigger shape respects the hourly database wake budget ([integrations.md → Cadence](integrations.md#cadence-and-the-database)). [aws.md → Constraint 4](aws.md#constraints-and-sharp-edges) (a DB outage drains into the DLQ, contradicting idea §6.4 as worded) is resolved by an ADR here.
 
 ### Step 8 — `data-modeling.md`
 
