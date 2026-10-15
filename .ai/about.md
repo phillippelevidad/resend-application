@@ -170,7 +170,7 @@ this decides *whose exposure* may run thin meanwhile.
 
 ## Non-goals / out of scope
 
-From [idea §3](../docs/idea.md#3-goals-and-non-goals) and the owner calibration:
+From [idea §3](../docs/idea.md#3-goals-and-non-goals), as ratified by the owner (2026-10-15):
 
 - Multi-database connectors, warehouse loading, analytics dashboards (the Ingester covers these).
 - Multi-tenant hosting. One installation, one team.
@@ -224,4 +224,4 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Secret rotation (§10.1).** For 24 hours after a rotation, both secrets sign ([RS-04](resend.md#facts)). Verification MUST accept both during that window.
 - **Retry window.** Resend's docs disagree: "up to 24 hours" on one page, a schedule spanning ≈ 27.6 h on another. Ledger designs to the longer window ([resend.md → Constraint 3](resend.md#constraints-and-sharp-edges)), which is safe under either.
 - **Reconcile cadence vs the shared API budget (§10.5).** Hourly by default, through one client limiter at 2 req/s that yields when `ratelimit-remaining` runs low ([integrations.md → Locked rules](integrations.md#locked-rules-must); owner, 2026-10-15).
-- **Upstream contribution (§10.6).** Closed. Upstream PRs are not planned (owner calibration, 2026-10-15).
+- **Upstream contribution (§10.6).** Closed. Upstream PRs are not planned (owner, 2026-10-15; [decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).

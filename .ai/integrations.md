@@ -103,7 +103,7 @@ database connectors, deduplicated on a unique `svix_id`. It writes synchronously
   are a contributor's observations, not Resend's docs, so they stay RS-U01, RS-U02 and RS-U13.
 - **[Issue #8](https://github.com/resend/resend-webhooks-ingester/issues/8)** (open) asks for
   per-email event correlation. Ledger's order-independent projection answers that question in its
-  own repo. Upstream PRs are not planned (owner calibration), and the projection stays reusable in
+  own repo. Upstream PRs are not planned ([decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)), and the projection stays reusable in
   `packages/core` in case that changes.
 - Nothing else open upstream touches replay, ordering, idempotency or queues (2026-10-15).
 

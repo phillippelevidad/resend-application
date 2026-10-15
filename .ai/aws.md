@@ -3,7 +3,7 @@
 AWS is Ledger's runtime: API Gateway HTTP API, Lambda, SQS, EventBridge Scheduler, Secrets
 Manager, CloudWatch, SNS and AWS Budgets, deployed with AWS CDK to the **owner's personal
 account**. The stack stays up until the owner tears it down
-([owner calibration](bootstrap-checklist.md#owner-calibration-ratified-2026-10-15)). This file is
+([lens clause 7](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)). This file is
 the canonical record of every AWS limit and semantic Ledger relies on. CDK code, ADRs and the
 runbook cite `AWS-NN` instead of restating AWS behavior. Research current as of **2026-10-15**, region
 **us-east-2 (US East, Ohio)**. The numbers come from AWS docs and, because the pricing pages render
@@ -176,8 +176,8 @@ Free. If the owner's account is not on the always-free tiers, add ≤ USD 0.30 (
 ## Budget alarms
 
 **MANDATORY from the first deploy** ([lens clauses 6 and 7](../AGENTS.md#decision-lens--evidence-over-claims-right-sized);
-[decision-lens-suite case 10](decision-lens-suite.md)). "Hard cap" means alerts **plus** a kill switch
-([owner calibration](bootstrap-checklist.md#owner-calibration-ratified-2026-10-15)). The design
+[decision-lens-suite case 10](decision-lens-suite.md)). "Hard cap" means alerts **plus** a kill switch,
+because AWS has no native hard cap (AWS-36). The design
 below was ratified by the owner on 2026-10-15.
 
 1. **Guardrails stack.** The budget, its topics and the kill switch live in their own CDK stack, so

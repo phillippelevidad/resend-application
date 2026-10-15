@@ -354,7 +354,7 @@ measured reason in an ADR. Neon Free bills nothing and sits outside the AWS budg
 | Containers (Fargate) for any function, the read API included | categorical | Always-on charge; Lambda covers every operation | Superseding ADR only |
 | Customer-managed KMS keys | categorical | USD 1/key/month always on (AWS-31); SSE-SQS and AWS-managed keys suffice | Superseding ADR only |
 | Multi-region failover | categorical | No claim depends on it; one deployment ([decision-lens-suite case 11](decision-lens-suite.md)) | Superseding ADR only |
-| Upstream PRs to the Webhook Ingester | categorical | Not planned (owner calibration) | Superseding ADR only |
+| Upstream PRs to the Webhook Ingester | categorical | Not planned ([decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized), owner 2026-10-15) | Superseding ADR only |
 | Aurora Serverless v2 fallback | temporal | Neon Free meets R1–R7 at USD 0 | Any trigger in [integrations.md → Decision](integrations.md#decision--neon): Neon pauses, deletes or bills a kept-up deploy; one quota suspension; owner opts for all-AWS |
 | Projections for non-email events | temporal | Stored raw; no consumer yet | An [api-contract.md](api-contract.md) operation or a reaction rule that reads contact, domain or topic state |
 | Inbound email projection | temporal | `email.received` carries metadata only (RS-30) | M2 done **and** a row in [What this project must demonstrate](about.md#what-this-project-must-demonstrate) names inbound email |
@@ -362,6 +362,7 @@ measured reason in an ADR. Neon Free bills nothing and sits outside the AWS budg
 | Minimal read-only web UI | temporal | CLI and MCP cover every persona's job | M2 done **and** a demo step cannot be shown through CLI or MCP output |
 | Project domain (verified sending domain, stable demo URL) | temporal | Alerts reach the owner's address from `resend.dev` (RS-34) | The first slice that must send email to anyone but the owner's Resend address, or needs a stable public demo URL |
 | Scripted webhook creation | temporal | One-time step while the ingest URL is stable ([features.md → connect webhook](features.md#adopter-lifecycle)) | A redeploy of the same stack changes the ingest URL |
+| Walkthrough runner skill, a `test-findings.md` log and `.ai/testing/` | temporal | Nothing to walk yet; each slice's `WALKTHROUGH.md` holds its walk ([build-checklist](build-checklist.md#how-to-work-this-checklist)), and homeless findings go to [check-before-launch.md](check-before-launch.md). A walk that recurs per review MUST be scripted ([lens clause 1](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Slice 1's `WALKTHROUGH.md` exists |
 | Cost Anomaly Detection | temporal | No faster than the budget refresh (AWS-37) | A trip drill or a bill shows spend past 80 % of the cap without an alert |
 
 ## Build order (vertical slices)

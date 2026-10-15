@@ -57,7 +57,7 @@ email, and ACTUAL 100 % to the trip topic. They live in the guardrails stack
 [slice 2](build-checklist.md#2--durable-ingest-on-aws) builds them and drills them. What
 `cdk destroy --all` leaves behind is canonical in [aws.md → Teardown](aws.md#teardown). The rows
 below are the recurring checks that keep that design true while the stack stays up
-([owner calibration](bootstrap-checklist.md#owner-calibration-ratified-2026-10-15)).
+([lens clause 7](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 
 | ID | Check | Why it bites | Settle by |
 | --- | --- | --- | --- |

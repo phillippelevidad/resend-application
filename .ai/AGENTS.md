@@ -3,9 +3,8 @@
 These docs are **AI-first, human-second**: written to be queried by coding agents, and readable by
 humans reviewing decisions. Optimize for retrieval and signal density, not prose.
 
-> **Bootstrap in progress.** Most files below are still templates. Work them in the order of
-> [bootstrap-checklist.md](bootstrap-checklist.md). [docs/idea.md](../docs/idea.md) is a frozen RFC
-> (accepted 2026-10-15): read it for history, never as the current rule.
+Every file below is ratified and binding. [docs/idea.md](../docs/idea.md) is a frozen RFC (accepted
+2026-10-15): read it for history, never as the current rule.
 
 ## Rules
 
@@ -20,12 +19,6 @@ humans reviewing decisions. Optimize for retrieval and signal density, not prose
   doc page ([decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 - This repo is **public**. No personal details, no real recipient addresses, no account IDs,
   endpoint URLs or secrets. Refer to people by role.
-
-## Templates
-
-A file that starts with a **TEMPLATE banner** is not ratified: nothing in it is binding, and its
-preview content is illustrative. Its `AGENT INSTRUCTIONS` comment says how to research and write
-the final version. Removing the banner and the comment is what makes a file final.
 
 ## Documents
 
@@ -44,4 +37,3 @@ the final version. Removing the banner and the comment is what makes a file fina
 | [check-before-launch.md](check-before-launch.md) | Homeless pre-deploy and pre-demo checks | Required — before a deploy or publishing the demo |
 | [pre-proposals/](pre-proposals/) | One decision-complete brief per slice, written by `wf-before-propose` | When proposing a slice |
 | [commands/](commands/AGENTS.md) | Ready-made prompts the owner pastes by hand. **Not context, never auto-invoked** | **Never — unless asked for a command by name** |
-| [bootstrap-checklist.md](bootstrap-checklist.md) | Ordered plan for finishing these docs. Deleted when done | While any file above is a template |

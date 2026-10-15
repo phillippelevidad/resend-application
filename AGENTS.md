@@ -266,5 +266,32 @@ indexes. Migrations are expand/contract only, so deploys never need downtime (AD
 
 ## Patterns and practices
 
-Project skills and the OpenSpec workflow are being installed. When they land, list each skill here
-with **when to load it**, and name the mandatory ones that every task loads before any code.
+Skills live in [`.agents/skills/`](.agents/skills/). When a skill and a doc it links disagree, the
+doc wins and the skill is fixed in the same change.
+
+**Mandatory.** `pp-workflow` loads before any code, any slice work, and alongside every `wf-*` gate.
+`pp-backend` and `pp-database` load whenever a change touches their surface. Those three bind every
+implementer and reviewer.
+
+| Skill | Load it when |
+| --- | --- |
+| `pp-workflow` | Always, before code: read order, slice scoping, the `pnpm verify` gate, the doc duties every change owes, test tiers |
+| `pp-backend` | A change touches `apps/` or `packages/`: handlers, projections, repositories, ports, outbox, reconcile, CLI, MCP, SDK |
+| `pp-database` | A change touches a table, column, index, constraint, `jsonb` column, migration or seed |
+| `wf-before-propose` | Before proposing a slice: writes the decision-complete pre-proposal in `.ai/pre-proposals/` |
+| `wf-before-propose-check` | Right after `wf-before-propose`: verifies and repairs the pre-proposal |
+| `opsx:propose` | Creates the slice's OpenSpec change from the checked pre-proposal |
+| `wf-after-propose-check` | Right after `opsx:propose`, before `opsx:apply`: verifies and repairs the change |
+| `opsx:apply` | Builds the change's tasks |
+| `wf-after-apply-check` | Right after `opsx:apply`, before `opsx:archive`: verifies the code, runs `pnpm verify`, walks `WALKTHROUGH.md` |
+| `opsx:archive` | Archives a verified change |
+| `opsx:explore`, `opsx:update`, `opsx:sync` | Thinking a change through; revising its artifacts; syncing delta specs without archiving |
+| `implement-plan` | A tweak too small for an OpenSpec change, from a plan file. Never a slice, a public contract or a migration |
+| `architecture-designer` | Drafting a new or superseding ADR. [architecture.md](.ai/architecture.md#decisions)'s ADR format and the decision lens win over its templates |
+| `wf-commit` | Every commit, at the end of each finished step |
+| `wf-create-pr` | Only when asked to open or rewrite a PR |
+
+A slice runs `wf-before-propose` → `wf-before-propose-check` → `opsx:propose` →
+`wf-after-propose-check` → `opsx:apply` → `wf-after-apply-check` → `opsx:archive`. The
+`openspec-*` skills are OpenSpec's generated twins of the `/opsx:*` commands (see
+[Commands](#commands)).
