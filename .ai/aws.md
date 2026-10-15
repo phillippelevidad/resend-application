@@ -25,13 +25,13 @@ ids, ARNs, endpoint URLs or notification addresses. Deploying is Ask-first
 The serverless shape fits. At idle, nothing in the app stack bills by the hour. What costs money while
 idle is a handful of per-month line items (secrets, metrics, alarms, log storage), all listed in
 [Cost shape](#cost-shape). The Postgres host, Neon Free, sits outside AWS and bills nothing
-([integrations.md](integrations.md#decision--neon)). The idle estimate is under USD 2/month, against the
+([integrations.md](integrations.md#decision--neon)). The idle estimate is under USD 2.50/month, against the
 ≤ USD 5 target ([about.md → Success metrics](about.md#success-metrics)). Four facts shape the
 design:
 
 - **No native hard cap.** Budget Actions cannot stop Lambda, SQS or API Gateway (AWS-36), and budget
   data refreshes only "at least once per day" (AWS-34). Ledger builds its own kill switch, and
-  accepts up to about a day of overshoot ([Budget alarms](#budget-alarms)).
+  accepts an overshoot window of billing lag plus up to 12 h ([Budget alarms](#budget-alarms)).
 - **A VPC means a NAT gateway.** A VPC-attached Lambda has no internet access without one (AWS-13), at
   ≈ USD 32.85/month idle in Ohio, two-thirds of the cap. Rejected
   ([decision-lens-suite case 9](decision-lens-suite.md)).
@@ -57,7 +57,7 @@ design:
 
 | Id | Fact | Consequence for Ledger | Source | Checked on |
 | --- | --- | --- | --- | --- |
-| AWS-03 | "Function timeout \| 900 seconds (15 minutes)". | Reconciler runs fit. A longer run resumes by cursor ([idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events)). | lambda/limits | 2026-10-15 |
+| AWS-03 | "Function timeout \| 900 seconds (15 minutes)". | Reconciler runs fit. A run that reaches its time budget stops; the next run re-diffs from newest ([integrations.md → Locked rules](integrations.md#locked-rules-must), rule 3). | lambda/limits | 2026-10-15 |
 | AWS-16 | "To intentionally throttle an Event Function, set its reserved concurrency to 0. This stops your Event Function from processing any events until you remove the limit." `PutFunctionConcurrency` accepts a minimum of 0. Reserved concurrency "incurs no additional charges". "You can reserve up to the Unreserved account concurrency value minus 100." The default quota is 1,000, but "New AWS accounts have reduced concurrency … quotas", and the reduced figure is not published. | Reserved concurrency `0` is the kill switch's primitive. Ledger reserves concurrency for nothing else, so a low new-account quota cannot block a deploy. Backpressure comes from AWS-04 instead (AWS-U05). | lambda/concurrency; lambda/API_PutFunctionConcurrency; lambda/limits | 2026-10-15 |
 | AWS-04 | SQS event source mapping (ESM) `MaximumConcurrency`: "Minimum value of 2. Maximum value of 1000." "Don't set maximum concurrency higher than the function's reserved concurrency … Otherwise, Lambda might throttle your messages." An idle standard queue is long-polled; at low traffic Lambda "can optimize to as few as 2 concurrent invokes to reduce the Amazon SQS calls and corresponding costs. However, this optimization is not available when you enable the maximum concurrency setting." | `MaximumConcurrency` is the backpressure valve on Postgres connections ([idea §5.3](../docs/idea.md#53-worker-and-the-event-ledger)). The worker sets no reserved concurrency (AWS-16). The price is extra idle polling (AWS-24, AWS-U03). | lambda/API_ScalingConfig; lambda/sqs-scaling | 2026-10-15 |
 | AWS-05 | `ReportBatchItemFailures`: "The `batchItemFailures` response must include a list of message IDs, as `itemIdentifier` JSON values." Complete **success**: an empty or null `batchItemFailures`, or an empty or null response. Complete **failure**: invalid JSON, an empty, null or unknown `itemIdentifier`, a bad key name, or a thrown exception. | The worker MUST list every message it did not commit. Returning `{}` deletes the whole batch, so a swallowed error loses events. A unit test feeds a batch with one failure and asserts the response. | lambda/sqs-errorhandling | 2026-10-15 |
@@ -85,14 +85,14 @@ design:
 
 | Id | Fact | Consequence for Ledger | Source | Checked on |
 | --- | --- | --- | --- | --- |
-| AWS-10 | Schedule types are `rate(value unit)` (minutes, hours or days), `cron(…)` and one-time `at(…)`. Flexible windows are `OFF` or `FLEXIBLE` with a maximum window. `RetryPolicy` ranges: `MaximumEventAgeInSeconds` 60–86400 and `MaximumRetryAttempts` 0–185. The 24 h and 185 defaults appear only in the CDK docs. Failed invocations can go to "an Amazon SQS standard queue" as a DLQ. The scheduler uses an execution role, and Lambda `Invoke` is a templated target. | The reconciler and dispatcher run on `rate()` schedules with the flexible window `OFF`. Ledger sets the retry policy explicitly, with small values, because the next tick supersedes a missed one. It does not rely on the defaults. The 1-minute minimum is documented only for EventBridge rules, so Ledger uses no cadence below 1 minute. | scheduler/schedule-types; scheduler/flexible-windows; scheduler/API_RetryPolicy; scheduler/dlq; scheduler/setting-up; scheduler/targets; cdk/ScheduleTargetBaseProps | 2026-10-15 |
+| AWS-10 | Schedule types are `rate(value unit)` (minutes, hours or days), `cron(…)` and one-time `at(…)`. Flexible windows are `OFF` or `FLEXIBLE` with a maximum window. `RetryPolicy` ranges: `MaximumEventAgeInSeconds` 60–86400 and `MaximumRetryAttempts` 0–185. The 24 h and 185 defaults appear only in the CDK docs. Failed invocations can go to "an Amazon SQS standard queue" as a DLQ. The scheduler uses an execution role, and Lambda `Invoke` is a templated target. | Database-touching ticks (the reconciler, the dispatcher sweep and the worker's resume check) share one hourly `cron(…)` schedule with the flexible window `OFF`, so they land in one wake ([integrations.md → Cadence](integrations.md#cadence-and-the-database)). Ledger sets the retry policy explicitly, with small values, because the next tick supersedes a missed one. It does not rely on the defaults. The 1-minute minimum is documented only for EventBridge rules, so Ledger uses no cadence below 1 minute. | scheduler/schedule-types; scheduler/flexible-windows; scheduler/API_RetryPolicy; scheduler/dlq; scheduler/setting-up; scheduler/targets; cdk/ScheduleTargetBaseProps | 2026-10-15 |
 | AWS-26 | "You can make 14,000,000 invocations per month for free." After that, "$1.00 per million scheduled invocations in US East (Ohio)". | Cost is zero at any cadence Ledger uses: every 15 min is 2,880 a month, every minute is 43,200. | eventbridge/pricing; PL:AWSEvents | 2026-10-15 |
 
 ### Secrets Manager and SSM Parameter Store
 
 | Id | Fact | Consequence for Ledger | Source | Checked on |
 | --- | --- | --- | --- | --- |
-| AWS-11 | "$0.40 per Secret" per month, prorated hourly. "$0.05 per 10000 API Requests". A replica is billed as a separate secret. Deletion waits a recovery window of 7–30 days ("by default … a 30 day recovery window"). `ForceDeleteWithoutRecovery` skips it. "There is no charge for secrets that you have marked for deletion." | Secrets Manager holds the signing secrets, the Resend key and the DB URL ([features.md → connect webhook](features.md#adopter-lifecycle)). Every secret is an idle line in [Cost shape](#cost-shape), so the count is kept minimal. The layout is fixed in [integrations.md](integrations.md). Lambdas cache values per container. | secretsmanager/pricing; PL:AWSSecretsManager; secretsmanager/API_DeleteSecret; secretsmanager/delete-secret | 2026-10-15 |
+| AWS-11 | "$0.40 per Secret" per month, prorated hourly. "$0.05 per 10000 API Requests". A replica is billed as a separate secret. Deletion waits a recovery window of 7–30 days ("by default … a 30 day recovery window"). `ForceDeleteWithoutRecovery` skips it. "There is no charge for secrets that you have marked for deletion." | Secrets Manager holds the signing secrets, the Resend key and the DB URL ([features.md → connect webhook](features.md#adopter-lifecycle)). Every secret is an idle line in [Cost shape](#cost-shape), so the count is kept minimal. The layout is fixed in [integrations.md](integrations.md). Lambdas cache values per container; ingest's signing-secret set for at most 5 minutes ([ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance)). | secretsmanager/pricing; PL:AWSSecretsManager; secretsmanager/API_DeleteSecret; secretsmanager/delete-secret | 2026-10-15 |
 | AWS-27 | SSM standard parameters "are available at no additional charge" (standard throughput). Each holds a "Maximum value size 4 KB". SecureString defaults to the AWS-managed key `aws/ssm`, and AWS-managed keys are free to create and store. | A comparison only. Secrets Manager is already bound by features.md, so this deviation is not taken. It would save USD 0.40 per secret per month. | ssm/pricing; ssm/advanced-parameters; kms/parameter-store; kms/pricing | 2026-10-15 |
 
 ### CloudWatch and SNS
@@ -117,10 +117,12 @@ design:
 | --- | --- | --- | --- | --- |
 | AWS-32 | "You can monitor and receive notifications on your budgets free of charge." "Your first two action-enabled budgets are free … Afterwards each subsequent action-enabled budget will incur a $0.10 daily cost." | The guardrails budget is a plain budget with no Budget Action, so it costs USD 0. | budgets/pricing | 2026-10-15 |
 | AWS-33 | Notification types are `ACTUAL \| FORECASTED`, with thresholds as `PERCENTAGE \| ABSOLUTE_VALUE`. A notification takes "one SNS subscriber and up to 10 email subscribers". The API page allows up to ten notifications per budget; the CloudFormation page says five. Forecasts need about 5 weeks of usage data. | ≤ 5 notifications per budget. The trip fires on ACTUAL, because a new account has no forecast yet. | budgets/API_Notification; cfn/budgets-budget | 2026-10-15 |
-| AWS-34 | "AWS billing data, which Budgets uses to monitor resources, is updated at least once per day." | The kill switch can fire up to about a day after the spend that crosses the cap. The cap is "hard" only to within one day's maximum spend rate ([Budget alarms](#budget-alarms)). | budgets/best-practices | 2026-10-15 |
+| AWS-52 | `AWS::Budgets::Budget` `CostTypes.IncludeCredit`: "Specifies whether a budget includes credits. The default value is `true`." | The budget sets it `false`, so credits cannot hide a runaway from the alerts or the trip ([Budget alarms](#budget-alarms) item 2). | cfn/budgets-costtypes | 2026-10-15 |
+| AWS-34 | "AWS billing data, which Budgets uses to monitor resources, is updated at least once per day." "AWS Budgets information is updated up to three times a day. Updates typically occur 8–12 hours after the previous update." "There can be a delay between when you incur a charge and when you receive a notification from AWS Budgets for the charge." "Actual alerts are only sent out once per budget, per budget period, when a budget first reached the actual alert threshold." | The budget trip can fire more than a day after the spend that crosses the cap: billing lag plus up to 12 h between updates. The cap is "hard" only to within that window at the maximum spend rate ([Budget alarms](#budget-alarms) item 7). An ACTUAL notification fires once per month. | budgets/best-practices; budgets/managing-costs | 2026-10-15 |
 | AWS-35 | The topic policy must grant `"Service": "budgets.amazonaws.com"` `"Action": "SNS:Publish"`. "Cross-account Amazon SNS isn't supported." An encrypted topic "won't work without additional permissions". The Budgets endpoint is listed in us-east-1, us-west-2 and ca-central-1, not us-east-2. The CloudFormation `AWS::Budgets::Budget` page states no region restriction. | The guardrails stack grants that policy on an unencrypted (SSE off) trip topic in the same account. Whether the budget deploys from a us-east-2 stack and publishes to a us-east-2 topic is AWS-U01. | budgets/sns-policy; gr/billing; cfn/budgets-budget | 2026-10-15 |
 | AWS-36 | "Your available actions include applying an IAM policy or a service control policy (SCP). They also include targeting specific Amazon EC2 or Amazon RDS instances". | Budget Actions cannot stop Lambda, the SQS ESM or API Gateway. A deny policy on a principal does not stop service-initiated invocations. That reasoning is ours, not AWS's. So the kill switch is custom ([Budget alarms](#budget-alarms)). | budgets/controls | 2026-10-15 |
 | AWS-37 | Cost Anomaly Detection: "anomalous spend detection across all deployed AWS services with no effort or cost". "It can take up to 24 hours to detect an anomaly after a usage occurs". | Not built. It is no faster than AWS-34, so it would not shorten the overshoot. Tripwire: a trip drill or a real bill shows spend crossing 80 % of the cap without an alert. | ce/anomaly-faqs; ce/manage-ad | 2026-10-15 |
+| AWS-51 | The Free plan ends at the earlier of 6 months or "once you have exhausted your Free Tier credits". "When your Free plan expires, AWS suspends your account and any associated projects"; data is kept 90 days. | A kept deploy MUST run on a Paid-plan account: a Free-plan account suspends the stack at 6 months at the latest (lens clause 7). Slice 2 Ops checks the plan. | free/free-tier-faqs | 2026-10-15 |
 
 ### AWS CDK
 
@@ -151,7 +153,7 @@ facts back its fallback (Aurora Serverless v2 + Data API) and the two rejected A
 
 us-east-2, from the facts above. "Idle" means no webhook traffic, with only the scheduled ticks
 running. Every line is measured after 30 idle days with **Cost Explorer grouped by service and usage
-type**, which is the [success metric](about.md#success-metrics). The result is recorded here.
+type**, credits excluded, which is the [success metric](about.md#success-metrics). The result is recorded here.
 
 | Resource | Idle cost / month | Per-event cost | Measured by |
 | --- | --- | --- | --- |
@@ -170,8 +172,9 @@ type**, which is the [success metric](about.md#success-metrics). The result is r
 | NAT gateway | **rejected**: ≈ USD 32.85 (AWS-13) | $0.045 / GB | Must not appear |
 | Public IPv4, customer-managed KMS key | **none**: $3.65/IP, $1/key (AWS-13, AWS-31) | | Must not appear |
 
-**Estimate:** ≈ USD 1.20–1.90/month, almost all of it Secrets Manager. Postgres adds 0 on Neon
-Free. If the owner's account is not on the always-free tiers, add ≤ USD 0.30 (AWS-U07).
+**Estimate:** ≈ USD 1.20–1.90/month for an adopter and ≈ 1.60–2.30 in the owner's deployment (the
+simulator secret), almost all of it Secrets Manager. Postgres adds 0 on Neon Free. If the owner's
+account is not on the always-free tiers, add ≤ USD 0.30 (AWS-U07).
 
 ## Budget alarms
 
@@ -182,8 +185,13 @@ below was ratified by the owner on 2026-10-15.
 
 1. **Guardrails stack.** The budget, its topics and the kill switch live in their own CDK stack, so
    they survive app-stack redeploys, failed deploys and `cdk destroy` of the app stack alone. There is never
-   a budget-alarm gap. The one-command teardown still removes it ([Teardown](#teardown)).
-2. **Budget.** One monthly cost budget, plain (no Budget Action), so it costs USD 0 (AWS-32). The cap is
+   a budget-alarm gap. The one-command teardown still removes it ([Teardown](#teardown)). The
+   guardrails stack MUST NOT import values from the app stack (no `Fn::ImportValue`): it deploys
+   first, and the kill switch finds its targets at trip time from the stack-prefixed function and API
+   names (the worker's ESM through its function). A CDK assertion test checks that the guardrails
+   template has no `Fn::ImportValue`.
+2. **Budget.** One monthly cost budget, plain (no Budget Action), so it costs USD 0 (AWS-32), with
+   `CostTypes.IncludeCredit: false`, so its thresholds track usage before credits (AWS-52). The cap is
    a deploy parameter, default **USD 50** ([about.md → Success metrics](about.md#success-metrics)).
 3. **Notifications (4 of the ≤ 5 allowed, AWS-33).** ACTUAL 50 %, ACTUAL 80 % and FORECASTED 100 %
    go to email. The address is supplied at deploy time and never committed. ACTUAL 100 % goes to
@@ -206,11 +214,11 @@ below was ratified by the owner on 2026-10-15.
    reserved concurrency, re-enables the ESM and restores the throttle. Then a `ledger reconcile` recovers the
    events Resend marked failed meanwhile, within List Events reach
    ([RS-U03](resend.md#unverified)). The script name is fixed by the slice that builds it.
-7. **Overshoot is bounded, not zero.** Budget data refreshes "at least once per day" (AWS-34), so
-   spend can pass the cap by up to one day at the maximum spend rate. That rate is bounded by the
-   default-route throttle (AWS-14). The slice sets the throttle and states the computed worst-case
+7. **Overshoot is bounded, not zero.** Budget data lags usage and refreshes every 8–12 h (AWS-34), so
+   spend can pass the cap by the billing lag plus up to 12 h at the maximum spend rate. That rate is
+   bounded by the default-route throttle (AWS-14). The slice sets the throttle and states the computed worst-case
    overshoot.
-8. **Evidence.** A CDK assertion test proves the budget, the notifications and the kill-switch wiring exist.
+8. **Evidence.** A CDK assertion test proves the budget (with `IncludeCredit: false`), the notifications and the kill-switch wiring exist.
    A recorded **trip drill** (publish to the trip topic, observe each throttle, re-arm, reconcile) proves
    they work ([features.md → Operations](features.md#operations)). Re-checked after every owner
    deploy ([CBL-16](check-before-launch.md#deploy-configuration)).
@@ -254,9 +262,10 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
    (AWS-09), so with 5 receives and a visibility timeout of a few minutes (AWS-08), a database
    outage longer than ~15–30 min moves events to the DLQ instead of holding them in the source
    queue. This contradicts [idea §6.4](../docs/idea.md#64-failure-modes-and-expected-behavior)
-   ("Queue holds events") as worded. No event is lost: the DLQ keeps 14 days, and redrive
-   (AWS-21) puts them back, deduplicated on `svix_id`. *Resolution:* the worker pauses its own
-   ESM when Postgres is unreachable (AWS-18), and the hourly cron resumes it
+   ("Queue holds events") as worded. No event is lost: the DLQ keeps a message until 14 days after
+   its original enqueue (AWS-09), and redrive (AWS-21) puts them back, deduplicated on `svix_id`.
+   *Resolution:* the worker pauses its own ESM when Postgres is unreachable (AWS-18), and the hourly
+   cron resumes it
    ([architecture.md → ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
    The `--chaos db-outage` run is the evidence.
 5. **`ReportBatchItemFailures` fails open on an empty response** (AWS-05). *Impact:* a handler
@@ -275,9 +284,9 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 | AWS-U02 | An HTTP API route throttle of `0` rejects every request, and throttled requests are not billed | No page states either (AWS-14). If not, a flood keeps billing API Gateway after a trip | The trip drill: send requests after the trip, read the status codes, and read API Gateway usage in Cost Explorer. Fallback: the lowest throttle that is accepted, with its worst-case spend stated | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
 | AWS-U03 | ESM polling of an idle queue stays inside the SQS free tier (est. 0.13–0.65M requests/month) | No page states the poll rate (AWS-04, AWS-24). The estimate assumes back-to-back 20 s long polls by 1–5 pollers | 30 idle days: SQS request usage in Cost Explorer | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.26/month at 5 pollers) |
 | AWS-U04 | When an HTTP API base64-encodes the request body | Only the function URL page states a rule (AWS-01) | Read `isBase64Encoded` on the first real Resend delivery | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (decode when `true`; unit test both) |
-| AWS-U05 | The owner's account concurrency quota | New-account quotas are reduced and unpublished (AWS-16) | `aws lambda get-account-settings` before the first deploy (read-only) | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (no reserved concurrency except the kill switch's `0`; `MaximumConcurrency` ≤ quota) |
+| AWS-U05 | The owner's account concurrency quota | New-account quotas are reduced and unpublished (AWS-16) | `aws lambda get-account-settings` before the first deploy (read-only) | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe for the deploy (no reserved concurrency except the kill switch's `0`; `MaximumConcurrency` ≤ quota). Not safe for the burst: before `--burst`, [slice 3](build-checklist.md#3--operations-and-evidence-on-aws) MUST confirm the quota ≥ peak ingest concurrency (≈ rps × ingest duration) + `MaximumConcurrency` + headroom, and request a Service Quotas increase if it falls short |
 | AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe on cost (no charge while pending, AWS-11) |
-| AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change | The first month's bill | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.30/month at idle) |
+| AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change. Separately, a Free-plan account is suspended at 6 months at the latest (AWS-51), so a kept deploy needs the Paid plan | The first month's bill | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.30/month at idle) |
 | AWS-U08 | `SELECT … FOR UPDATE` locks taken in a Data API transaction hold across its later calls | AWS-46 says connections are pooled and `DISCARD ALL` runs between uses. No page says a transaction is pinned to one connection | A two-transaction lock test against a real fallback cluster | Not owed while Neon holds. The ADR that switches to the Aurora fallback MUST settle it ([integrations.md](integrations.md#decision--neon)) |
 
 ## Sources
@@ -339,11 +348,14 @@ Price List offer file
 | budgets/pricing | [aws.amazon.com/aws-cost-management/aws-budgets/pricing](https://aws.amazon.com/aws-cost-management/aws-budgets/pricing/) | AWS-32 | 2026-10-15 |
 | budgets/API_Notification | [aws-cost-management/latest/APIReference/API_budgets_Notification.html](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_budgets_Notification.html) | AWS-33 | 2026-10-15 |
 | cfn/budgets-budget | [AWSCloudFormation/latest/TemplateReference/aws-resource-budgets-budget.html](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-budgets-budget.html) | AWS-33, AWS-35, AWS-U01 | 2026-10-15 |
+| cfn/budgets-costtypes | [AWSCloudFormation/latest/TemplateReference/aws-properties-budgets-budget-costtypes.html](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-budgets-budget-costtypes.html) | AWS-52 | 2026-10-15 |
 | budgets/best-practices | [cost-management/latest/userguide/budgets-best-practices.html](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-best-practices.html) | AWS-34 | 2026-10-15 |
+| budgets/managing-costs | [cost-management/latest/userguide/budgets-managing-costs.html](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html) | AWS-34 | 2026-10-15 |
 | budgets/sns-policy | [cost-management/latest/userguide/budgets-sns-policy.html](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-sns-policy.html) | AWS-35 | 2026-10-15 |
 | gr/billing | [general/latest/gr/billing.html](https://docs.aws.amazon.com/general/latest/gr/billing.html) | AWS-35, AWS-U01 | 2026-10-15 |
 | budgets/controls | [cost-management/latest/userguide/budgets-controls.html](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-controls.html) | AWS-36 | 2026-10-15 |
 | ce/anomaly-faqs, ce/manage-ad | [aws-cost-anomaly-detection/faqs](https://aws.amazon.com/aws-cost-management/aws-cost-anomaly-detection/faqs/), [manage-ad.html](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html) | AWS-37 | 2026-10-15 |
+| free/free-tier-faqs | [aws.amazon.com/free/free-tier-faqs](https://aws.amazon.com/free/free-tier-faqs/) | AWS-51 | 2026-10-15 |
 | cdk/sqs.Queue, secretsmanager.Secret, logs.LogGroup | [aws_sqs.Queue](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_sqs.Queue.html), [aws_secretsmanager.Secret](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_secretsmanager.Secret.html), [aws_logs.LogGroup](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_logs.LogGroup.html) | AWS-38 | 2026-10-15 |
 | cdk/bootstrapping-env | [cdk/v2/guide/bootstrapping-env.html](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping-env.html) | AWS-39 | 2026-10-15 |
 | cdk/bootstrap-template | [aws-cdk-cli bootstrap-template.yaml](https://github.com/aws/aws-cdk-cli/blob/main/packages/aws-cdk/lib/api/bootstrap/bootstrap-template.yaml) (template version 32) | AWS-39 | 2026-10-15 |
