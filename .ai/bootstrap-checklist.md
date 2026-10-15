@@ -134,7 +134,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 12 — `commands/auto-decide.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** lookups run on the cheapest fast model; a lookup with no settling quote is re-run once on the session model, within the same caps. Already settled by the docs: parked items stay uncommitted, their dependents are skipped, and the rest continues (root AGENTS.md → Commit and push). The never-alone list is the union of Ask-first, the Never tier's gate and secret rules, and about.md's never-tolerable items.
 - **Produces:** [commands/auto-decide.md](commands/auto-decide.md).
 - **Depends on:** 1, 2.
 
