@@ -13,7 +13,7 @@ portfolio project, built as part of an application to Resend. Not affiliated wit
 
 ## Decision lens — evidence over claims, right-sized
 
-**Apply when:** choosing infra, dependencies or patterns, scoping a phase, or writing anything that
+**Apply when:** choosing infra, dependencies or patterns, scoping a slice, or writing anything that
 claims a behavior. Do NOT re-litigate an accepted ADR in [architecture.md](.ai/architecture.md#decisions)
 (verify then enqueue, ADR-001; SQS standard, not FIFO, ADR-002; projection recomputed from the
 event set, ADR-003; Postgres only, because dedupe, row locks and the outbox commit in one
