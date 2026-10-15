@@ -65,6 +65,7 @@ design:
 | AWS-18 | ESM `Enabled`: "When false, Lambda pauses polling and invocation", which lets you "pause invocation and resume later from the same location". | The kill switch disables the worker ESM. Messages wait in the queue under its retention (AWS-07). | lambda/API_UpdateEventSourceMapping | 2026-10-15 |
 | AWS-19 | "By default, CloudWatch automatically creates a log group named `/aws/lambda/<function name>` … when it's first invoked", and "log data is stored … indefinitely". `LoggingConfig.LogGroup` points a function at an existing log group, whose name must not start with `aws/`. | Every function logs to a CDK-owned log group with explicit retention and removal (AWS-40), so nothing is created outside the stack. | lambda/cwlogs-loggroups; lambda/API_LoggingConfig; logs/log-groups | 2026-10-15 |
 | AWS-20 | us-east-2: $0.20 per 1M requests (x86 and arm64). Compute is $0.0000166667/GB-s on x86 and $0.0000133334/GB-s on arm64. "The free tier includes one million requests and 400,000 GB-seconds per month." | Functions run on **arm64**, which is 20 % cheaper per GB-s. Scheduled ticks and demo traffic fit the free tier (AWS-U07). | PL:AWSLambda; lambda/pricing | 2026-10-15 |
+| AWS-53 | Asynchronous invocation: "If the function returns an error, by default Lambda attempts to run it two more times". "When an event expires or fails all processing attempts, Lambda discards it." Throttled async events are retried "for up to 6 hours by default". | The SNS-triggered kill switch can fail silently after three attempts, so its `Errors` metric is alarmed ([Budget alarms](#budget-alarms) item 4). Nothing but concurrency limits an async fan-out, such as the worker's dispatcher invokes (ADR-017). | lambda/async-errors | 2026-10-15 |
 
 ### SQS
 
@@ -99,7 +100,7 @@ design:
 
 | Id | Fact | Consequence for Ledger | Source | Checked on |
 | --- | --- | --- | --- | --- |
-| AWS-12 | Custom metrics in us-east-2 cost "$0.30 per metric-month for the first 10,000 metrics". They "are prorated by the hour and charges are incurred only when metrics are sent to CloudWatch in a given hour". 10 are free. "CloudWatch treats each unique combination of dimensions as a separate metric". In EMF, "Every DimensionSet used creates a new metric". | The EMF set stays at [idea §5.8](../docs/idea.md#58-infrastructure-and-operations), with no high-cardinality dimension (no `svix_id` or `email_id` as a dimension; those go in log fields). A metric costs money only in hours it is emitted, so idle hours are free unless a scheduled run emits. Queue metrics come from SQS for free (AWS-22). | cloudwatch/pricing; PL:AmazonCloudWatch; cloudwatch/concepts; cloudwatch/emf-spec | 2026-10-15 |
+| AWS-12 | Custom metrics in us-east-2 cost "$0.30 per metric-month for the first 10,000 metrics". They "are prorated by the hour and charges are incurred only when metrics are sent to CloudWatch in a given hour". 10 are free. "CloudWatch treats each unique combination of dimensions as a separate metric". In EMF, "Every DimensionSet used creates a new metric". | The EMF set stays at [architecture.md → Technology](architecture.md#technology) (Logging / metrics), with no high-cardinality dimension (no `svix_id` or `email_id` as a dimension; those go in log fields). A metric costs money only in hours it is emitted, so idle hours are free unless a scheduled run emits. Queue metrics come from SQS for free (AWS-22). | cloudwatch/pricing; PL:AmazonCloudWatch; cloudwatch/concepts; cloudwatch/emf-spec | 2026-10-15 |
 | AWS-28 | "$0.10 per alarm metric month (standard resolution)". Composite alarms cost $0.50. 10 standard alarm metrics are free. | Ledger keeps ≤ 10 standard alarms, or Cost shape states the extra. No composite alarms. | PL:AmazonCloudWatch; cloudwatch/pricing | 2026-10-15 |
 | AWS-29 | Logs in us-east-2: "$0.50 per GB … ingested in Standard log class", $0.25 in Infrequent Access, and "$0.03 per GB-mo of log storage". 5 GB per month is free. "By default, log data is stored in CloudWatch Logs indefinitely". Retention takes fixed values: 1, 3, 5, 7, 14, 30 … 3653 days. | Every log group sets **30 days** of retention. Logs carry ids, never addresses or payload bodies ([about.md → Risk appetite](about.md#risk-appetite)), which also keeps volume small. | PL:AmazonCloudWatch; logs/log-groups; logs/API_PutRetentionPolicy | 2026-10-15 |
 | AWS-30 | "By default, many AWS services provide metrics at no charge". The pricing page lists "Basic Monitoring Metrics (Metrics sent from AWS Services by default)" as free. SQS is explicit (AWS-22). Lambda and API Gateway are not named. | Alarms prefer vended metrics (Lambda `Errors`, `Throttles`; API Gateway `Count`, `5xx`) over custom ones. | cloudwatch/concepts; cloudwatch/pricing | 2026-10-15 |
@@ -198,11 +199,17 @@ below was ratified by the owner on 2026-10-15.
    email **and** the trip topic. FORECASTED never trips, because a new account has no forecast.
 4. **Kill switch: an SNS-triggered Lambda.** It is the only design that stops compute: Budget Actions
    cannot (AWS-36). On a trip it:
-   - sets reserved concurrency `0` on every app function (AWS-16): ingest, worker, dispatcher,
+   - first disables the worker's ESM (AWS-18), so queued events wait in SQS for up to 13 days
+     (AWS-07) and no receive is throttled toward the DLQ;
+   - then sets reserved concurrency `0` on every app function (AWS-16): ingest, worker, dispatcher,
      reconciler and the read API;
-   - disables the worker's ESM (AWS-18), so queued events wait in SQS for up to 13 days (AWS-07);
-   - lowers the HTTP API default-route throttle to its stop value (AWS-14, AWS-U02);
+   - lowers the HTTP API default-route throttle and every route-level throttle to its stop value,
+     because a route setting overrides the stage default (AWS-14, AWS-U02);
    - publishes what it changed to the alert email.
+   Every step checks current state first, so a re-run is safe. A CloudWatch alarm on the
+   kill-switch function's `Errors` > 0 (AWS-30; one of the ≤ 10 free alarms, AWS-28) emails the
+   owner, because Lambda discards an asynchronous event after its retries (AWS-53) and the budget
+   does not alert again that month (AWS-34).
    It tears nothing down ([features.md → tear down](features.md#adopter-lifecycle)). Its own
    function and the guardrails stack are exempt.
 5. **Default by deployment.** The kill switch ships in every deployment, **off by default** for adopters
@@ -213,14 +220,24 @@ below was ratified by the owner on 2026-10-15.
 6. **Re-arm is scripted.** It is one command that restores what the app stack declares: removes the
    reserved concurrency, re-enables the ESM and restores the throttle. Then a `ledger reconcile` recovers the
    events Resend marked failed meanwhile, within List Events reach
-   ([RS-U03](resend.md#unverified)). The script name is fixed by the slice that builds it.
+   ([RS-U03](resend.md#unverified)); its default lookback reaches back to the last good run, so a
+   trip longer than 3 days needs no `--lookback`
+   ([ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)). The script
+   name is fixed by the slice that builds it. A budget sends its ACTUAL alert once per budget period
+   (AWS-34), so after a same-month re-arm the budget cannot trip again that month: the usage trip
+   (item 7) is the re-armable trigger, and the re-arm warns when month-to-date spend is at or above
+   the cap.
 7. **Overshoot is bounded, not zero.** Budget data lags usage and refreshes every 8–12 h (AWS-34), so
    spend can pass the cap by the billing lag plus up to 12 h at the maximum spend rate. That rate is
-   bounded by the default-route throttle (AWS-14). The slice sets the throttle and states the computed worst-case
-   overshoot.
+   bounded by the steady default-route throttle (AWS-14), kept low (order of 100 rps) and raised by
+   the burst script only for its run. A **usage trip** cuts the window to minutes: one CloudWatch
+   alarm on the HTTP API's vended `Count` metric (AWS-30), summed over 15 minutes with a threshold
+   derived from the cap, publishes to the trip topic, and returns to OK after a re-arm, so it can
+   trip again (one of the ≤ 10 free alarms, AWS-28). The budget trip stays as the backstop. The
+   slice sets both values and states the computed worst-case overshoot.
 8. **Evidence.** A CDK assertion test proves the budget (with `IncludeCredit: false`), the notifications and the kill-switch wiring exist.
-   A recorded **trip drill** (publish to the trip topic, observe each throttle, re-arm, reconcile) proves
-   they work ([features.md → Operations](features.md#operations)). Re-checked after every owner
+   A recorded **trip drill** (publish to the trip topic, observe each throttle, force one
+   kill-switch failure and observe its alarm, re-arm, reconcile) proves they work ([features.md → Operations](features.md#operations)). Re-checked after every owner
    deploy ([CBL-16](check-before-launch.md#deploy-configuration)).
    Owed by [slice 2](build-checklist.md#2--durable-ingest-on-aws).
 
@@ -288,6 +305,7 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 | AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe on cost (no charge while pending, AWS-11) |
 | AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change. Separately, a Free-plan account is suspended at 6 months at the latest (AWS-51), so a kept deploy needs the Paid plan | The first month's bill | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.30/month at idle) |
 | AWS-U08 | `SELECT … FOR UPDATE` locks taken in a Data API transaction hold across its later calls | AWS-46 says connections are pooled and `DISCARD ALL` runs between uses. No page says a transaction is pinned to one connection | A two-transaction lock test against a real fallback cluster | Not owed while Neon holds. The ADR that switches to the Aurora fallback MUST settle it ([integrations.md](integrations.md#decision--neon)) |
+| AWS-U09 | A CloudFormation update of the worker's event source mapping re-applies the template's `Enabled: true` over an out-of-band disable (kill switch, ADR-015) | The CFN `AWS::Lambda::EventSourceMapping` page gives `Enabled` "Default: True" and "Update requires: No interruption", and does not say whether an update re-applies it | The slice 2 trip drill: deploy once while tripped with an ESM property change, then read the ESM state | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way once the deploy command refuses while tripped and restores a pause |
 
 ## Sources
 
@@ -315,6 +333,7 @@ Price List offer file
 | lambda/cwlogs-loggroups | [lambda/…/monitoring-cloudwatchlogs-loggroups.html](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-loggroups.html) | AWS-19 | 2026-10-15 |
 | lambda/API_LoggingConfig | [lambda/latest/api/API_LoggingConfig.html](https://docs.aws.amazon.com/lambda/latest/api/API_LoggingConfig.html) | AWS-19 | 2026-10-15 |
 | lambda/pricing | [aws.amazon.com/lambda/pricing](https://aws.amazon.com/lambda/pricing/) | AWS-20, AWS-U07 | 2026-10-15 |
+| lambda/async-errors | [lambda/…/invocation-async-error-handling.html](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html) | AWS-53 | 2026-10-15 |
 | lambda/vpc-internet | [lambda/…/configuration-vpc-internet.html](https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc-internet.html) | AWS-13 | 2026-10-15 |
 | sqs/standard-queues | [AWSSimpleQueueService/…/standard-queues.html](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues.html) | AWS-06 | 2026-10-15 |
 | sqs/quotas-messages | [AWSSimpleQueueService/…/quotas-messages.html](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-messages.html) | AWS-07, AWS-08, AWS-23 | 2026-10-15 |
