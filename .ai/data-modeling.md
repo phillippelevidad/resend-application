@@ -88,8 +88,10 @@ is never a key, because a redrive changes it (AWS-21).
   (RS-26). `received_at` is when Ledger got the event.
 - Projections, and every "since", "first" or "last" value, MUST use `event_created_at`. Ordering by
   `received_at`, insertion order or a surrogate id is a correctness bug. Whether `created_at`
-  tracks the real event time does not matter: it is used only as a sort key, with `rank` and
-  `svix_id` as tie-breaks (RS-U10, ADR-003).
+  tracks the real event time does not change which state results, because it is a sort key, with
+  `rank` and `svix_id` as tie-breaks (RS-U10, ADR-003). Whether that state is *right* does depend
+  on it where a rule uses recency (`soft_bouncing` clearing) and in displayed times (`since`,
+  `status_at`, `first_opened_at`); the slice 4 replay experiment checks it (RS-U10).
 - `received_at` is for lag metrics and operator forensics only.
 - All timestamps are `timestamptz`, stored in UTC.
 
@@ -197,7 +199,7 @@ redaction replace a raw value with its mask without changing any projection.
 | `api_tokens` | Token hashes only | Kept; a revoked row stays as an audit record |
 | `outbox.payload`, `outbox.dedupe_key`, `last_error` | Ids, hashes and masks only; never a third-party response body | Kept |
 | `local_queue_messages.body` | Raw envelope (local mode only) | Deleted on success; a dead row holds it until redriven or purged |
-| Logs | None | Log `svix_id`, `email_id`, `type`. MUST NOT log addresses, subjects or bodies (AWS-29) |
+| Logs | None | Log `svix_id`, `email_id`, `type`. MUST NOT log addresses, subjects or bodies; evidence: logger allow-list unit test (slice 1) |
 
 - Fixtures, tests and docs use Resend test addresses only (`delivered@resend.dev`,
   `bounced@resend.dev`).
@@ -224,7 +226,7 @@ Load-bearing columns only. Every table also carries its
 | --- | --- | --- |
 | `svix_id` | `text` PK | The `svix-id` header (`msg_…`). The dedupe key for retries, redrives and replays |
 | `type` | `text`, no `CHECK` | One of RS-25, or unknown. Unknown types are stored and counted, never rejected |
-| `event_created_at` | `timestamptz` | The top-level `created_at` (RS-26). Fold order for projections |
+| `event_created_at` | `timestamptz` null | The top-level `created_at` (RS-26). Fold order for projections. Null only on a schema-failing payload, which projections skip |
 | `received_at` | `timestamptz` | From the ingest envelope. Lag metric only |
 | `email_id` | `text` null | `data.email_id` for the outbound email types (RS-27). Null for every other type. `email.received` carries a `data.email_id` too ([emails/received](https://resend.com/docs/webhooks/emails/received)), but it names an inbound email, so it stays null and projections skip it ([Deferred](#deferred)) |
 | `to_hashes` | `text[]` null | Keyed hashes of `data.to`, in the same position. Feeds `email_recipients` after redaction has masked the raw `to` |
@@ -296,7 +298,7 @@ _Evidence: pending._
 | --- | --- | --- |
 | `address_hash` | `text` PK | What the API looks up after hashing the caller's input |
 | `address_masked` | `text` | What support sees |
-| `deliverability` | `text` `CHECK (ok, soft_bouncing, hard_bounced, complained, suppressed)` | What an application checks before sending ([idea §5.4](../docs/idea.md#54-order-independent-projections)) |
+| `deliverability` | `text` `CHECK (ok, soft_bouncing, hard_bounced, complained, suppressed)` | What an application checks before sending. `hard_bounced`, `complained` and `suppressed` are sticky; `soft_bouncing` clears to `ok` on a `delivered` later by `event_created_at`, `rank` and `svix_id` breaking ties, so the result is the same in any arrival order |
 | `since` | `timestamptz` | From `event_created_at`, never row time |
 | `cause_email_id` | `text` | The email that caused the transition ([features.md → J2](features.md#j2--support-lookup)) |
 
@@ -309,6 +311,7 @@ _Evidence: pending._
 - Slice 0: a property test that a hard bounce comes from `Permanent` only.
 - Slice 1: a concurrency integration test with two emails and one recipient.
 - Slice 2: the same test through the pooler (PG-U02).
+- Slices 1 and 3: sim invariant 2.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path; 5 — MCP server and contract hardening
 
@@ -318,14 +321,16 @@ _Evidence: pending._
 | --- | --- | --- |
 | `id` | identity `bigint` | Revocation target |
 | `name` | `text` | The operator's label |
-| `token_hash` | `text` UNIQUE | SHA-256 of the token. Tokens are 32 random bytes, so an unkeyed hash suffices; no plaintext at rest |
+| `token_hash` | `text` UNIQUE | SHA-256 of the token. A token is `ldg_`, 32 random bytes and an HMAC tag ([api-contract.md → Conventions](api-contract.md#conventions)); the random part makes an unkeyed hash sufficient; no plaintext at rest |
 | `bootstrap` | `boolean` not null, default `false`, partial UNIQUE `WHERE bootstrap` | Marks the deploy command's first `operate` token, so a re-run inserts none ([Idempotency keys](#idempotency-keys)) |
 | `scope` | `text` `CHECK (read, operate)` | The [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) scopes |
-| `revoked_at` | `timestamptz` null | Set once. A revoked token is rejected on the next request, with no redeploy |
+| `revoked_at` | `timestamptz` null | Set once. A revoked token is rejected on the next request while the database is reachable, with no redeploy. During an outage only `health.get` answers, on the token's tag alone ([api-contract.md → Conventions](api-contract.md#conventions)) |
 
 - **Issuance:** the deploy command inserts the first `operate` token, with `bootstrap = true` and
   `ON CONFLICT DO NOTHING`, through the direct URL it already holds (ADR-018), and prints it once,
-  only when the insert happened. This adds no secret and no idle cost (AWS-11).
+  only when the insert happened. This adds no secret and no idle cost (AWS-11). To replace a lost
+  or leaked first token, the deploy command takes `--issue-operate-token <name>`, which mints a new
+  `operate` token through the same path whatever tokens exist.
 - **Operations:** `token.create`, `token.list`, `token.revoke` (`operate`) and `token.getCurrent`
   (`read`), with no MCP surface ([api-contract.md](api-contract.md#tokencreate)).
 
@@ -333,7 +338,7 @@ _Schema: `packages/db/src/schema/api-tokens.ts` (once it exists)._
 _Evidence: pending (slice 2)._
 - A revoked token gets `401`.
 - A `read` token gets `403` on an `operate` route.
-- A re-run deploy command inserts no second first-token.
+- A re-run deploy command inserts no second first-token, and `--issue-operate-token` mints exactly one new one.
 
 - **Slices:** 2 — Durable ingest on AWS
 
@@ -397,14 +402,16 @@ _Evidence: pending._
 | `status` | `text` `CHECK (pending, sent, dead)` | `dead` after the cap, or past the 24 h idempotency horizon for alert emails ([resend.md → Constraint 8](resend.md#constraints-and-sharp-edges)) |
 | `attempts`, `next_attempt_at`, `last_error` | `int`, `timestamptz`, `text` | Retry with backoff. The hourly sweep claims due rows (ADR-017). `last_error` holds a status and an error name, never a response body |
 
-- **Writes:** rows are written only in the worker transaction of the event that caused them.
+- **Writes:** rows are written only in the worker transaction of the event that caused them. A row
+  caused by a `source = simulated` event is dispatched only to the simulator's receiver sink
+  ([ADR-006](architecture.md#adr-006--transactional-outbox-for-reactions)).
 - **Operational alerts:** reconcile gaps, DLQ depth and queue age go through CloudWatch → SNS
   (slice 3), never through the outbox.
 - **Indexes:** a partial index on `next_attempt_at` where `status = 'pending'`, for the sweep.
 
 _Schema: `packages/db/src/schema/outbox.ts` (once it exists)._
 _Evidence: pending (slice 6)._
-- `--chaos worker-crash` yields no duplicate dispatch (sim invariant 3).
+- `--chaos worker-crash` and `--chaos dispatcher-crash` produce no second effect at a receiver (sim invariant 3).
 - An invoke dropped after commit is delivered by the sweep, once.
 - A retry-horizon unit test.
 

@@ -151,8 +151,9 @@ simulator traffic is the default local loop.
 ## Constraints and sharp edges
 
 1. **Shared 10 req/s budget** (RS-19, RS-20). *Impact:* reconcile and the dispatcher compete with
-   the team's sending. *Resolution:* one client-side limiter, 2 req/s by default, that yields
-   when `ratelimit-remaining` runs low. Reconcile runs hourly
+   the team's sending. *Resolution:* a client-side limiter per single-flight caller, 2 req/s by
+   default ([ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)), that
+   yields when `ratelimit-remaining` runs low. Reconcile runs hourly
    ([integrations.md → Locked rules](integrations.md#locked-rules-must)).
 2. **A disabled endpoint stops delivery** (RS-11). Whether it also swallows replays is RS-U04.
    *Impact:* replays may go nowhere. *Resolution:* Retrieve Webhook before replaying, then
@@ -203,7 +204,9 @@ simulator traffic is the default local loop.
 13. **Forward-only pagination** (RS-14). *Resolution:* each reconcile run pages newest to oldest
     down to the horizon. A run can't resume from the oldest end.
 14. **SDK error names differ from the docs** (RS-22). *Resolution:* map by status, then name, with
-    a default branch. Never switch exhaustively on the SDK union.
+    a default branch. Never switch exhaustively on the SDK union. `400 validation_error` with the
+    message `API key is invalid` is a deleted or invalid key (RS-U17) and maps to
+    `resend_auth_failed`. Any other `400` is a request bug and takes the default branch.
 
 ## Onboarding reality
 
@@ -244,7 +247,7 @@ owner's approval when it runs.
 | RS-U14 | `resend.dev` test addresses are exempt from the own-address rule (RS-34) | Every quickstart sends `onboarding@resend.dev` → `delivered@resend.dev`, but no page states the exemption | Ask-first: that one send. It is also the verify-stage send | [slice 2](build-checklist.md#2--durable-ingest-on-aws) (verify stage) |
 | RS-U15 | The webhook event sequence each test address produces | RS-32 describes scenarios, not event types | Ask-first sends observed through `resend webhooks listen` | [slice 1](build-checklist.md#1--local-ledger-and-read-path) (simulator fixtures mirror real sequences) |
 | RS-U16 | Idempotency keys are scoped per team, not per API key | Not stated | Resend docs or support | [slice 6](build-checklist.md#6--reactions). Safe with one sending key |
-| RS-U17 | Which status a deleted or invalid key gets on non-sending endpoints | The errors page says `400`; the introduction says `401`/`403` | Read-only: one call with a revoked test key | [slice 4](build-checklist.md#4--recovery). Safe either way (all three map to one config error) |
+| RS-U17 | Which status a deleted or invalid key gets on non-sending endpoints. Documented: `400 validation_error`, message "API key is invalid": "Every endpoint except sending returns this for a key that doesn't exist or was deleted" (api-reference/errors) | The introduction's generic table still says `403` "The API key used was invalid" | Read-only: one call with a revoked test key confirms the status and message | [slice 4](build-checklist.md#4--recovery). Safe either way (Constraint 14 maps it by message, and anything else takes the default branch) |
 | RS-U18 | `resend webhooks listen` leaves its temporary webhook behind if killed without Ctrl+C | Not stated | Read-only `GET /webhooks` after an interrupted session | [slice 1](build-checklist.md#1--local-ledger-and-read-path) (dev guide checks after each session) |
 | RS-U19 | `email.suppressed` always carries `data.suppressed` | It appears in the example only | A real `suppressed@resend.dev` payload (Ask-first send) | [slice 0](build-checklist.md#0--foundations) (Zod field optional) |
 | RS-U20 | A **replayed** delivery carries a fresh `svix-timestamp`, so it passes the 5-minute window (RS-02, RS-03) | RS-16 says a replay "queues one additional delivery"; no page says it is re-signed at send time. `[Svix]` sends "the timestamp of the attempt" in `svix-timestamp` (how-manual), which suggests a fresh one. If it keeps the original timestamp, ingest rejects every replay older than 5 min and recovery fails ([architecture.md → ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)) | The RS-U01 experiment: the replayed delivery passes verification | [slice 4](build-checklist.md#4--recovery). MUST be settled |
@@ -271,7 +274,7 @@ All pages are at `https://resend.com/docs/<path>`, fetched as `.md` on 2026-10-1
 | [api-reference/webhooks/list-event-attempts](https://resend.com/docs/api-reference/webhooks/list-event-attempts) | RS-12 | 2026-10-15 |
 | `api-reference/webhooks/` create, get, list, update, delete | RS-05, RS-11, RS-13 | 2026-10-15 |
 | [api-reference/rate-limit](https://resend.com/docs/api-reference/rate-limit) | RS-19 | 2026-10-15 |
-| [api-reference/errors](https://resend.com/docs/api-reference/errors) | RS-18, RS-19, RS-22, RS-24, RS-34 | 2026-10-15 |
+| [api-reference/errors](https://resend.com/docs/api-reference/errors) | RS-18, RS-19, RS-22, RS-24, RS-34, RS-U17 | 2026-10-15 |
 | [api-reference/introduction](https://resend.com/docs/api-reference/introduction) | RS-21, RS-U17 | 2026-10-15 |
 | [api-reference/api-keys/create-api-key](https://resend.com/docs/api-reference/api-keys/create-api-key) | RS-18 | 2026-10-15 |
 | [dashboard/emails/idempotency-keys](https://resend.com/docs/dashboard/emails/idempotency-keys) | RS-17, RS-24 | 2026-10-15 |

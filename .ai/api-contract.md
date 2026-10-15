@@ -27,7 +27,12 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   ([ADR-010](architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack)),
   and locally by the dev server running the same code (ADR-011). Paths are unversioned.
 - **Auth.** `Authorization: Bearer <token>` on every route except `POST /webhooks/resend`. Tokens
-  are opaque random strings stored hashed in
+  are `ldg_<random>_<tag>` strings, where `tag` is an HMAC of the random part keyed by the
+  deployer-held token-tag key in the `ledger/database` secret
+  ([integrations.md → Secrets layout](integrations.md#secrets-layout)). A missing, malformed or
+  bad-tag token gets `401` before any database connection opens. During a database outage,
+  `health.get` alone accepts a correctly tagged token without the revocation lookup; every other
+  route answers `503` `database_unavailable`. Tokens are stored hashed in
   [`api_tokens`](data-modeling.md#api_tokens--read-api-bearer-tokens). There are two scopes, `read`
   and `operate`, and `operate` implies `read`. A missing, unknown or revoked token gets `401`
   `unauthorized`. A valid token without the scope a route needs gets `403` `forbidden`. The deploy
@@ -55,10 +60,12 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   returns the envelope with no cursor, because it is a sample ([AWS-50](aws.md#sqs)).
 - **Errors.** The shape is the same everywhere ([AGENTS.md → Error shape](../AGENTS.md#error-shape)),
   and codes come only from [Error codes](#error-codes). Clients MUST treat an unknown `code` as a
-  generic failure. The CLI exits `0` on success and `1` on any registry error. With `--json` it
-  prints the error object to stdout; without it, it prints `message` and `hint` to stderr. It exits
-  `2` on a usage error, which never reaches the API. An MCP tool failure is a tool execution error,
-  `isError: true`, with the error object as its text content. It is not a JSON-RPC protocol error
+  generic failure. A response without the error shape (the HTTP API's own `429` or `5xx`, as after
+  a kill-switch trip, AWS-14) maps in the SDK to the client-side code `api_unavailable`. The CLI
+  exits `0` on success and `1` on any registry error. With `--json` it prints the error object to
+  stdout; without it, it prints `message` and `hint` to stderr. It exits `2` on a usage error,
+  which never reaches the API. An MCP tool failure is a tool execution error, `isError: true`, with
+  the error object as its text content. It is not a JSON-RPC protocol error
   ([MCP spec → Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)).
 - **Idempotency.** Reads are side-effect free, and the SDK retries them, and only them, on network
   errors, `429` and `5xx`, with backoff (slice 5). `recipient.get` is a read sent as a
@@ -98,7 +105,7 @@ entries are owed by slice 3 and completed in slice 7.
 
 | Code | HTTP | Meaning | Hint | Docs | Raised by |
 | --- | --- | --- | --- | --- | --- |
-| `unauthorized` | 401 | Bearer token missing, unknown or revoked | Set `LEDGER_TOKEN` to an active token | runbook | apps/api auth middleware |
+| `unauthorized` | 401 | Bearer token missing, malformed, bad-tag, unknown or revoked | Set `LEDGER_TOKEN` to an active token | runbook | apps/api auth middleware |
 | `forbidden` | 403 | The token is valid but lacks the scope this operation needs | Use an `operate` token, or ask its owner for one | runbook | apps/api auth middleware |
 | `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | `message` names the field | runbook | apps/api request validation (Zod) |
 | `email_not_found` | 404 | No event recorded for this email id | Events may still be queued, or missed: run `ledger gaps` | runbook | `email.get`, `email.explainDelivery` |
@@ -110,10 +117,11 @@ entries are owed by slice 3 and completed in slice 7.
 | `last_operate_token` | 409 | Revoking this token would leave no active `operate` token | Create another `operate` token first | runbook | `token.revoke` |
 | `webhook_disabled` | — (run outcome) | The Resend webhook is disabled, so replays will not be delivered (RS-11, ADR-007) | Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile` | [Retries and replays](https://resend.com/docs/webhooks/retries-and-replays) | apps/reconciler → `reconcile_runs.error_code` |
 | `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, so the run stopped before its horizon (RS-19) | The next hourly run re-diffs from newest. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | apps/reconciler via packages/resend-client |
-| `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, restricted or suspended (RS-22) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
+| `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, invalid or deleted, restricted, or suspended (RS-22, RS-U17) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
 | `resend_unavailable` | — (run outcome) | Resend's API answered `5xx` past the client's retries (RS-22) | The next scheduled run retries | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
 | `database_unavailable` | 503 | Postgres is unreachable | The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume` | runbook | packages/db through any database-reading operation; `worker.resumeEventSource` probe |
 | `internal_error` | 500 | An unexpected server failure. `message` carries no internals | Retry; if it persists, read the API logs by request id | runbook | apps/api error handler |
+| `api_unavailable` | — (client-side) | The API answered without the error shape: an HTTP API throttle or a stopped function | The kill switch may be tripped: check the budget alerts, then run the re-arm script | runbook | packages/sdk |
 
 A **run outcome** code is never an HTTP status of its own. It is stored in
 [`reconcile_runs.error_code`](data-modeling.md#reconcile_runs--one-row-per-recovery-run) and comes
@@ -156,7 +164,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 - **Surfaces:** SDK `ledger.emails.explainDelivery` · CLI `ledger explain <email_id>` · MCP `explain_delivery`
 - **Kind:** read `[view-shaped]`. A pure `packages/core` function over the same data as `email.get` and each recipient's [recipient_state](data-modeling.md#recipient_state--deliverability-per-address) produces a verdict from a closed set, a plain-language summary, the `svix_id`s it rests on, and next steps phrased as `ledger` commands. It is deterministic, with no LLM call (J6). One home, so the CLI, SDK and MCP cannot diverge
 - **Scope:** `read` · **Public contract:** yes (Ask-first; the verdict set is part of it)
-- **In / Out:** email id → explanation (masked, like `email.get`)
+- **In / Out:** email id → explanation (masked, like `email.get`). It holds ids, timestamps, closed-set values and masks only; no free-text payload field (`failed.reason`, bounce `message` / `diagnosticCode`, `tags`) is returned, even masked
 - **Errors:** `validation_failed`, `email_not_found`, `database_unavailable`
 - **Idempotency / rate limit:** idempotent, and the SDK retries it. No Resend call
 - **Slices:** 5 — MCP server and contract hardening
@@ -176,12 +184,12 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 
 - **Operation:** `health.get` → `GET /health` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.health.get` · CLI `ledger health` · MCP none
-- **Kind:** read `[view-shaped]`. It reports queue depth and oldest-message age, DLQ depth (AWS-22), whether the worker's event source is enabled or paused (AWS-18, [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)), database reachability, and the last reconcile run once one exists. In local mode the counts come from [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
+- **Kind:** read `[view-shaped]`. It reports queue depth and oldest-message age, DLQ depth (AWS-22), whether the worker's event source is enabled or paused (AWS-18, [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)), database reachability, the last reconcile run once one exists, and, from slice 6, the outbox's pending and dead counts and its oldest pending age. In local mode the counts come from [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
-- **In / Out:** none → health summary. It has no table of its own: the queue and event-source fields come from SQS and Lambda, and only the last-run field reads [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run)
-- **Errors:** none of its own. It MUST answer during a database outage, reporting the database as unreachable rather than failing, because an outage is when the operator needs it
+- **In / Out:** none → health summary. It has no table of its own: the queue and event-source fields come from SQS and Lambda, and only the last-run and outbox fields read Postgres ([reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run), [outbox](data-modeling.md#outbox--reactions-awaiting-delivery))
+- **Errors:** none of its own. It MUST answer during a database outage, reporting the database as unreachable rather than failing, because an outage is when the operator needs it. Auth then rests on the token's tag alone ([Conventions → Auth](#conventions))
 - **Idempotency / rate limit:** idempotent. No Resend call. One SQS attribute read and one Lambda read per call, inside the free tier (AWS-24)
-- **Slices:** 2 — Durable ingest on AWS; 4 — Recovery; 2B — Local-mode queue and docker compose
+- **Slices:** 2 — Durable ingest on AWS; 4 — Recovery; 2B — Local-mode queue and docker compose; 6 — Reactions
 
 #### gaps.list
 
@@ -246,7 +254,7 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 - **Surfaces:** SDK `ledger.reconcile.start` · CLI `ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait]` · MCP `reconcile`, with `dry_run` (registered only under [MCP least privilege](#conventions))
 - **Kind:** **command**. It starts one manual run of [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) asynchronously and answers `202` with the run. `dry_run` reports missing ids without replaying any. The CLI then polls `reconcile.getRun` until the run finishes, and exits `1` with the run's `error` if it stopped on one
 - **Scope:** `operate` · **Public contract:** yes (Ask-first)
-- **In / Out:** `dry_run` and `lookback` (default 72 h per ADR-007, at most 30 days, a validation bound: Resend keeps email data 30 days (RS-31), and how far List Events reaches is [RS-U03](resend.md#unverified)) → a [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) row with `trigger = manual`
+- **In / Out:** `dry_run` and `lookback` (default per ADR-007: 72 h, extended back to the last good run's `horizon_end`; at most 30 days, a validation bound: Resend keeps email data 30 days (RS-31), and how far List Events reaches is [RS-U03](resend.md#unverified)) → a [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) row with `trigger = manual`
 - **Errors:** `forbidden`, `validation_failed`, `reconcile_in_progress`, `database_unavailable`. The run itself can end in `webhook_disabled`, `rate_limited`, `resend_auth_failed` or `resend_unavailable`
 - **Idempotency / rate limit:** repeating is safe in effect, because replays re-enter through ingest and dedupe on `svix_id`. That holds only if a replay keeps the original `svix-id` ([RS-U01](resend.md#unverified)), which slice 4 MUST settle. Runs never overlap (`reconcile_in_progress`). **It consumes the shared Resend team budget** (List Events, Retrieve Webhook, Replay Event) through `packages/resend-client` at 2 req/s (RS-19, RS-20, ADR-012). It runs asynchronously because the HTTP API's 30 s timeout is shorter than a run (AWS-02, AWS-03)
 - **Slices:** 4 — Recovery; 5 — MCP server and contract hardening
@@ -324,7 +332,7 @@ to a simulator run, or to a stated "not an operation".
 | Operator: database came back before the hourly resume | ADR-015 | `worker.resumeEventSource` |
 | Operator: issue or retire a token | [about.md → Target personas](about.md#target-personas) (reviewer token), [api_tokens](data-modeling.md#api_tokens--read-api-bearer-tokens) | `token.create`, `token.list`, `token.revoke` |
 | Agent: explain why delivery failed | idea §4, J6 | `email.get` + `email.explainDelivery` over MCP. The MCP server picks its tools with `token.getCurrent` |
-| Secret rotation | J5 | Not an operation: runbook plus the `ingest.rejected{reason}` metric (ADR-009) |
+| Secret rotation | J5 | Not an operation: runbook (ADR-009) plus the `ingest.rejected{reason}` metric ([architecture.md → Technology](architecture.md#technology)) |
 | First deploy, connect webhook, tear down | J1, [lifecycle](features.md#adopter-lifecycle) | Not operations: the deploy and teardown commands; the deploy command issues the first `operate` token |
 | Demo 1–3: burst, database outage, drain, invariants | demo | `pnpm sim` runs (ADR-016), not operations; `health.get` shows queue depth and the paused event source |
 | Demo 4: gap shown, then closed | demo | `gaps.list` → `reconcile.start` → `gaps.list` |

@@ -19,14 +19,17 @@ Manager, [Secrets layout](#secrets-layout))
    SDK for API calls. Signature verification in `apps/ingest` calls the SDK's `webhooks.verify`
    (RS-02), never a hand-rolled HMAC compare: local crypto, not an API call (RS-01, RS-02).
 2. **One budget, with headroom.** The 10 req/s limit is per team and shared by every key (RS-19),
-   and observed live to be shared across endpoints (RS-20). The client owns one limiter: default
+   and observed live to be shared across endpoints (RS-20). The client's limiter defaults to
    **2 req/s**, configurable. It also yields when `ratelimit-remaining` falls below half of
    `ratelimit-limit`, and on `429` it waits `retry-after` (RS-19). The reconciler, the dispatcher
-   and any CLI-triggered call share it. *Why 2:* Ledger is a background consumer of the team's
-   budget. At 2 req/s, recovering a 10,000-event gap (100 List Events pages plus 10,000 replays,
-   RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6 hourly runs because each run
-   stops at its time budget (AWS-03), which is acceptable for recovery work. Evidence: limiter unit
-   tests (rate, yield on low `remaining`, `retry-after` on `429`) · [slice 4](build-checklist.md#4--recovery).
+   and any CLI-triggered call use it, one instance per calling function; each such caller is
+   single-flight (the reconciler by non-overlapping runs, ADR-007; the dispatcher by its
+   transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. *Why 2:* Ledger is a
+   background consumer of the team's budget. At 2 req/s, recovering a 10,000-event gap (100 List
+   Events pages plus 10,000 replays, RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6
+   hourly runs because each run stops at its time budget (AWS-03), which is acceptable for recovery
+   work. Evidence: limiter unit tests (rate, yield on low `remaining`, `retry-after` on `429`) ·
+   [slice 4](build-checklist.md#4--recovery).
 3. **Default reconcile cadence: hourly** (owner, 2026-10-15). Resend's own retries cover the first
    ≈ 27.6 h (RS-09), so the cadence sets only how quickly loss is detected. It is also the
    database wake budget ([Postgres host → Cadence](#cadence-and-the-database)). A run has a time
@@ -67,9 +70,14 @@ boundary, each USD 0.40/month (AWS-11):
 | --- | --- | --- | --- |
 | `ledger/webhook-signing-secrets` | The configured set of `whsec_` secrets (a JSON array, so rotation adds one before retiring one, RS-04) | `apps/ingest` only | M1 |
 | `ledger/resend-api-key` | A `full_access` key, the only kind the Headless Webhook API accepts (RS-18) | `apps/reconciler` only | M1 |
-| `ledger/database` | A JSON object holding the pooled Postgres connection string ([Decision](#decision--neon)) and the deployer-held address-hash key ([data-modeling.md → PII & retention](data-modeling.md#pii--retention)) | worker, dispatcher, reconciler, read API | M1 |
+| `ledger/database` | A JSON object holding the pooled Postgres connection string ([Decision](#decision--neon)) and the deployer-held address-hash and token-tag keys ([data-modeling.md → PII & retention](data-modeling.md#pii--retention), [api-contract.md → Conventions](api-contract.md#conventions)) | worker, dispatcher, reconciler, read API | M1 |
 | `ledger/resend-sending-key` | A `sending_access` key, optionally scoped to one domain with `domain_id` (RS-18) | `apps/dispatcher` only | M2 ([slice 6](build-checklist.md#6--reactions)) |
 | `ledger/simulator-signing-secret` | The simulator's signing secret; created only by an off-by-default deploy flag ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | `apps/ingest` only | Slice 3, owner's deployment only |
+
+The Resend webhook id is not a secret: it is a deploy input (CDK context, never tracked,
+[CBL-10](check-before-launch.md)) passed to `apps/reconciler` only. Discovery through
+`GET /webhooks` is rejected: one more call per run, and the response may carry signing secrets
+(RS-05).
 
 That is USD 1.20/month in M1 and 1.60 from M2 ([aws.md → Cost shape](aws.md#cost-shape)). Secret
 names are prefixed per stack, and each Lambda receives only the ARNs of the secrets it reads, with
@@ -183,8 +191,15 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   direct URL from the deploy command, never from a runtime Lambda
   ([architecture.md → ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)).
 - **Pool size.** Each Lambda container keeps one module-scope `pg` pool of size 1. The worker's
-  ESM `MaximumConcurrency` therefore bounds open connections (AWS-04), far below the pooler's
-  limits.
+  ESM `MaximumConcurrency` (AWS-04), plus one delivering dispatcher and the losers that exit at
+  once (ADR-017), the read API's concurrency and one reconciler bound open connections, far below
+  the pooler's limits.
+- **Runtime role.** The deploy command creates a DML-only runtime role (no DDL) through the direct
+  URL, and the pooled connection string in `ledger/database` uses it. `webhook_events` grants it
+  `SELECT, INSERT` and, once the retention job lands (slice 7), column-level `UPDATE` on the
+  columns it rewrites; never `DELETE`. Only migrations use the owner role. Evidence: integration
+  test where the runtime role gets `permission denied` on `DELETE FROM webhook_events` and on
+  `CREATE TABLE` (slice 2).
 - **Pooler-safe SQL only.** No session-level advisory locks, `SET`, `LISTEN/NOTIFY` or SQL-level
   `PREPARE` ([pooling](https://neon.com/docs/connect/connection-pooling)). Mutual exclusion uses row
   locks or transaction-scoped locks inside one transaction.
