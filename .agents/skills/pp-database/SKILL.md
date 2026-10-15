@@ -54,6 +54,7 @@ Each entry names its alternative. The full list is
 ## Gate — then read the diff
 
 Base fields present · a unique constraint behind every idempotency key · nullability and every
-`CHECK` set stated · each index serving a named query · no cascade onto the ledger · the app role's
-grants on every new table · a migration for every schema change, and none edited · the
+`CHECK` set stated · each index serving a named query · no cascade onto the ledger · the DML-only
+runtime role's grants on every new table, never `DELETE` on `webhook_events`
+([integrations.md → Runtime role](../../../.ai/integrations.md#decision--neon)) · a migration for every schema change, and none edited · the
 `Modeled` box ticked ([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)).

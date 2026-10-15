@@ -84,7 +84,7 @@ Load [`pp-database`](../../pp-database/SKILL.md). Its [new-table recipe](../../p
 
 | Read for | The hole when it is absent |
 | --- | --- |
-| The app role granted the **narrowest** privileges each new table needs (`GRANT … ON <table> … TO`) | Works locally as superuser and fails as the deployed role — or an append-only table that silently accepts an `UPDATE` |
+| The DML-only runtime role (integrations.md → Runtime role) granted the **narrowest** privileges each new table needs (`GRANT … ON <table> … TO`) | Works locally as superuser and fails as the deployed role — or an append-only table that silently accepts an `UPDATE` |
 | No raw address, subject or display name in any column other than `webhook_events.payload` — `dedupe_key`, `outbox.payload` and `last_error` included; addresses as `address_hash` (keyed HMAC) + `address_masked` | PII copied into every projection and every reaction row, beyond the retention job's reach |
 | No unkeyed hash of an address and no plaintext token at rest | A plain SHA-256 of an address is reversible by dictionary |
 | `jsonb` only for the raw event payload, the outbox payload and the local queue envelope | A `jsonb` field a query filters on or a projection reads, which no constraint can check |

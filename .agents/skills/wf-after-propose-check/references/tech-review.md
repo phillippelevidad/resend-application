@@ -49,7 +49,7 @@ The [new-table recipe](../../pp-database/SKILL.md#new-table-recipe) is the check
 | Every column's **nullability**, every closed set's **members and their meanings** (`text` + `CHECK`) | The migration needs both, so an unstated nullable is a decision the builder makes alone |
 | Each index and the query it serves | An index nobody needs, or a query with none |
 | FKs and `onDelete` behaviour | A cascade onto `webhook_events`, or any FK between the ledger and a projection |
-| The app role's grants for the new table | Working locally as superuser, failing as the app role |
+| The DML-only runtime role's grants for the new table (integrations.md → Runtime role) | Working locally as superuser, failing as the runtime role |
 | Backfill **failure** behaviour, stated | "Backfill from X" with no answer for a row where X is absent. It must fail loudly, not invent a value |
 | The Drizzle schema in `packages/db` as the source of truth, migrations expand/contract | A hand-edited generated migration, or a contract step that needs downtime |
 | The **Model index** `Modeled` checkbox as a task | The only place "is this table real yet?" is answerable |

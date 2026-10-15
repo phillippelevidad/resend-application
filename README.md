@@ -40,7 +40,8 @@ Every Resend behavior Ledger relies on is checked against Resend's docs and cite
 2. **Records** every event exactly once, then **projects** it into per-email and per-recipient
    state that comes out the same in any arrival order and with any number of duplicates.
 3. **Reacts** to events (for example, "this address hard-bounced, stop emailing it") without
-   running the same side effect twice.
+   running the same side effect twice: alert emails carry Resend idempotency keys, and app
+   callbacks carry a stable id the receiving app dedupes on.
 4. **Recovers** events it missed, using Resend's Headless Webhook API.
 5. **Answers questions** like "did this user get the password-reset email, and if not, why?" from
    a CLI, a typed SDK, or an MCP server, read-only by default, that an AI agent can use safely.

@@ -51,10 +51,10 @@ handbook pages linked per row. Checked 2026-10-15.
 | Requirement / value | Source | Planned evidence |
 | --- | --- | --- |
 | Queues and workers that survive spikes, retries, duplicate events, concurrency and partial failure | BE; stack ("queues absorb spikes") | Worker-transaction integration tests; `fast-check` permutation and duplication properties; simulator burst + chaos invariants ([architecture.md → Simulator invariants](architecture.md#simulator-invariants)) |
-| Relational data models; safe database changes | BE | `packages/db` Drizzle schema; expand/contract migrations run in CI |
+| Relational data models; safe database changes | BE | `packages/db` Drizzle schema; expand/contract migrations run in CI and linted for contract-breaking DDL |
 | Infrastructure as code (AWS CDK); serverless background work on Lambda | BE; stack | `infra/` CDK app; one-command deploy and teardown |
 | Operate what you build: monitoring, safe deploys, incident recovery, runbooks | BE; [incidents](https://resend.com/handbook/engineering/how-we-handle-incidents), [on-call](https://resend.com/handbook/engineering/how-we-handle-on-call-rotations) | CloudWatch alarms in CDK; runbook; budget alarms + kill switch ([aws.md](aws.md#budget-alarms)) |
-| Idempotency, retries, rate limits, partial failure | DT | Outbox `dedupe_key` + Resend idempotency keys; `packages/resend-client` rate-limit tests; `--chaos worker-crash` never duplicates an alert |
+| Idempotency, retries, rate limits, partial failure | DT | Outbox `dedupe_key` + Resend idempotency keys; `packages/resend-client` rate-limit tests; `--chaos worker-crash` and `--chaos dispatcher-crash` never duplicate an alert |
 | One contract across SDK, CLI, MCP and docs; clear errors; backward compatibility | DT; Philosophy ("predictable by design") | One read-API contract ([api-contract.md](api-contract.md)); the [error shape](../AGENTS.md#error-shape); semver at M3 |
 | AI agents as users, with their own discovery and security needs | DT | MCP read-only by default; operate tools unregistered without scope; redaction tests on tool output |
 | Zero friction; documentation is the product | Philosophy | Newcomer deploy target in [Success metrics](#success-metrics); recovery through the Headless Webhook API with no dashboard step; 0 unlinked claims |
@@ -92,6 +92,7 @@ Design ceiling, not a growth plan:
 - **Load:** the demo burst, 10,000 events in 10 s ([idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness)). Nothing is engineered past it.
 - **Resend API budget:** a per-team request limit shared across all of the team's API keys ([rate limits](https://resend.com/docs/api-reference/rate-limit)). Ledger's calls compete with the team's own API traffic and MUST leave headroom.
 - **Events per email:** small lifecycle counts; opens and clicks are counters ([idea §5.4](../docs/idea.md#54-order-independent-projections)).
+- **Emails per recipient:** a broadcast's recipients are distinct. The simulator burst spreads its recipients over `+label` test addresses (RS-32).
 - **Demo traffic:** Resend test addresses only (`delivered@resend.dev`, `bounced@resend.dev`, …).
 
 **Owner operations are capped too (MUST).** One owner, no team, no on-call rotation. A manual step
@@ -204,7 +205,7 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Rotation header format ([RS-U09](resend.md#unverified)).** How both signatures appear during the 24 h overlap. Security-relevant. Safe either way with per-secret verification. · [slice 4](build-checklist.md#4--recovery) `[Unverified]`
 - **Test sends without a verified domain ([RS-U14](resend.md#unverified)).** Decides whether the [verify stage](features.md#adopter-lifecycle) needs a verified domain. · [slice 2](build-checklist.md#2--durable-ingest-on-aws) `[Unverified]`
 - **Kill-switch reach ([AWS-U01, AWS-U02](aws.md#unverified)).** Whether the budget deploys from us-east-2 and reaches a us-east-2 topic, and whether a route throttle of `0` stops API Gateway billing after a trip. Together they decide whether the hard cap holds. Settled by the first guardrails deploy and the trip drill. · [slice 2](build-checklist.md#2--durable-ingest-on-aws), MUST be settled `[Unverified]`
-- **Smaller AWS gaps ([AWS-U03–U07](aws.md#unverified)).** Idle ESM polling cost, when the body is base64-encoded, the account concurrency quota, secret deletion on teardown, free-tier coverage. Each is safe either way and names its slice. · [slice 2](build-checklist.md#2--durable-ingest-on-aws) `[Unverified]`
+- **Smaller AWS gaps ([AWS-U03–U07, AWS-U09](aws.md#unverified)).** Idle ESM polling cost, when the body is base64-encoded, the account concurrency quota, secret deletion on teardown, free-tier coverage, whether a redeploy re-enables a disabled event source. Each is safe either way and names its slice. · [slice 2](build-checklist.md#2--durable-ingest-on-aws) `[Unverified]`
 - **Smaller Resend gaps ([RS-U13, U15–U19, U22](resend.md#unverified)).** List Events visibility lag, test-address event sequences, idempotency-key scope, invalid-key status code, orphaned `listen` webhooks, the `email.suppressed` object, how a `listen` session's signing secret reaches local ingest. Each row names its slice. `[Unverified]`
 - **Per-event recipient lists ([RS-U21](resend.md#unverified)).** Whether a bounce on a multi-recipient email lists only the impacted recipients in `data.to`. If not, a healthy co-recipient would read `hard_bounced`. Settled by one Ask-first two-recipient send. · [slice 1](build-checklist.md#1--local-ledger-and-read-path), MUST be settled `[Unverified]`
 
@@ -223,5 +224,5 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **MVP CLI read path.** Through the SDK, from slice 1: a minimal read API, SDK and CLI run locally, and each M1 slice adds its operations ([architecture.md → ADR-011](architecture.md#adr-011--one-contract-many-surfaces); owner, 2026-10-15).
 - **Secret rotation (§10.1).** For 24 hours after a rotation, both secrets sign ([RS-04](resend.md#facts)). Verification MUST accept both during that window.
 - **Retry window.** Resend's docs disagree: "up to 24 hours" on one page, a schedule spanning ≈ 27.6 h on another. Ledger designs to the longer window ([resend.md → Constraint 3](resend.md#constraints-and-sharp-edges)), which is safe under either.
-- **Reconcile cadence vs the shared API budget (§10.5).** Hourly by default, through one client limiter at 2 req/s that yields when `ratelimit-remaining` runs low ([integrations.md → Locked rules](integrations.md#locked-rules-must); owner, 2026-10-15).
+- **Reconcile cadence vs the shared API budget (§10.5).** Hourly by default, through a 2 req/s client limiter per single-flight caller ([ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)) that yields when `ratelimit-remaining` runs low ([integrations.md → Locked rules](integrations.md#locked-rules-must); owner, 2026-10-15).
 - **Upstream contribution (§10.6).** Closed. Upstream PRs are not planned (owner, 2026-10-15; [decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
