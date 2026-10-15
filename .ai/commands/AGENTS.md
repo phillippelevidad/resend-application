@@ -27,3 +27,4 @@ an expensive procedure that should run only when a person decides it should.
 | Command | Use it for |
 | --- | --- |
 | [auto-decide.md](auto-decide.md) | Letting an agent decide in the owner's place on an unattended run: decided from the ratified docs, logged as it goes, summarized for review |
+| [verify-docs.md](verify-docs.md) | A full verification round over the design docs: six parallel review passes, a verifier, settled fixes committed, owner decisions batched with a recommendation |

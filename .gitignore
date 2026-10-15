@@ -10,6 +10,9 @@ AGENTS.local.md
 .env*
 !.env.example
 
+# Raw stage output of a docs review run (only its decisions log is committed)
+.ai/reviews/*/stages/
+
 # Dependencies
 node_modules/
 
