@@ -4,8 +4,8 @@ Ledger's architecture decisions and their order of construction. Product context
 non-goals live in [about.md](about.md); verified vendor behavior in [resend.md](resend.md) (`RS-NN`)
 and [aws.md](aws.md) (`AWS-NN`); provider choices in [integrations.md](integrations.md); columns in
 [data-modeling.md](data-modeling.md); operations in [api-contract.md](api-contract.md). This doc
-states how those are built and does not repeat them. After bootstrap step 13,
-[docs/idea.md](../docs/idea.md) is a frozen RFC: decisions change here.
+states how those are built and does not repeat them. [docs/idea.md](../docs/idea.md) is a frozen
+RFC (accepted 2026-10-15). Decisions change here.
 
 ADRs carry stable `ADR-NNN` ids that skills and specs cite. Never renumber; a superseded ADR keeps
 its number and points forward. An ADR resting on an `[Unverified]` fact names the conditional part
@@ -68,6 +68,16 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 | **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | pending — sim invariant 1 (slice 1); `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
 | **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
 | **Order independence**: any arrival order and duplication give the same state | ADR-003 | pending — fast-check properties 1–4 (slice 0); sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
+
+### Simulator invariants
+
+`pnpm sim` checks these against its generated ground truth after every run. Every doc cites them
+by number. Adapted from [idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness).
+
+1. Every generated event is in `webhook_events` exactly once.
+2. Every `email_state` equals `projectEmail(ground truth)`.
+3. No `outbox` dedupe key was dispatched twice.
+4. The DLQ contains only the deliberately poisoned messages.
 
 ## Decisions
 

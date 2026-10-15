@@ -14,13 +14,14 @@ portfolio project, built as part of an application to Resend. Not affiliated wit
 ## Decision lens — evidence over claims, right-sized
 
 **Apply when:** choosing infra, dependencies or patterns, scoping a phase, or writing anything that
-claims a behavior. Do NOT re-litigate decisions recorded in [docs/idea.md](docs/idea.md) (verify
-then enqueue; SQS standard, not FIFO; projection recomputed from the event set; Postgres only,
-because dedupe, row locks and the outbox commit in one transaction; outbox for reactions) without a superseding decision written into that doc.
+claims a behavior. Do NOT re-litigate an accepted ADR in [architecture.md](.ai/architecture.md#decisions)
+(verify then enqueue, ADR-001; SQS standard, not FIFO, ADR-002; projection recomputed from the
+event set, ADR-003; Postgres only, because dedupe, row locks and the outbox commit in one
+transaction, ADR-005; outbox for reactions, ADR-006) without a superseding ADR.
 
 - **Every reliability claim MUST carry its evidence.** A behavior in the docs or the README is
   backed by a unit test, a property test, an integration test or a simulator invariant
-  ([idea §5.9](docs/idea.md#59-the-chaos-and-simulation-harness)), and the doc points at it. A
+  ([architecture.md → Simulator invariants](.ai/architecture.md#simulator-invariants)), and the doc points at it. A
   claim without evidence is deleted or moved to [Open questions](.ai/about.md#open-questions).
   This project exists to be checked.
 - **Verify Resend behavior; never assume it.** Check API and webhook behavior against the docs
@@ -37,7 +38,7 @@ because dedupe, row locks and the outbox commit in one transaction; outbox for r
 - **Stay close to Resend's public stack** ([tech stack](https://resend.com/handbook/engineering/what-is-our-tech-stack)):
   TypeScript, Postgres + Drizzle, Zod, Vitest, Biome, pnpm, AWS CDK, GitHub Actions. A deviation
   needs one line of reasoning in the doc that introduces it.
-- **v0 per phase, smallest PR.** Each [phase](docs/idea.md#7-implementation-plan) ships usable and
+- **v0 per slice, smallest PR.** Each [slice](.ai/architecture.md#build-order-vertical-slices) ships usable and
   tested on its own. Optimize a change for how fast it can be reviewed and merged.
 
 **Right-sizing — how much to build:**
@@ -101,10 +102,14 @@ or push only when asked.** Uncommitted work dies with its worktree or chat.
 
 ## Product & domain context
 
-[docs/idea.md](docs/idea.md) is the canonical design document: problem, verified Resend facts,
-architecture, data model, failure modes, phases and open questions. **Read it before non-trivial
-work.** Specs derived from it (OpenSpec) will live alongside it once installed. When a decision
-changes the design, update the idea doc in the same change, so docs never drift from code.
+[`.ai/`](.ai/AGENTS.md) is the only living source of product and design context. **Read its index
+before non-trivial work** and load the documents it marks Required for the task. Facts go in
+[resend.md](.ai/resend.md) and [aws.md](.ai/aws.md), decisions in the ADRs of
+[architecture.md](.ai/architecture.md), and open questions in
+[about.md](.ai/about.md#open-questions). When a change alters a decision, update or supersede its
+ADR in the same change, so docs never drift from code. [docs/idea.md](docs/idea.md) is the frozen
+RFC the design started from (accepted 2026-10-15). Read it for history, never edit it, and never
+cite it as the current rule. OpenSpec changes and specs will live in `openspec/` once installed.
 
 Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 [webhooks](https://resend.com/docs/webhooks/introduction) ·
@@ -113,25 +118,28 @@ Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 
 ## Projects
 
-**Planned — not created yet.** The layout from [idea §6.2](docs/idea.md#62-repository-layout):
+**Planned — not created yet.** This table is the canonical layout (adapted from the frozen
+[idea §6.2](docs/idea.md#62-repository-layout)). Each project lands in the slice that first needs it
+([build order](.ai/architecture.md#build-order-vertical-slices)):
 
 | Project | Role |
 | --- | --- |
-| **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O |
-| **packages/db** | Drizzle schema, migrations, repositories |
-| **packages/resend-client** | Headless Webhook API wrapper. Rate-limit aware. The only place that calls Resend's API |
-| **packages/sdk** | Public TS client for the read API |
-| **apps/ingest** | Lambda: verify + enqueue |
-| **apps/worker** | Lambda: ledger transaction, projections, outbox |
-| **apps/dispatcher** | Lambda: outbox delivery |
-| **apps/reconciler** | Lambda: gap detection + replay |
-| **apps/api** | Read API |
-| **apps/cli** | `ledger` CLI |
-| **apps/mcp** | MCP server |
-| **infra** | AWS CDK app |
-| **sim** | Simulation + chaos harness |
+| **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O (ADR-003, ADR-013) |
+| **packages/db** | Drizzle schema, migrations, repositories (ADR-018) |
+| **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) |
+| **packages/sdk** | Public TS client for the read API (ADR-011) |
+| **apps/ingest** | Lambda: verify + enqueue (ADR-001, ADR-009) |
+| **apps/worker** | Lambda: ledger transaction, projections, outbox (ADR-004, ADR-015) |
+| **apps/dispatcher** | Lambda: outbox delivery (ADR-006, ADR-017) |
+| **apps/reconciler** | Lambda: gap detection + replay (ADR-007) |
+| **apps/api** | Lambda behind the HTTP API: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)). The same code runs in the local dev server (ADR-010, ADR-011) |
+| **apps/cli** | `ledger` CLI, built on the SDK |
+| **apps/mcp** | MCP server, built on the SDK |
+| **infra** | AWS CDK app: app stack and guardrails stack (ADR-010) |
+| **sim** | Simulation + chaos harness, run as `pnpm sim` (ADR-016) |
 
-Update this table as projects land.
+Ingest and worker meet at a queue port. They run in one local process in slice 1, and SQS or a
+Postgres-backed queue implements the port beyond that (ADR-013). Update this table as projects land.
 
 ## Stack
 
@@ -221,7 +229,7 @@ answer into `AGENTS.local.md` from the example file.
 
 ## Error shape
 
-One shape everywhere: read API, SDK, CLI `--json`, MCP tools ([idea §5.7](docs/idea.md#57-interfaces-read-api-sdk-cli-mcp)):
+One shape everywhere: read API, SDK, CLI `--json`, MCP tools (ADR-011, [api-contract.md → Conventions](.ai/api-contract.md#conventions)):
 
 ```json
 {
@@ -240,10 +248,11 @@ The codes, their HTTP statuses and their raising components are registered in
 
 ## Data model
 
-Initial schema in [idea §6.3](docs/idea.md#63-data-model-initial): `webhook_events` (immutable
-ledger, `svix_id` primary key), `email_state`, `recipient_state`, `outbox`, `reconcile_runs`. Once
-`packages/db` exists, its Drizzle schema is the source of truth and this section points there.
-Migrations are expand/contract only, so deploys never need downtime.
+[.ai/data-modeling.md](.ai/data-modeling.md) owns modeling principles and per-table intent, and its
+[Model index](.ai/data-modeling.md#model-index) lists every table with the slice that lands it.
+`webhook_events` is the immutable ledger, keyed on `svix_id`. The projections are rebuildable from
+it alone (ADR-003, ADR-004). Once `packages/db` exists, its Drizzle schema owns columns, types and
+indexes. Migrations are expand/contract only, so deploys never need downtime (ADR-018).
 
 ## Patterns and practices
 

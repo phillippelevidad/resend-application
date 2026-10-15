@@ -2,10 +2,19 @@
 
 | | |
 |---|---|
-| **Status** | Idea, pre-spec |
+| **Status** | Accepted, frozen 2026-10-15 |
 | **Working name** | Ledger (not affiliated with or endorsed by Resend) |
 | **Format** | Follows the RFC structure Resend describes in its [public handbook](https://resend.com/handbook/engineering/how-we-use-rfcs) |
 | **Last verified against Resend docs** | 2026-10-15 |
+
+> **Frozen RFC. Living decisions are in [`.ai/`](../.ai/AGENTS.md).** This document records the
+> design as accepted on 2026-10-15 and is no longer edited. Verified facts live in
+> [resend.md](../.ai/resend.md) and [aws.md](../.ai/aws.md), decisions in the ADRs of
+> [architecture.md](../.ai/architecture.md), the build order in
+> [build-checklist.md](../.ai/build-checklist.md), and open questions in
+> [about.md](../.ai/about.md#open-questions). Where this document and `.ai/` disagree, `.ai/` wins.
+> For example, ADR-015 replaces the database-outage row of §6.4, and the slices replace the phases
+> of §7.
 
 > **Why this exists.** Ledger is a portfolio project, built as part of an application to two
 > engineering roles at Resend: **Backend Engineer** and **Software Engineer, Developer Tools**.

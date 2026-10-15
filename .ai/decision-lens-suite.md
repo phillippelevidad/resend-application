@@ -4,7 +4,10 @@ The settled decisions the [decision lens](../AGENTS.md#decision-lens--evidence-o
 MUST reproduce, verdict **and** reason, from its own text. A lens edit is tested against this suite
 instead of argued. The owner ratifies the lens and the suite together.
 
-**Current score: 21/21** (2026-10-15, the lens as edited in bootstrap step 2). The step-1 lens scored
+**Current score: 21/21** (2026-10-15, re-scored after bootstrap step 13). Step 13 pointed the lens
+at the ADRs and `.ai/` instead of the frozen idea doc, and renamed "v0 per phase" to "v0 per
+slice". It kept the five decisions and the Postgres reason verbatim, so no verdict or Why moved.
+Before that, the lens scored 21/21 as edited in bootstrap step 2. The step-1 lens scored
 18/21. It failed case 1 (FIFO matched by name only, and clause 6 could argue *for* FIFO), case 4 (the
 Postgres reason matched by name only) and case 9 (clause 2 called cost temporal, so the lens said
 defer, not reject). The same edit fixed all three: the "Postgres only" reason, "order comes from the
@@ -24,7 +27,8 @@ deploy" in clause 2, and "in an ADR" in the cost brake.
 - Directions. Over-building guards: 1, 4, 5, 7, 8, 9, 11, 15, 16. Under-building guards: 2, 3, 6,
   10, 12, 17, 18, 19, 20, 21. Claim guards: 13, 14.
 - Sources lead with the [architecture.md](architecture.md) ADR that carries the case, where one
-  exists (re-pointed in bootstrap step 7), then [docs/idea.md](../docs/idea.md) and [about.md](about.md).
+  exists (re-pointed in bootstrap step 7), then [about.md](about.md). [docs/idea.md](../docs/idea.md)
+  links are provenance only: it is a frozen RFC.
 
 ## Cases
 
@@ -45,7 +49,7 @@ deploy" in clause 2, and "in an ADR" in the cost brake.
 | 13 | Dedupe replays on `svix_id` alone, relying on the redelivery carrying the original `svix-id` | do not build on it yet; keep it `[Unverified]` in Open questions until the docs or a test confirm it | The docs confirm only that Replay returns the same `msg_` id. The header is backed by a community report, not a Resend page. | Verify Resend behavior | [about → Open questions](about.md#open-questions) (replay keeps `svix-id`), [Resend → replay event](https://resend.com/docs/api-reference/webhooks/replay-event) |
 | 14 | The README claims "no lost events" before the recovery test exists | reject the claim until its evidence lands, then link it | A claim without evidence is deleted or moved to Open questions. Every row in What this project must demonstrate is a gap until its evidence lands. | Evidence | [about → What this project must demonstrate](about.md#what-this-project-must-demonstrate), [Success metrics](about.md#success-metrics), [idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness) |
 | 15 | Swap Drizzle for another ORM in `packages/db` | reject, unless the doc that introduces it gives a one-line reason | The stack is chosen to stay close to what Resend publicly describes using. A deviation without its stated reason is drift. | Public stack | [idea §6.1](../docs/idea.md#61-stack) |
-| 16 | One PR that lands the CDK stack, metrics and alarms, and the reconciler | split: each phase ships usable and tested on its own, in the smallest PR | v0 first. Small PRs are how Resend ships, and they are what a reviewer can merge fast. | v0 per phase, smallest PR | [idea §3](../docs/idea.md#3-goals-and-non-goals) (goal 7), [§7](../docs/idea.md#7-implementation-plan), [about → What this project must demonstrate](about.md#what-this-project-must-demonstrate) |
+| 16 | One PR that lands the CDK stack, metrics and alarms, and the reconciler | split: each phase ships usable and tested on its own, in the smallest PR | v0 first. Small PRs are how Resend ships, and they are what a reviewer can merge fast. | v0 per slice, smallest PR | [architecture → Build order](architecture.md#build-order-vertical-slices), [idea §3](../docs/idea.md#3-goals-and-non-goals) (goal 7), [§7](../docs/idea.md#7-implementation-plan), [about → What this project must demonstrate](about.md#what-this-project-must-demonstrate) |
 | 17 | Re-seed the demo database by hand (SQL) before each demo run | admit a script | One owner, no on-call. A manual step that recurs per demo does not survive repeated reviews, so it is on the adopter's path and MUST be scripted. | 1 ceiling, owner-operations limb | [about → Platform scale assumptions](about.md#platform-scale-assumptions) |
 | 18 | Recovering missed events needs the operator to replay them in the Resend dashboard | admit the smallest version that removes the manual step: the reconciler replays through the Headless Webhook API | Recovery is a step on the adopter's self-service walk (`… → recover → …`). A dashboard step there is not intended. | 4 self-service test | [about → Guiding principles](about.md#guiding-principles), [What this project must demonstrate](about.md#what-this-project-must-demonstrate), [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest), [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events) |
 | 19 | Cut the reconciler lookback below Resend's retry window to spend fewer API calls | reject | An event whose last retry fails is about 27.6 h old (`[Unverified]` against a 24 h figure). A shorter lookback never sees it, so it is lost. No loss outranks cost. API pressure is met by cadence and rate-limit headroom, not by shortening the lookback. | Tie-break; 6 lost events | [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest), [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events), [about → Open questions](about.md#open-questions) (retry window) |

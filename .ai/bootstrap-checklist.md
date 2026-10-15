@@ -141,7 +141,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 13 — Freeze `docs/idea.md`; realign root docs
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** none needed. The calibration settled where everything goes. The simulator invariants moved into [architecture.md](architecture.md#simulator-invariants) because every slice cites them by number. The lens was re-scored at 21/21 after its links were repointed and "v0 per phase" became "v0 per slice". The README's upstream-pieces line was dropped because upstream PRs are not planned. The `.ai/` provenance links into idea.md stay, because a frozen doc keeps its anchors.
 - **Produces:** an RFC banner on [docs/idea.md](../docs/idea.md) (status Accepted, dated, "living decisions are in `.ai/`"); root `AGENTS.md` updated: *Product & domain context*, the "do NOT re-litigate" sentence (now points at ADRs), *Data model*, *Projects*; README pointer.
 - **Depends on:** 1–11.
 

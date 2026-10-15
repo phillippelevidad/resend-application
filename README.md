@@ -8,8 +8,9 @@ it missed.
 > engineering roles at Resend: **Backend Engineer** and **Software Engineer, Developer Tools**.
 > It's an independent project, not affiliated with or endorsed by Resend.
 
-**Status:** idea stage. Nothing below is built yet: it describes the design. Start with the
-[idea doc](docs/idea.md).
+**Status:** design accepted, build not started. Nothing below is built yet: it describes the
+design. The living design is in [`.ai/`](.ai/AGENTS.md): start with [about.md](.ai/about.md) and
+[architecture.md](.ai/architecture.md). The [original RFC](docs/idea.md) is frozen as accepted.
 
 ## The problem
 
@@ -24,11 +25,11 @@ on** is hard, because real-world delivery is messy
   status goes backwards.
 - **Bursts.** One broadcast produces a burst of webhooks for each recipient. The database runs out
   of connections, returns 5xx, and Resend's retries add even more load.
-- **Gaps.** If your endpoint is down longer than Resend's retry schedule (about 28 hours), events
+- **Gaps.** If your endpoint is down longer than Resend's retry schedule (about a day), events
   are lost and nothing tells you.
 
 Every Resend behavior Ledger relies on is checked against Resend's docs and cited in
-[idea §2.1](docs/idea.md#21-how-resend-webhooks-behave-verified-facts).
+[resend.md](.ai/resend.md). What the docs don't settle is marked `[Unverified]` there.
 
 ## What Ledger does
 
@@ -42,12 +43,12 @@ Every Resend behavior Ledger relies on is checked against Resend's docs and cite
 5. **Answers questions** like "did this user get the password-reset email, and if not, why?" from
    a CLI, a typed SDK, or a read-only MCP server that an AI agent can use safely.
 
-It runs on AWS (API Gateway, Lambda, SQS, Postgres), deployed with AWS CDK, written in TypeScript.
-See the [architecture](docs/idea.md#51-architecture-overview).
+It runs on AWS (API Gateway, Lambda, SQS) with Postgres, deployed with AWS CDK, written in
+TypeScript. See the [architecture](.ai/architecture.md#system-shape).
 
-These are the [goals](docs/idea.md#3-goals-and-non-goals), not yet guarantees. Each reliability
-claim will ship with its evidence: a unit, property or integration test, or an invariant of the
-[simulation and chaos harness](docs/idea.md#59-the-chaos-and-simulation-harness).
+These are [goals](.ai/about.md#what-this-project-must-demonstrate), not yet guarantees. Each
+reliability claim will ship with its evidence: a unit, property or integration test, or an
+[invariant of the simulation and chaos harness](.ai/architecture.md#simulator-invariants).
 
 ## Who it's for
 
@@ -58,7 +59,7 @@ claim will ship with its evidence: a unit, property or integration test, or an i
 | **Operator** | "We had an outage. Did we lose events? Recover them and prove it." |
 | **AI agent** | "Explain why this delivery failed and suggest a next step, without being able to break anything." |
 
-More in [idea §4](docs/idea.md#4-users-and-jobs-to-be-done).
+More in [about.md → Target personas](.ai/about.md#target-personas).
 
 ## When you need it, and when you don't
 
@@ -72,8 +73,8 @@ usually enough.
 Resend's open-source [Webhook Ingester](https://resend.com/docs/webhooks/ingester) answers "what
 happened?": it verifies webhooks and stores each event as a row in your database. Ledger answers
 what comes next: "what's true now, and what should we do about it?" It's designed to complement
-the Ingester, and to offer useful pieces upstream
-([idea §2.2](docs/idea.md#22-what-already-exists-the-resend-webhook-ingester)).
+the Ingester, not to compete with it
+([about.md → Positioning](.ai/about.md#positioning)).
 
 ## License
 

@@ -4,8 +4,8 @@ These docs are **AI-first, human-second**: written to be queried by coding agent
 humans reviewing decisions. Optimize for retrieval and signal density, not prose.
 
 > **Bootstrap in progress.** Most files below are still templates. Work them in the order of
-> [bootstrap-checklist.md](bootstrap-checklist.md). Until then, [docs/idea.md](../docs/idea.md)
-> remains the design reference.
+> [bootstrap-checklist.md](bootstrap-checklist.md). [docs/idea.md](../docs/idea.md) is a frozen RFC
+> (accepted 2026-10-15): read it for history, never as the current rule.
 
 ## Rules
 
