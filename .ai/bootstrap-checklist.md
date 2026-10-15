@@ -148,7 +148,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 14 — Adapt the `wf-*` skills to Ledger
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** the missing `pp-*` skills become three stubs that point at the canonical rule (`pp-workflow` absorbs `pp-general`; `pp-backend` absorbs the SDK/CLI/MCP surface and copy concerns of `pp-frontend`/`pp-ux-copy`; `pp-money` dropped, its precedence replaced by the lens tie-break). Pre-proposal §12/§13/§16/§17 keep their numbers, repurposed as Surfaces, Recovery paths, Cost and the Resend budget, PII and retention. Decided from the docs: `wf-open-question` and `.human/` references become an `[Unverified]` Open questions entry plus the owner round. The only dangling links are to `openspec/`, which step 15 creates.
 - **Produces:** the script and reference fixes the de-branding pass deferred — `check.mjs` source roots (`packages`, `apps`, `infra`, `sim`), Prisma → Drizzle `pgTable`, tenant/RLS/money/LGPD tripwires replaced or removed, `VERBS` gains `redrive`/`replay`/`inspect`/`explain`/`revoke` (`token.revoke` is invisible to the gate until then), `views.md` and BFF duties removed, the self-service stages, missing `pp-*`/`wf-open-question` references resolved.
 - **Depends on:** 7, 8, 9, 10.
 
