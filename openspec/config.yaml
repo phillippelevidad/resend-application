@@ -1,0 +1,37 @@
+schema: spec-driven
+
+# Ledger's rules for OpenSpec artifacts. Each rule points at its canonical source; when a rule here
+# and a ratified .ai/ doc disagree, the doc wins and this file is fixed in the same change.
+# Customise OpenSpec only here: the generated openspec-* skills and opsx commands are never edited
+# by hand (root AGENTS.md -> Permissions).
+
+context: |
+  Ledger: a reliable email-event ledger for Resend webhooks (TypeScript, pnpm, Postgres + Drizzle,
+  Zod, Vitest, AWS CDK). Public repo: no secrets, no real recipient addresses (use
+  delivered@resend.dev and Resend's other test addresses), people by role only.
+  Read order before writing any artifact: .ai/AGENTS.md -> .ai/about.md ->
+  .ai/architecture.md#build-order-vertical-slices -> the slice card in .ai/build-checklist.md ->
+  its Refs -> the slice's pre-proposal in .ai/pre-proposals/, if one exists. Load every .ai/ doc
+  the index marks Required for the task. docs/idea.md is a frozen RFC: never cite it as the rule.
+  One change per build-checklist slice, named slice-<id>-<card title kebabbed>
+  (e.g. slice-2b-local-mode-queue). The decision lens and tie-break in root AGENTS.md bind every
+  artifact: correctness of event handling (no loss, no duplicate effects, order-independent
+  state) > evidence > cost > scope > polish.
+
+rules:
+  proposal:
+    - Scope is the slice card's Ships list; quote each bullet verbatim. A reworded bullet is a scope change, so edit the card first (.ai/build-checklist.md#how-to-work-this-checklist).
+    - When a pre-proposal exists, carry forward every decision it settles; never re-open one.
+    - Name every Ask-first item the slice needs (dependency, pushed migration, CI, public contract, AWS resource or deploy, live Resend write) from root AGENTS.md -> Permissions.
+  specs:
+    - Every operation a spec names exists in .ai/api-contract.md with its surfaces, scopes and error codes; a new or changed one is an Ask-first contract change.
+    - Every scenario about Resend behavior cites the RS-NN fact in .ai/resend.md it rests on; an unsettled one names its RS-UNN row.
+    - Use the domain vocabulary in .ai/about.md#domain-vocabulary.
+  design:
+    - Follow the accepted ADRs in .ai/architecture.md#decisions and the binding pp-* skills. If the design must depart from one, say so explicitly and propose superseding it — never diverge silently.
+    - Every reliability claim carries its evidence (unit, property or integration test, or a simulator invariant by number) or moves to .ai/about.md#open-questions tagged [Unverified].
+    - Respect the module boundaries in root AGENTS.md and the cost brake (no always-on AWS resource without a measured reason in an ADR).
+  tasks:
+    - Explode the card's Ships bullets into tasks; every Ships bullet maps to at least one task that produces its named evidence.
+    - Include the doc duties the change triggers (pp-workflow -> Definition of done), the card's Status and Ships boxes, and a task to write WALKTHROUGH.md in the change folder before Status is ticked.
+    - The last task runs pnpm verify to exit 0.

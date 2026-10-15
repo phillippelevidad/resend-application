@@ -109,7 +109,9 @@ before non-trivial work** and load the documents it marks Required for the task.
 [about.md](.ai/about.md#open-questions). When a change alters a decision, update or supersede its
 ADR in the same change, so docs never drift from code. [docs/idea.md](docs/idea.md) is the frozen
 RFC the design started from (accepted 2026-10-15). Read it for history, never edit it, and never
-cite it as the current rule. OpenSpec changes and specs will live in `openspec/` once installed.
+cite it as the current rule. OpenSpec changes and specs live in [`openspec/`](openspec/), one change
+per slice, and [openspec/config.yaml](openspec/config.yaml) injects the read order and the
+per-artifact rules into every artifact OpenSpec writes.
 
 Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 [webhooks](https://resend.com/docs/webhooks/introduction) ·
@@ -155,10 +157,18 @@ Postgres-backed queue implements the port beyond that (ADR-013). Update this tab
 ```bash
 pnpm install       # postinstall runs sync-skills
 pnpm sync-skills   # relink .claude/skills from .agents/skills (the canonical folder)
+pnpm exec openspec validate <change> --type change --strict   # structural check of one change
+pnpm exec openspec update   # regenerate the OpenSpec skills and commands after a version bump
 ```
 
 Skills live in `.agents/skills/`. `.claude/skills/` is generated (git-ignored): never edit it, and
 run `pnpm sync-skills` after adding or removing a skill.
+
+OpenSpec is a pinned dev dependency (`@fission-ai/openspec`, `core` profile, targets `agents` and
+`claude`). Its generated files are committed and never edited by hand: `.agents/skills/openspec-*`
+and `.claude/commands/opsx/` (the `/opsx:propose`, `/opsx:apply`, `/opsx:archive`, … commands).
+Customize OpenSpec only through `openspec/config.yaml`. After `openspec update`, run
+`pnpm sync-skills`, because the `claude` target also writes copies into `.claude/skills/`.
 
 Phase 0 adds the rest. The intended shape: one `pnpm verify` that mirrors CI stage for stage, and
 whose exit 0 means every stage ran and passed. Document every command here when it lands.

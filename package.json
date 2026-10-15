@@ -11,5 +11,8 @@
     "pnpm": "10.11.0"
   },
   "private": true,
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@fission-ai/openspec": "1.14.2"
+  }
 }
