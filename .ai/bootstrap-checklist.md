@@ -95,10 +95,10 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 7 — `architecture.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Produces:** [architecture.md](architecture.md) — ADRs, system shape, Deferred (YAGNI), the build order with final slice IDs mapped to milestones M1–M3, risks.
 - **Depends on:** 2, 3, 4, 5, 6.
-- **Owner input:** the M1 slice cut, including how the MVP CLI reads state (see the conflict noted in the file).
+- **Owner input (2026-10-15):** a minimal read API + SDK + CLI from slice 1, each M1 slice adding its operations (ADR-011); on a database outage the worker pauses its own ESM and the hourly cron resumes it (ADR-015); the simulator reaches AWS only through an off-by-default simulator secret in the owner's deployment (ADR-016). Decided from the docs: the dispatcher is invoked after commit plus an hourly sweep (ADR-017); migrations run from the deploy command (ADR-018).
 - **MUST:** every `RS-UNN` row in [resend.md](resend.md#unverified) and every unverified bullet in [about.md](about.md#open-questions) lands in the slice it names, or moves with a recorded reason. Constraint 4 in resend.md (`401` does not stop retries) supersedes the idea §5.2 rationale. Every `AWS-UNN` row in [aws.md](aws.md#unverified) and every `PG-UNN` row in [integrations.md](integrations.md#unverified) lands in its slice the same way. The dispatcher's trigger shape respects the hourly database wake budget ([integrations.md → Cadence](integrations.md#cadence-and-the-database)). [aws.md → Constraint 4](aws.md#constraints-and-sharp-edges) (a DB outage drains into the DLQ, contradicting idea §6.4 as worded) is resolved by an ADR here.
 
 ### Step 8 — `data-modeling.md`

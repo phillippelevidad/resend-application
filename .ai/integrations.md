@@ -68,6 +68,7 @@ boundary, each USD 0.40/month (AWS-11):
 | `ledger/resend-api-key` | A `full_access` key, the only kind the Headless Webhook API accepts (RS-18) | `apps/reconciler` only | M1 |
 | `ledger/database-url` | The pooled Postgres connection string ([Decision](#decision--neon)) | worker, dispatcher, reconciler, read API | M1 |
 | `ledger/resend-sending-key` | A `sending_access` key, optionally scoped to one domain with `domain_id` (RS-18) | `apps/dispatcher` only | *reactions · M2* |
+| `ledger/simulator-signing-secret` | The simulator's signing secret; created only by an off-by-default deploy flag ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | `apps/ingest` only | Slice 3, owner's deployment only |
 
 That is USD 1.20/month in M1 and 1.60 from M2 ([aws.md → Cost shape](aws.md#cost-shape)). Secret
 names are prefixed per stack, and each Lambda receives only the ARNs of the secrets it reads, with
@@ -177,8 +178,8 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
 - **Connection.** Runtime Lambdas use the **pooled** connection string with `sslmode=require`.
   Neon's guidance is "Use pooled connections by default" and direct connections for migrations
   ([choose-connection](https://neon.com/docs/connect/choose-connection)). Migrations run with the
-  direct URL from the deploy command, never from a runtime Lambda. Where they run is fixed in
-  [architecture.md](architecture.md).
+  direct URL from the deploy command, never from a runtime Lambda
+  ([architecture.md → ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)).
 - **Pool size.** Each Lambda container keeps one module-scope `pg` pool of size 1. The worker's
   ESM `MaximumConcurrency` therefore bounds open connections (AWS-04), far below the pooler's
   limits.
@@ -207,9 +208,12 @@ Neon compute for at least the 5-minute suspend window
   This is an estimate, measured by PG-U03.
 - **A 15-minute tick does not fit.** About 22 min awake per hour comes to ≈ 67 CU-h.
 - **So:** no scheduled tick that touches Postgres runs more often than hourly by default.
-  Database-touching ticks share one hourly schedule (one wake). The dispatcher is therefore not
-  a sub-hourly poller. Its trigger shape (worker-triggered after commit, plus an hourly sweep) is
-  decided in [architecture.md](architecture.md).
+  Database-touching ticks share one hourly cron expression, flexible window `OFF` (AWS-10), so
+  they land in one wake. The dispatcher is therefore not a sub-hourly poller: the worker invokes
+  it after commit, plus an hourly sweep
+  ([architecture.md → ADR-017](architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep)).
+  The worker's resume check probes Postgres only while its ESM is paused
+  ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
 
 ### [Unverified]
 
@@ -220,7 +224,7 @@ Ids are stable: never renumber, never reuse.
 | --- | --- | --- | --- | --- |
 | PG-U01 | Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box. Whether it covers AWS regions, and what counts as activity, is unstated. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | *durable ingest · M1*. MUST be settled |
 | PG-U02 | `SELECT … FOR UPDATE` locks hold for the whole transaction through Neon's transaction-mode pooler | Inferred from PgBouncer's definition. Neon's page doesn't name it | A deployed concurrency test: two transactions on one `email_id` through the pooled URL serialize | *durable ingest · M1*. MUST be settled |
-| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month) | An estimate from the 5-min suspend window | Neon's usage page after 30 idle days, recorded beside [aws.md → Cost shape](aws.md#cost-shape) | *durable ingest · M1*. Safe on cost (Free never bills), not on availability: a suspended compute drains the queue into the DLQ ([aws.md → Constraint 4](aws.md#constraints-and-sharp-edges)) |
+| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month) | An estimate from the 5-min suspend window | Neon's usage page after 30 idle days, recorded beside [aws.md → Cost shape](aws.md#cost-shape) | *recovery · M1* (moved from durable ingest: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)) |
 | PG-U04 | A module-scope connection survives the compute suspending under it | Neon doesn't say what happens to open client connections at suspend | A worker or tick test after > 5 min idle | *durable ingest · M1*. Safe either way (a connection error is retryable; reconnect on error) |
 | PG-U05 | Drizzle's `aws-data-api/pg` driver supports `db.transaction()` | Neither the connect page nor the transactions page says | Drizzle's source or a test against a real cluster | Not owed while Neon holds. The ADR that switches to the fallback settles it |
 

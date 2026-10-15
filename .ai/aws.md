@@ -39,8 +39,8 @@ design:
   low-traffic polling optimization (AWS-04), so the idle queue is polled harder. The estimate
   fits in the SQS free tier; AWS-U03 measures it.
 - **A database outage drains into the DLQ.** Each failed receive counts toward `maxReceiveCount`
-  (AWS-09), so a long outage moves messages to the DLQ rather than holding them in the source queue
-  ([Constraint 4](#constraints-and-sharp-edges)).
+  (AWS-09), so a long outage would move messages to the DLQ rather than hold them in the source
+  queue. The worker pauses its own ESM instead ([Constraint 4](#constraints-and-sharp-edges)).
 
 ## Facts
 
@@ -158,7 +158,7 @@ type**, which is the [success metric](about.md#success-metrics). The result is r
 | Lambda, arm64, all functions | 0 (scheduled ticks fit the free tier) | $0.20 / 1M + $0.0000133334 / GB-s (AWS-20) | Cost Explorer: Lambda |
 | SQS queue + DLQ | ≈ 0: est. 0.13–0.65M polls inside the 1M free tier; ≤ USD 0.26 without it (AWS-24) | $0.40 / 1M requests | Cost Explorer: SQS requests (AWS-U03) |
 | EventBridge Scheduler | 0 (AWS-26) | $1.00 / 1M after 14M free | Cost Explorer: EventBridge |
-| **Secrets Manager** | **$0.40 per secret** (AWS-11): USD 1.20 for 3 secrets in M1, 1.60 for 4 from M2 ([integrations.md → Secrets layout](integrations.md#secrets-layout)) | $0.05 / 10k calls | Cost Explorer: Secrets Manager |
+| **Secrets Manager** | **$0.40 per secret** (AWS-11): USD 1.20 for 3 secrets in M1, 1.60 for 4 from M2 ([integrations.md → Secrets layout](integrations.md#secrets-layout)); +0.40 in the owner's deployment for the simulator secret ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | $0.05 / 10k calls | Cost Explorer: Secrets Manager |
 | CloudWatch custom metrics (EMF) | 0 in hours with no emission. Metrics emitted by every scheduled run cost $0.30 each beyond 10 free (AWS-12) | — | Cost Explorer: CloudWatch `MetricMonitorUsage` |
 | CloudWatch alarms | 0 for ≤ 10; $0.10 each beyond (AWS-28) | — | Cost Explorer: CloudWatch `AlarmMonitorUsage` |
 | CloudWatch Logs | ≈ 0: scheduled-run logs only, 30-day retention, inside 5 GB free (AWS-29) | $0.50 / GB ingested | Cost Explorer: CloudWatch Logs |
@@ -253,10 +253,10 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
    outage longer than ~15–30 min moves events to the DLQ instead of holding them in the source
    queue. This contradicts [idea §6.4](../docs/idea.md#64-failure-modes-and-expected-behavior)
    ("Queue holds events") as worded. No event is lost: the DLQ keeps 14 days, and redrive
-   (AWS-21) puts them back, deduplicated on `svix_id`. *Resolution:* decided in
-   [architecture.md](architecture.md). The options are an automatic redrive after recovery, a
-   worker that pauses its own ESM when Postgres is unreachable (AWS-18), or a larger
-   `maxReceiveCount`. The `--chaos db-outage` run is the evidence.
+   (AWS-21) puts them back, deduplicated on `svix_id`. *Resolution:* the worker pauses its own
+   ESM when Postgres is unreachable (AWS-18), and the hourly cron resumes it
+   ([architecture.md → ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
+   The `--chaos db-outage` run is the evidence.
 5. **`ReportBatchItemFailures` fails open on an empty response** (AWS-05). *Impact:* a handler
    that catches an error and returns `{}` deletes uncommitted events. *Resolution:* the worker
    builds the failure list from per-message results, and a unit test covers it.

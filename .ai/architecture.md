@@ -1,294 +1,432 @@
 # Architecture
 
-> **TEMPLATE — not ratified.** Bootstrap step 7 in [bootstrap-checklist.md](bootstrap-checklist.md). The preview content below is illustrative, drafted from [docs/idea.md](../docs/idea.md) without research. Nothing here is binding until this banner and the instructions comment are removed.
-
-<!-- AGENT INSTRUCTIONS
-Purpose: canonical home of ADRs, system shape, reliability core, Deferred (YAGNI), build order
-(slices → M1/M2/M3) and risks. After step 13, docs/idea.md is a frozen RFC; decisions change here.
-Consumers: wf-before-propose (ADRs by anchor, #deferred-yagni, #build-order-vertical-slices);
-wf-after-propose-check (walks every ADR a change touches; BLOCKs a design that builds a categorical
-reject); build-checklist.md (step 10) copies slice IDs and titles verbatim.
-Inputs (read first): root AGENTS.md; about.md; decision-lens-suite.md; features.md; resend.md (RS-NN);
-aws.md (AWS-NN, cost, budget alarm); integrations.md (Postgres host); docs/idea.md §5–7, §9, §10;
-bootstrap-checklist.md → Owner calibration (binding: M1/M2/M3, no dates; deploy-and-keep).
-Research: re-derive every ADR from the inputs, not from this preview. An ADR resting on vendor
-behavior cites the RS-NN / AWS-NN fact, not the vendor page. If the fact is [Unverified], the ADR
-names the conditional part and links the about.md open question.
-Required structure (parser contract):
-- Headings exactly `### ADR-NNN — Title` (em dash). Never renumber. Superseded body starts
-  `**Superseded by [ADR-NNN](#anchor).** (Number retained; do not renumber.)`
-- Body starts `**Accepted.**`. Here every ADR reads `**Proposed — preview.**`; flip it only after its
-  evidence and citations are verified. Skills treat every `### ADR-` heading as ratified, so an open
-  decision MUST NOT be an ADR: it goes under Open decisions or Risks & mitigations.
-- One `Rejected:` line and one `**Evidence:**` line per ADR. Amendments inline:
-  `*Amended YYYY-MM-DD — what and why.*`
-- `## Deferred (YAGNI)` (Defer | Kind | Because | Tripwire; Kind temporal = countable tripwire,
-  categorical = superseding ADR only) and `## Build order (vertical slices)` verbatim.
-- Slice IDs match \d+[A-Za-z]?; quoted as `<ID> — <Title>`. Words marking something unsettled only
-  under headings matching deferred | open question | risk | non-goal | out of scope.
-Evidence rules: each reliability claim names a test or simulator invariant (idea §5.9) by path once
-it exists, "pending — <kind> (slice N)" before. No possible evidence → delete or move to Open decisions.
-Owner decisions to surface (one batched round, recommended pick each): (1) the M1 slice cut and how
-the MVP CLI reads state (CONFLICT under Open decisions); (2) Lambda in or out of a VPC; (3) read API
-runtime; (4) the hard monthly budget cap value (from aws.md).
-Done when: each ADR Accepted with verified Evidence, or removed; slice IDs and milestones final;
-every Deferred row has a Kind and, if temporal, a countable tripwire; banner and comment removed.
--->
-
 Ledger's architecture decisions and their order of construction. Product context, personas and
-non-goals live in [about.md](about.md); verified vendor behavior in [resend.md](resend.md) and
-[aws.md](aws.md); provider choices in [integrations.md](integrations.md); columns in
+non-goals live in [about.md](about.md); verified vendor behavior in [resend.md](resend.md) (`RS-NN`)
+and [aws.md](aws.md) (`AWS-NN`); provider choices in [integrations.md](integrations.md); columns in
 [data-modeling.md](data-modeling.md); operations in [api-contract.md](api-contract.md). This doc
-states how those are built and does not repeat them.
+states how those are built and does not repeat them. After bootstrap step 13,
+[docs/idea.md](../docs/idea.md) is a frozen RFC: decisions change here.
 
 ADRs carry stable `ADR-NNN` ids that skills and specs cite. Never renumber; a superseded ADR keeps
-its number and points forward.
+its number and points forward. An ADR resting on an `[Unverified]` fact names the conditional part
+and the slice that settles it ([Open questions owed by slice](#open-questions-owed-by-slice)).
 
 ## Accepted direction
 
 - **Verify, then enqueue.** Ingest never touches the database; SQS is the buffer (ADR-001, ADR-002).
 - **One immutable ledger, derived state.** `webhook_events` keyed on `svix_id` is the source of
   truth; projections are a pure function of the event set (ADR-003, ADR-004).
-- **Postgres only**, with a transactional outbox for every side effect (ADR-005, ADR-006).
+- **Postgres only**, with a transactional outbox for every side effect (ADR-005, ADR-006, ADR-017).
+- **The queue holds events through a database outage**: the worker pauses its own event source
+  (ADR-015).
 - **Recovery by id diff + replay** through the normal ingest path (ADR-007).
-- **Serverless on one CDK stack per environment**, under the cost brake, deployed and kept (ADR-010).
-- **One contract, many surfaces:** read API → SDK → CLI / MCP, one error shape (ADR-011).
+- **Serverless on AWS CDK**: an app stack plus a guardrails stack, under the cost brake, deployed
+  and kept (ADR-010).
+- **One contract, many surfaces:** read API → SDK → CLI / MCP, one error shape, from slice 1
+  (ADR-011).
 
 ## System shape
 
 ```mermaid
 flowchart LR
-  R[Resend webhooks<br/>via Svix] -->|POST, signed| I[Ingest<br/>API GW + Lambda]
-  I -->|verify, then enqueue| Q[(SQS standard)]
-  Q --> W[Worker Lambda<br/>bounded concurrency]
-  W -->|1 transaction| DB[(Postgres)]
-  Q -. poison after N tries .-> DLQ[(DLQ)]
-  DB --> O[Outbox dispatcher]
-  O -->|idempotent| X[Reactions:<br/>app callback, alert email]
-  C[Reconciler<br/>scheduled] -->|List Events| RA[Resend API]
-  RA -->|Replay Event| R
-  DB --> API[Read API]
-  API --> SDK[TS SDK] --> CLI[CLI]
-  SDK --> MCP[MCP server]
+  R[Resend webhooks via Svix] -->|POST, signed| GW[HTTP API]
+  S[sim: owner deployment only] -.->|signed with simulator secret| GW
+  GW --> I[Ingest Lambda]
+  I -->|verify, then enqueue| Q[(SQS standard: 13 days)]
+  Q -->|ESM: max concurrency| W[Worker Lambda]
+  W -->|1 transaction| DB[(Postgres on Neon)]
+  W -. pauses own ESM on DB outage .-> Q
+  Q -. after maxReceiveCount .-> DLQ[(DLQ: 14 days)]
+  W -->|async invoke after commit: M2| D[Dispatcher]
+  D -->|idempotent| X[App callback, alert email]
+  T[Hourly cron] --> C[Reconciler]
+  T -->|resume check| W
+  T -->|sweep: M2| D
+  C -->|List Events, Replay| RA[Resend API]
+  RA -->|replayed delivery| R
+  GW --> API[Read API Lambda]
+  API --> DB
+  CLI[ledger CLI] --> SDK[TS SDK]
+  MCP[MCP server: M2] --> SDK
+  SDK --> GW
+  G[Guardrails stack: budget, SNS, kill switch] -. throttles on trip .-> GW
 ```
 
-Source: [idea §5.1](../docs/idea.md#51-architecture-overview). **Source-of-truth rule (MUST).** `webhook_events` is the only authoritative store. `email_state`
-and `recipient_state` are caches that MUST be rebuildable from `webhook_events` alone: dropping and
-recomputing them yields identical rows. Any column that cannot be recomputed from the event set
-MUST NOT live in a projection ([data-modeling.md → Projections are derived](data-modeling.md#projections-are-derived)).
+Adapted from [idea §5.1](../docs/idea.md#51-architecture-overview). **Source-of-truth rule (MUST).**
+`webhook_events` is the only authoritative store. `email_state` and `recipient_state` are caches
+that MUST be rebuildable from `webhook_events` alone: dropping and recomputing them yields identical
+rows. Any column that cannot be recomputed from the event set MUST NOT live in a projection
+([data-modeling.md → Projections are derived](data-modeling.md#projections-are-derived)).
 
 ## Reliability core
 
-Every change is judged against these; they outrank evidence, cost, scope and polish ([decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
+Every change is judged against these; they outrank evidence, cost, scope and polish
+([decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized), tie-break).
 
 | Invariant | Carried by | Evidence | Design test (MUST) |
 | --- | --- | --- | --- |
-| **No loss** — every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008 | pending — sim invariant 1; `--chaos db-outage`; "down > 28h" integration test (slices 2, 3) | A change MUST NOT return `2xx` to Resend before the event is durably enqueued, and MUST NOT drop a message without it reaching the DLQ |
-| **No duplicate effects** — at-least-once delivery, exactly-once effects | ADR-004, 006 | pending — sim invariant 3; `--chaos worker-crash` (slice 5) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no I/O to a third party inside the worker transaction |
-| **Order independence** — any arrival order and duplication give the same state | ADR-003 | pending — fast-check properties 1–4 ([idea §5.4](../docs/idea.md#54-order-independent-projections)); sim invariant 2 (slices 0, 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
+| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | pending — sim invariant 1 (slice 1); `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
+| **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
+| **Order independence**: any arrival order and duplication give the same state | ADR-003 | pending — fast-check properties 1–4 (slice 0); sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
 ## Decisions
 
 ### ADR-001 — Verify, then enqueue
 
-**Proposed — preview.** Ingest does only local work: verify signature and timestamp, read `type`,
-enqueue `{svixId, receivedAt, rawBody, headers subset}`, return `200`. `401` on bad signature, `503`
-when the enqueue fails so Resend retries. Ingest MUST NOT depend on the database.
-Rejected: writing to Postgres in the request path (DB outage becomes failed deliveries and retry storms).
-**Evidence:** pending — unit tests for the three responses; `--chaos db-outage` keeps ingest at `200` (slice 2). Source: [idea §5.1–5.2](../docs/idea.md#52-ingest).
+**Accepted.** Ingest does only local work: decode the body to its exact bytes (`isBase64Encoded`,
+AWS-01), verify signature and timestamp on the raw body (RS-01, RS-02), read `type`, enqueue
+`{svixId, receivedAt, rawBody, headers subset}`, return exactly `200` with a fixed short body.
+`401` on a bad signature, `503` when the enqueue fails, so Resend retries (RS-10). Ingest MUST NOT
+depend on the database. The response body never echoes payload, PII or secrets, because Resend
+stores it (RS-12, [resend.md → Constraint 11](resend.md#constraints-and-sharp-edges)). The `401`
+is kept because it is honest and alarmable, **not** because it stops retries: no Resend page says
+it does, and repeated failure can auto-disable the endpoint (RS-10, RS-11, RS-U07). This supersedes
+the [idea §5.2](../docs/idea.md#52-ingest) rationale ([resend.md → Constraint 4](resend.md#constraints-and-sharp-edges)).
+A misconfigured secret is handled like an outage: fix it, re-enable the webhook, reconcile.
+Rejected: writing to Postgres in the request path (a database outage becomes failed deliveries, then auto-disable).
+**Evidence:** pending — unit tests for the three responses, both body encodings and the fixed body (slices 1, 2); `--chaos db-outage` keeps ingest at `200` (slice 3).
 
 ### ADR-002 — SQS standard, not FIFO
 
-**Proposed — preview.** A standard queue with the maximum retention, plus a DLQ. Resend's deliveries
-are not ordered, so FIFO would buy queue-arrival order that means nothing (ADR-003 makes order irrelevant).
-Rejected: SQS FIFO (throughput cost, false sense of correctness); Kinesis/Kafka (always-on cost).
-**Evidence:** pending — `--shuffle` and `--duplicates` sim runs pass on the standard queue (slice 2). Source: [idea §5.3](../docs/idea.md#53-worker-and-the-event-ledger).
+**Accepted.** One standard queue, retention **13 days**, plus a standard DLQ at **14 days**, longer
+than the source as SQS requires for standard queues (AWS-07, AWS-09). Resend promises no delivery
+order (RS-07) and SQS standard may reorder and duplicate (AWS-06); ADR-003 makes both irrelevant.
+Queues use SSE-SQS, no customer-managed key (AWS-25).
+Rejected: SQS FIFO (orders arrival at our queue, which means nothing; costs throughput); Kinesis or Kafka (always-on cost).
+**Evidence:** pending — `--shuffle` and `--duplicates` sim runs pass through the deployed queue (slice 3).
 
 ### ADR-003 — Projection is a pure function of the event set
 
-**Proposed — preview.** `projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)` and
-folds; it is recomputed from the full event set on every new event. Status follows outcome precedence,
-not recency: terminal negatives (`bounced`/`failed`/`suppressed`) outrank `delivered`. Opens and
-clicks are counters plus first/last timestamps. `projectRecipient` derives from email states.
+**Accepted.** `projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)` and folds;
+it is recomputed from the full event set on every new event. Status follows outcome precedence, not
+recency: terminal negatives (`bounced`, `failed`, `suppressed`) outrank `delivered`. Opens and
+clicks are counters plus first/last timestamps. `projectRecipient` derives from email states; a
+hard bounce comes from `bounce.type = Permanent`, never from the event type alone (RS-28,
+[resend.md → Constraint 7](resend.md#constraints-and-sharp-edges)). Event-specific payload objects
+are optional in the Zod schemas (RS-26–RS-29). **Conditional:** `created_at` is used only as a
+sort key with `rank` and `svix_id` as tie-breaks, so state stays deterministic whether or not it
+tracks the real event time (RS-U10); precedence is property-tested whether or not a bounce can
+follow a delivery (RS-U11).
 Rejected: incremental `UPDATE status = new` (correctness depends on arrival order).
 **Evidence:** pending — fast-check permutation, idempotence, monotonicity and oracle properties (slice 0). Source: [idea §5.4](../docs/idea.md#54-order-independent-projections), [§9](../docs/idea.md#9-general-questions).
 
 ### ADR-004 — Immutable ledger keyed on `svix_id`, one transaction per message
 
-**Proposed — preview.** Per message, one transaction: insert into `webhook_events` `ON CONFLICT
-(svix_id) DO NOTHING`; on conflict, commit as a duplicate; otherwise lock the email's `email_state`
-row, recompute projections, insert outbox rows, commit. A crash at any point is either nothing or
-everything. Unknown event types are stored raw, skipped by projections and counted.
-Rejected: dedupe on `(email_id, type)` (collapses distinct events); separate transactions per step.
-**Evidence:** pending — Testcontainers integration test for crash-between-steps and duplicate insert; sim invariant 1 (slice 1). Source: [idea §5.3](../docs/idea.md#53-worker-and-the-event-ledger), [RS-NN: replay keeps `svix-id`](resend.md).
+**Accepted.** Per message, one transaction: insert into `webhook_events` `ON CONFLICT (svix_id) DO
+NOTHING`; on conflict, commit as a duplicate; otherwise lock the email's `email_state` row,
+recompute projections, insert outbox rows, commit. A crash at any point is either nothing or
+everything. Unknown and non-email event types are stored raw, skipped by projections and counted
+(RS-25). Dedupe is on `svix_id`, which Resend's retries keep (RS-06, RS-08), never on the SQS
+`messageId`, which redrive changes (AWS-21). **Conditional:** a reconciler replay dedupes only if
+it carries the original `svix-id` (RS-U01); slice 4 MUST settle it.
+Rejected: dedupe on `(email_id, type)` (collapses distinct events); one transaction per step.
+**Evidence:** pending — Testcontainers integration tests for duplicate insert and crash between steps; sim invariant 1 (slice 1).
 
 ### ADR-005 — Postgres only
 
-**Proposed — preview.** One Postgres database holds ledger, projections, outbox and run records.
-The workload is transactional (dedupe, row locks, outbox in the same transaction). Host choice lives
-in [integrations.md](integrations.md).
-Rejected: multi-database connectors (Ingester's job); an analytics store; DynamoDB (no multi-row transactions with the outbox at this shape).
-**Evidence:** pending — n/a beyond ADR-004's tests; this is a scope decision. Source: [idea §9](../docs/idea.md#9-general-questions).
+**Accepted.** One Postgres database holds ledger, projections, outbox and run records, because
+dedupe, row locks and the outbox commit in one transaction. The host is Neon Free in
+`aws-us-east-2`, reached over TLS through its pooled URL with `drizzle-orm/node-postgres`, one
+connection per Lambda container, pooler-safe SQL only; Aurora Serverless v2 + Data API is the
+fallback, switched to only by a superseding ADR on the triggers in
+[integrations.md → Decision](integrations.md#decision--neon).
+Rejected: multi-database connectors (the Ingester's job); an analytics store; DynamoDB (no multi-row transaction with the outbox); Aurora DSQL (optimistic locking, AWS-49).
+**Evidence:** pending — deployed lock test through the pooler, PG-U02 (slice 2). This is otherwise a scope decision.
 
 ### ADR-006 — Transactional outbox for reactions
 
-**Proposed — preview.** Reactions are outbox rows with a unique `dedupe_key`, written in the causing
-event's transaction and delivered by a dispatcher with retries and backoff. Alert emails pass a Resend
-idempotency key derived from `dedupe_key`; app callbacks are signed, with stable ids.
+**Accepted.** Reactions are outbox rows with a unique `dedupe_key`, written in the causing event's
+transaction and delivered by the dispatcher (ADR-017) with retries and backoff. Alert emails carry
+an `Idempotency-Key` derived from `dedupe_key` (RS-24); keys live 24 h, so an alert's retry horizon
+stays under 24 h and past it the entry is marked dead ([resend.md → Constraint 8](resend.md#constraints-and-sharp-edges)).
+App callbacks are signed, with stable ids. The dispatcher sends with a `sending_access` key only
+([integrations.md → Secrets layout](integrations.md#secrets-layout)).
 Rejected: calling third parties from the worker; dedupe in memory.
-**Evidence:** pending — `--chaos worker-crash` yields no duplicate alert; sim invariant 3 (slice 5). Source: [idea §5.6](../docs/idea.md#56-reactions-via-a-transactional-outbox), [RS-NN: idempotency keys](resend.md).
+**Evidence:** pending — `--chaos worker-crash` yields no duplicate dispatch, sim invariant 3; retry-horizon unit test (slice 6).
 
 ### ADR-007 — Recovery by id diff and replay through ingest
 
-**Proposed — preview.** The reconciler checks the webhook is enabled, pages List Events past a grace
-window up to a lookback horizon, diffs ids against `webhook_events`, and replays the missing ones. A
-replay re-enters through ingest, so verification and dedupe apply unchanged. One failed replay never
-aborts a run. Each run writes a `reconcile_runs` row.
-Rejected: a special write path that inserts fetched payloads directly (bypasses verification).
-**Evidence:** pending — "down > 28h" and "webhook disabled" integration tests against a fake Resend API (slice 3). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
+**Accepted.** On the hourly cron and on demand, the reconciler reads the webhook's `status` first
+and stops with `webhook_disabled` if it is disabled (RS-11, RS-13). It then pages List Events
+newest first (RS-14), skips events younger than a 10-minute grace window, stops at a lookback
+horizon (default 3 days, above the ≈ 27.6 h retry schedule, RS-09), diffs ids against
+`webhook_events`, and replays the missing ones (RS-16). A replay re-enters through ingest, so
+verification and dedupe apply unchanged. One failed replay never aborts a run; runs never overlap
+and stay inside a time budget below the Lambda timeout (AWS-03). Each run writes a `reconcile_runs`
+row. Same approach as Ingester [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13),
+cited, not claimed. **Conditional:** the id diff holds only if List Events ids are `svix-id`s
+(RS-U02) and a replay keeps the `svix-id` (RS-U01) and passes the timestamp window (RS-U20), all
+three MUST be settled in slice 4; recoverable range is bounded by List Events reach (RS-U03); the
+grace window assumes visibility within minutes (RS-U13).
+Rejected: a write path that inserts fetched payloads directly (bypasses verification); diffing by delivery status (misses "acknowledged but never stored").
+**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; disabled webhook; `429` with `retry-after` (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
 
 ### ADR-008 — Backpressure: bounded concurrency, partial batch failure, DLQ
 
-**Proposed — preview.** The worker's SQS event source uses maximum concurrency (the backpressure
-valve), `ReportBatchItemFailures`, and a DLQ after `maxReceiveCount`. Bursts become queue depth,
-not connection errors. DLQ messages are inspected and redriven by an `operate` action.
-Rejected: unbounded concurrency; whole-batch retry.
-**Evidence:** pending — `--burst 10000/10s` drains with zero loss; poison-message integration test (slice 2). Source: [idea §5.3](../docs/idea.md#53-worker-and-the-event-ledger), [AWS-NN](aws.md).
+**Accepted.** The worker's ESM sets `MaximumConcurrency` (≥ 2, AWS-04) as the backpressure valve
+on Postgres connections, batch size 10 with no batching window (AWS-17), and
+`ReportBatchItemFailures`, building the failure list from per-message results because an empty
+response deletes the whole batch (AWS-05). Visibility timeout is derived as 6 × worker timeout +
+batching window (AWS-08). `maxReceiveCount` is configurable, default 5 (AWS-09). The worker
+reserves no concurrency (AWS-16). DLQ messages are inspected and redriven by an `operate` action
+(`StartMessageMoveTask`, AWS-21).
+Rejected: unbounded concurrency; whole-batch retry; reserved concurrency as the valve (blocked by unpublished new-account quotas, AWS-U05).
+**Evidence:** pending — batch-failure unit test (slice 2); poison-message isolation, sim invariant 4, and `--burst 10000/10s` with zero loss on AWS (slice 3).
 
 ### ADR-009 — Multi-secret verification and timestamp tolerance
 
-**Proposed — preview.** Ingest verifies against a list of active signing secrets so rotation has no
-gap, and rejects `svix-timestamp` outside the tolerance. Whether multiple secrets are required or
-only defensive depends on Resend's rotation semantics ([about.md → Open questions](about.md#open-questions)).
-Rejected: a single secret with a redeploy on rotation.
-**Evidence:** pending — unit tests for old/new secret overlap and forged/stale requests (slice 3). Source: [idea §5.2](../docs/idea.md#52-ingest).
+**Accepted.** Ingest verifies against the configured set of signing secrets, one `verify` call per
+secret, first match wins (RS-02), and rejects `svix-timestamp` more than 5 minutes off (RS-02,
+RS-03). Resend signs with both the old and new secret for 24 h after a rotation (RS-04), so the set
+is required, not defensive: the adopter adds the new secret, rotates, retires the old one inside
+24 h. The loop ships with ingest in slice 1; slice 4 adds the rotation runbook and the retired-secret
+test. **Conditional:** how both signatures appear in the header (RS-U09) does not matter to a
+per-secret loop.
+Rejected: one secret with a redeploy on rotation (drops deliveries for the redeploy window).
+**Evidence:** pending — unit tests with old, new and both signatures, forged and stale requests (slice 1); retired secret → `401` (slice 4).
 
-### ADR-010 — Serverless, one CDK stack per environment
+### ADR-010 — Serverless on AWS CDK: an app stack and a guardrails stack
 
-**Proposed — preview.** API Gateway HTTP API, Lambda, SQS, EventBridge Scheduler, Secrets Manager,
-CloudWatch; one CDK stack per environment, deployed and kept up until the owner tears it down. No
-always-on resources without a measured reason. Budget alarms with a hard monthly cap are part of the
-stack, not polish. One command destroys everything.
-Rejected: containers for the event path; NAT gateways; provisioned RDS.
-**Evidence:** pending — `cdk destroy` leaves nothing billable; idle-cost measurement recorded in [aws.md](aws.md) (slice 2). Source: [idea §5.8](../docs/idea.md#58-infrastructure-and-operations).
+**Accepted.** API Gateway HTTP API, Lambda (arm64, AWS-20), SQS, EventBridge Scheduler, Secrets
+Manager, CloudWatch and SNS in us-east-2. No VPC: a VPC-attached Lambda needs a NAT gateway (AWS-13).
+The read API is a Lambda behind the same HTTP API. Every function logs to an explicit log group with
+30-day retention and `DESTROY` (AWS-29, AWS-40); every secret sets `DESTROY` (AWS-38). The budget,
+its notifications and the kill switch live in a separate **guardrails stack**, deployed with the
+first app deploy, so no redeploy or failed deploy opens a budget-alarm gap; design in
+[aws.md → Budget alarms](aws.md#budget-alarms) (cap USD 50, kill switch off by default, on in the
+owner's deployment). `cdk destroy --all` removes both ([aws.md → Teardown](aws.md#teardown)).
+**Conditional:** the cap holds only if the budget deploys from us-east-2 (AWS-U01) and a route
+throttle of `0` stops billing (AWS-U02); both MUST be settled in slice 2.
+Rejected: containers on any path; NAT gateways; provisioned RDS; RDS Proxy (AWS-48); Budget Actions as the stop (they cannot stop Lambda, AWS-36).
+**Evidence:** pending — CDK assertion tests (no NAT gateway, no VPC, budget and kill-switch wiring present); recorded trip drill; post-destroy listing finds nothing billable (slice 2); idle cost after 30 days in [aws.md → Cost shape](aws.md#cost-shape).
 
 ### ADR-011 — One contract, many surfaces
 
-**Proposed — preview.** The read API is described by OpenAPI and validated with Zod; the SDK is
-generated types plus a thin client; the CLI and MCP server are built only on the SDK. One error shape
-everywhere (`code`, `message`, `hint`, `docs`). Bearer tokens carry `read` or `operate` scope; MCP
-operate tools are not registered without `operate`.
-Rejected: CLI or MCP reading the database directly; per-surface error formats.
-**Evidence:** pending — contract tests SDK ↔ API; MCP tool-registration test per scope (slice 4). Source: [idea §5.7](../docs/idea.md#57-interfaces-read-api-sdk-cli-mcp).
+**Accepted.** The read API is described by OpenAPI and validated with Zod; the SDK is generated
+types plus a thin client; the CLI and MCP server are built only on the SDK. One error shape
+everywhere ([error shape](../AGENTS.md#error-shape)). Bearer tokens carry `read` or `operate`
+scope; MCP operate tools are not registered without `operate`. **The contract starts in slice 1**
+(owner, 2026-10-15): a minimal read API, SDK and `ledger email` / `ledger recipient` run locally,
+and each later slice adds the operations its stage needs: health (slice 2), DLQ inspect and redrive
+(slice 3), gaps and reconcile (slice 4). The same API code runs in the local dev server and behind
+the HTTP API. This resolves the conflict between [idea §7](../docs/idea.md#7-implementation-plan)
+phase 1 (CLI reads the database) and [module boundaries](../AGENTS.md#module-boundaries) in favor of
+the boundary: every slice is hand-walkable without SQL (lens clause 3), and no throwaway read path
+is built.
+Rejected: CLI or MCP reading the database directly; a dev-only inspection script (throwaway); per-surface error formats.
+**Evidence:** pending — SDK ↔ API contract tests and CLI `--json` output tests (slice 1, grown per slice); error-registry mirror test and MCP tool-registration test per scope (slice 5).
 
 ### ADR-012 — `resend-client` is the sole Resend API caller
 
-**Proposed — preview.** Every Resend API call goes through `packages/resend-client`, which owns the
-shared 10 req/s budget, honors `ratelimit-*` and `retry-after`, and leaves headroom for the team's
-sending traffic.
-Rejected: calling the `resend` SDK from apps directly.
-**Evidence:** pending — fake-API test: a 429 storm backs off and the run completes (slice 3). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events), [RS-NN: rate limit](resend.md).
+**Accepted.** Every Resend API call goes through `packages/resend-client`. It owns one limiter,
+2 req/s by default, that yields when `ratelimit-remaining` falls below half of `ratelimit-limit`
+and waits `retry-after` on `429`, because the 10 req/s budget is per team, shared by every key and
+endpoint (RS-19, RS-20). The SDK never throws or retries (RS-23), so every response is checked and
+errors are mapped by status, then name, with a default branch (RS-22). Every request carries a
+`User-Agent` (RS-21). Rules in [integrations.md → Locked rules](integrations.md#locked-rules-must).
+Rejected: calling the `resend` SDK from apps directly; a limiter per caller.
+**Evidence:** pending — limiter unit tests (rate, yield on low `remaining`, `retry-after`); fake-API `429` storm completes the run (slice 4).
 
 ### ADR-013 — Pure core and local mode
 
-**Proposed — preview.** `packages/core` imports nothing from AWS, Postgres or Resend. A local mode
-swaps SQS for a Postgres-backed queue (`FOR UPDATE SKIP LOCKED`) so the system runs with
-`docker compose up` and no AWS account.
+**Accepted.** `packages/core` imports nothing from AWS, Postgres or Resend. Ingest and worker meet
+at a queue port: slice 1 runs both in one local process with an in-process implementation, SQS
+implements it on AWS (slice 2), and a Postgres-backed queue (`FOR UPDATE SKIP LOCKED`, row locks in
+one transaction, pooler-safe) implements it for `docker compose up` with no AWS account (slice 2B).
 Rejected: AWS-only development (LocalStack as the only local path).
-**Evidence:** pending — lint rule on `packages/core` imports (slice 0); sim invariants pass in local mode (slice 2B). Source: [idea §6.2](../docs/idea.md#62-repository-layout).
+**Evidence:** pending — lint rule on `packages/core` imports (slice 0); sim invariants pass in local mode (slice 2B).
 
 ### ADR-014 — Raw-payload retention and redaction
 
-**Proposed — preview.** A configurable job redacts personal data in raw payloads after N days.
-Redaction MUST keep every field projections read, so the source-of-truth rule survives; PII in
-projections follows [data-modeling.md → PII & retention](data-modeling.md#pii--retention).
+**Accepted.** A configurable job redacts personal data in raw payloads after N days. Redaction MUST
+keep every field projections read, so the source-of-truth rule survives; PII in projections follows
+[data-modeling.md → PII & retention](data-modeling.md#pii--retention). Resend itself keeps email
+data 30 days (RS-31).
 Rejected: deleting ledger rows (breaks recovery diffing and rebuilds).
-**Evidence:** pending — integration test: rebuild after redaction yields identical projection status (slice 6). Source: [idea §6.3](../docs/idea.md#63-data-model-initial).
+**Evidence:** pending — integration test: rebuild after redaction yields identical projections (slice 7). Source: [idea §6.3](../docs/idea.md#63-data-model-initial).
+
+### ADR-015 — The worker pauses its own event source on a database outage
+
+**Accepted** (owner, 2026-10-15). Every failed receive counts toward `maxReceiveCount` (AWS-09), so
+without this a database outage longer than ~15–30 min would drain the queue into the DLQ
+([aws.md → Constraint 4](aws.md#constraints-and-sharp-edges)), contradicting
+[idea §6.4](../docs/idea.md#64-failure-modes-and-expected-behavior) ("Queue holds events"). So:
+- On a connection-class error, the worker retries once on a fresh connection (a connection dropped
+  by a Neon suspend is not an outage, PG-U04). If that fails too, it reports every message in the
+  batch as failed and disables its own ESM (`Enabled: false`, AWS-18). Messages wait in the queue,
+  up to its 13-day retention (AWS-07). Other errors follow ADR-008 to the DLQ, so poison isolation
+  is unchanged.
+- **Resume:** the hourly cron invokes the worker function with a resume event. If the ESM is
+  paused, it probes Postgres and re-enables the ESM when the probe succeeds. A healthy stack never
+  probes, so this adds no database wake ([integrations.md → Cadence](integrations.md#cadence-and-the-database)).
+  An `operate` action triggers the same resume on demand.
+- **Kill-switch safe by construction:** a tripped kill switch sets the worker's reserved
+  concurrency to `0` (AWS-16), so the resume invocation cannot run, and only the scripted re-arm
+  restores the ESM ([aws.md → Budget alarms](aws.md#budget-alarms)).
+- A paused worker shows in the health read and fires the queue-age alarm (AWS-22).
+
+Rejected: automatic DLQ redrive after recovery (needs a failure classification to keep poison messages from looping); a larger `maxReceiveCount` (covers only a bounded outage and delays poison isolation); accepting the drain plus a manual redrive (a manual step after every outage on the adopter's path fails the self-service test, lens clause 4).
+**Evidence:** pending — error-classification unit test; Testcontainers test: database stopped, ESM pause requested, no message reaches the DLQ (slice 2); `--chaos db-outage` on AWS: DLQ stays 0, queue drains after resume, invariants 1–2 (slice 3).
+
+### ADR-016 — The simulator reaches AWS only through an opt-in simulator secret
+
+**Accepted** (owner, 2026-10-15). An off-by-default deploy flag creates one extra secret,
+`ledger/simulator-signing-secret`, read by ingest only. Ingest verifies against it after the Resend
+set and stamps matching events `source = simulated`. Only the owner's deployment sets the flag, and
+that stack holds test-address data only ([about.md → Risk appetite](about.md#risk-appetite)). An
+adopter's stack therefore never accepts a second, test signing secret, and the simulator never
+targets a stack holding adopter data ([features.md → verify](features.md#adopter-lifecycle)). The
+simulator is `sim/`, run as `pnpm sim`, not a `ledger` subcommand: it holds a signing secret and
+checks invariants through `packages/db`, both of which the CLI must never do (ADR-011). Cost:
+USD 0.40/month, in the owner's deployment only (AWS-11).
+Rejected: a separate demo stack (doubles the idle secret and alarm lines); injecting straight into SQS (bypasses ingest, so no ingest latency numbers for slice 9).
+**Evidence:** pending — CDK assertion test: without the flag the template has no simulator secret and ingest references none; unit test: a simulator-signed request is rejected when the secret is absent (slice 3).
+
+### ADR-017 — The dispatcher is triggered after commit, plus an hourly sweep
+
+**Accepted.** When a worker transaction commits outbox rows, the worker invokes the dispatcher
+asynchronously. The dispatcher claims due rows with row locks inside one transaction (pooler-safe),
+delivers them, and records the outcome. A sweep on the shared hourly cron retries what failed or
+was never triggered. No sub-hourly schedule touches Postgres, which keeps the idle wake budget
+([integrations.md → Cadence](integrations.md#cadence-and-the-database)); hourly retries fit inside
+the 24 h idempotency-key horizon (ADR-006). A lost async invoke only delays delivery to the next
+sweep.
+Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24, AWS-U03); dispatching inline in the worker after commit (couples worker latency and failures to third parties); a sub-hourly poller (breaks the wake budget).
+**Evidence:** pending — integration test: an invoke dropped after commit is delivered by the sweep, once; sim invariant 3 (slice 6).
+
+### ADR-018 — Migrations run from the deploy command, before the code that needs them
+
+**Accepted.** `drizzle-kit` migrations run from the deploy command with the **direct** Postgres URL
+supplied by the deployer, then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
+never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). Migrations are
+expand/contract only, so code from the previous deploy runs against the new schema and no deploy
+needs downtime.
+Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; concurrent cold starts race); a CDK custom resource (adds a Lambda whose failure blocks the deploy).
+**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests (slice 1); the deploy command migrates, then deploys (slice 2).
 
 ## Technology
 
 | Concern | Choice | Note |
 | --- | --- | --- |
-| Language / runtime | TypeScript (strict), Node.js LTS, pnpm workspaces | Resend's public stack |
-| DB / migrations | Postgres, Drizzle ORM + drizzle-kit | Expand/contract only |
+| Language / runtime | TypeScript (strict), Node.js LTS on arm64 Lambda, pnpm workspaces | Resend's public stack; arm64 is 20 % cheaper per GB-s (AWS-20) |
+| DB / migrations | Postgres on Neon, Drizzle ORM (`node-postgres`) + drizzle-kit | ADR-005, ADR-018 |
 | Validation | Zod | Requests, responses, webhook payloads |
 | Tests | Vitest, fast-check, Testcontainers | Property tests are first-class |
 | Lint / format | Biome | |
-| Logging / metrics | Winston JSON; CloudWatch EMF | `svix_id`, `email_id`, `type` on every line |
-| Resend | `resend` Node SDK, only inside `packages/resend-client` | ADR-012 |
-| Infra / CI | AWS CDK, GitHub Actions | ADR-010 |
+| Logging / metrics | Winston JSON; CloudWatch EMF; vended SQS, Lambda, API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30) |
+| Resend | `resend` Node SDK, only inside `packages/resend-client`; verification in `apps/ingest` | ADR-012 |
+| Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
 | MCP | Official MCP TypeScript SDK | ADR-011 |
 
 ## Cost envelope
 
-Cost shape, per-service numbers and the budget-alarm design are canonical in [aws.md](aws.md). Posture:
-**deploy, record, keep** — the stack stays up until the owner tears it down, so idle cost MUST be near
-zero and the hard monthly cap MUST alarm before it is reached. A resource with idle cost needs a
-measured reason in an ADR.
+Cost shape, per-service numbers and the budget-alarm design are canonical in [aws.md](aws.md).
+Posture: **deploy, record, keep**. The stack stays up until the owner tears it down, so idle cost
+MUST stay near zero (≤ USD 5/month, [about.md → Success metrics](about.md#success-metrics)) and the
+hard monthly cap MUST alarm and trip before unbounded spend. A resource with idle cost needs a
+measured reason in an ADR. Neon Free bills nothing and sits outside the AWS budget
+([integrations.md → Decision](integrations.md#decision--neon)).
 
 ## Deferred (YAGNI)
 
 | Defer | Kind | Because | Tripwire |
 | --- | --- | --- | --- |
-| SQS FIFO | categorical | Arrival order is meaningless (ADR-002, ADR-003) | Superseding ADR only |
-| Multi-database connectors, warehouse loading | categorical | Non-goal; the Ingester covers it ([about.md → Non-goals](about.md#non-goals--out-of-scope)) | Superseding ADR only |
-| Multi-tenant hosting | categorical | Self-hosted, single team | Superseding ADR only |
-| Kafka / Kinesis / event-sourcing framework | categorical | The ledger table is the log; always-on cost | Superseding ADR only |
-| Upstream PRs to the Webhook Ingester | categorical | Not planned (owner calibration) | Owner reverses it |
-| Projections for non-email events | temporal | Stored raw; no consumer yet | First reaction or query that needs contact/domain state |
-| Inngest worker adapter | temporal | Comparison only; no claim depends on it | Owner schedules it after M2 closes |
-| Minimal read-only web UI | temporal | CLI + MCP answer the jobs | A reviewer walkthrough fails on a job CLI + MCP cannot do |
-| RDS Proxy / connection pooler service | temporal | Bounded concurrency caps connections (ADR-008) | Measured connection errors in a `--burst` run |
+| SQS FIFO | categorical | Arrival order at our queue is meaningless (ADR-002, ADR-003) | Superseding ADR only |
+| Multi-database connectors, warehouse loading | categorical | The Ingester ships them; Ledger's workload is transactional ([about.md → Non-goals](about.md#non-goals--out-of-scope), ADR-005) | Superseding ADR only |
+| Multi-tenant hosting | categorical | One installation, one team ([about.md → Platform scale assumptions](about.md#platform-scale-assumptions)) | Superseding ADR only |
+| Kafka, Kinesis, an event-sourcing framework | categorical | The ledger table is the log; always-on cost | Superseding ADR only |
+| NAT gateway, VPC-attached Lambdas, provisioned RDS, RDS Proxy | categorical | Always-on charge in a kept-up deploy (AWS-13, AWS-48; [decision-lens-suite case 9](decision-lens-suite.md)) | Superseding ADR with a measured reason only |
+| Containers (Fargate) for any function, the read API included | categorical | Always-on charge; Lambda covers every operation | Superseding ADR only |
+| Customer-managed KMS keys | categorical | USD 1/key/month always on (AWS-31); SSE-SQS and AWS-managed keys suffice | Superseding ADR only |
+| Multi-region failover | categorical | No claim depends on it; one deployment ([decision-lens-suite case 11](decision-lens-suite.md)) | Superseding ADR only |
+| Upstream PRs to the Webhook Ingester | categorical | Not planned (owner calibration) | Superseding ADR only |
+| Aurora Serverless v2 fallback | temporal | Neon Free meets R1–R7 at USD 0 | Any trigger in [integrations.md → Decision](integrations.md#decision--neon): Neon pauses, deletes or bills a kept-up deploy; one quota suspension; owner opts for all-AWS |
+| Projections for non-email events | temporal | Stored raw; no consumer yet | An [api-contract.md](api-contract.md) operation or a reaction rule that reads contact, domain or topic state |
+| Inbound email projection | temporal | `email.received` carries metadata only (RS-30) | M2 done **and** a row in [What this project must demonstrate](about.md#what-this-project-must-demonstrate) names inbound email |
+| Inngest worker adapter | temporal | No row of What this project must demonstrate needs it | M2 done **and** a row names a claim only it can prove |
+| Minimal read-only web UI | temporal | CLI and MCP cover every persona's job | M2 done **and** a demo step cannot be shown through CLI or MCP output |
+| Project domain (verified sending domain, stable demo URL) | temporal | Alerts reach the owner's address from `resend.dev` (RS-34) | The first slice that must send email to anyone but the owner's Resend address, or needs a stable public demo URL |
+| Scripted webhook creation | temporal | One-time step while the ingest URL is stable ([features.md → connect webhook](features.md#adopter-lifecycle)) | A redeploy of the same stack changes the ingest URL |
+| Cost Anomaly Detection | temporal | No faster than the budget refresh (AWS-37) | A trip drill or a bill shows spend past 80 % of the cap without an alert |
 
 ## Build order (vertical slices)
 
-A slice is a small, independently shippable v0 with its own tests ([idea §7](../docs/idea.md#7-implementation-plan)).
+A slice is a small, independently shippable v0 with its own tests, hand-walkable through the CLI,
+the API or the simulator ([lens clause 3](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 [build-checklist.md](build-checklist.md) is the progress layer over this list and takes its IDs and
-titles verbatim. Preview mapping; the M1 cut is an owner decision (see Open decisions).
+titles verbatim. **Spine:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7, then M3 in any order. **Branch:** 2B
+MAY start once 2 is done and MUST land before M2 closes. Every milestone boundary leaves the README
+claims, the demo and the deploy coherent.
 
-| Slice | Ships (preview) | Milestone |
+| Slice | Ships | Walk | Milestone |
+| --- | --- | --- | --- |
+| 0 — Foundations | Monorepo, Biome, Vitest, CI, `pnpm verify`; `packages/core` Zod event schemas (RS-25–RS-29), `projectEmail`, `projectRecipient`, properties 1–4 (ADR-003); core import lint rule (ADR-013); `sim` history generator; README skeleton with link check | `pnpm sim` prints the projection of a generated, shuffled history | M1 |
+| 1 — Local ledger and read path | `packages/db` schema and migrations (ADR-018); ingest (verify against the secret set, ADR-001, ADR-009) and worker transaction (ADR-004) behind the queue port in one local process; minimal read API, SDK and `ledger email` / `ledger recipient` with `--json` (ADR-011); `sim` duplicates + shuffle, invariants 1–2 | `pnpm sim` against the local process, then `ledger email` | M1 |
+| 2 — Durable ingest on AWS | App stack: HTTP API, ingest, SQS + DLQ, worker ESM (ADR-002, ADR-008), outage pause and resume (ADR-015), read API with bearer scopes, health read; guardrails stack with budget, kill switch and trip drill (ADR-010); deploy and teardown commands with migrations (ADR-018) | Verify stage: one send to `delivered@resend.dev`, `ledger email`, `ledger health`; trip drill; teardown listing | M1 |
+| 3 — Operations and evidence on AWS | Alarms → SNS → email with one runbook entry each; DLQ inspect and redrive (ADR-008); simulator secret (ADR-016); `sim` burst, `--chaos db-outage` and poison runs on the deployed stack, invariants 1, 2, 4 | `pnpm sim --burst` and `--chaos db-outage` on AWS; `ledger dlq inspect`, `ledger dlq redrive` | M1 |
+| 4 — Recovery | `packages/resend-client` (ADR-012); reconciler on the hourly cron (ADR-007); `ledger gaps`, `ledger reconcile [--dry-run]`; rotation runbook and retired-secret test (ADR-009) | `ledger gaps` → `ledger reconcile` → `ledger gaps` shows 0 missing | M1 |
+| 2B — Local-mode queue and docker compose | Postgres-backed queue behind the queue port; `docker compose up` runs the whole system (ADR-013) | `docker compose up`, then `pnpm sim` with invariants | M2 |
+| 5 — MCP server and contract hardening | MCP read tools and `explain_delivery`; operate tools unregistered without `operate`; redaction tests on tool output; error-registry mirror test; SDK retries for idempotent reads (ADR-011) | An agent answers "why did this delivery fail?" from MCP alone | M2 |
+| 6 — Reactions | Outbox and dispatcher (ADR-006, ADR-017); signed app callback; alert email through a `sending_access` key with idempotency keys | `pnpm sim --chaos worker-crash`: invariant 3 holds | M2 |
+| 7 — Polish and retention | Retention job (ADR-014); `docs/results.md` with simulator results; runbook complete; README quick start; timed newcomer deploy ≤ 15 min | Timed README walkthrough from bootstrapped account to demo run | M2 |
+| 8 — npm release | SDK and CLI on npm with semver, after the final name is picked ([about.md → Open questions](about.md#open-questions)) | `npx` install of the published CLI against the deployed stack | M3 |
+| 9 — Real-AWS burst numbers | p50/p99 ingest latency, queue drain time and AWS cost of one 10k burst in `docs/results.md` | The recorded burst run and its Cost Explorer line | M3 |
+| 10 — Learning log | AWS and distributed-systems decisions, each linked to its ADR, test or measured number | The log's links resolve | M3 |
+
+**Phase-name mapping** for the pointers in [features.md](features.md), [resend.md](resend.md),
+[aws.md](aws.md), [integrations.md](integrations.md) and [about.md](about.md) until step 10
+replaces them with card anchors: *foundations* → 0 · *local v0* → 1 · *durable ingest* → 2, or 3
+for alarms, runbook, DLQ operations, burst and chaos · *recovery* → 4 · *interfaces* → 5 ·
+*reactions* → 6 · *polish* → 7.
+
+## Open questions owed by slice
+
+Every `[Unverified]` row lands in a slice, which MUST settle it, or prove the design safe under
+either answer, before it is done (owner, 2026-10-15). Experiments that write to a live Resend
+account are Ask-first.
+
+| Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
-| 0 — Foundations | Monorepo, Biome, Vitest, CI, `pnpm verify`; `packages/core` with `projectEmail` + property tests | M1 |
-| 1 — Local v0 | Local ingest → ledger transaction → projections; Drizzle migrations; `sim` with duplicates + shuffle | M1 |
-| 2 — Durable ingest | SQS + DLQ + worker; CDK stack deployed; metrics, alarms, budget cap; runbook v1 | M1 |
-| 2B — Local-mode queue & docker compose | Postgres-backed queue; `docker compose up` runs the whole system | M2 |
-| 3 — Recovery | Reconciler; multi-secret verification; `resend-client` rate limiting | M1 |
-| 4 — Read API & SDK | OpenAPI read API, scopes, error shape; generated SDK | M1 (minimal) / M2 |
-| 4B — CLI | `ledger email`, `recipient`, `gaps`, `reconcile`, `dlq` with `--json` | M1 (reads) / M2 |
-| 4C — MCP server | Read tools; opt-in operate tools | M2 |
-| 5 — Reactions | Outbox + dispatcher; app callback; alert email with idempotency keys | M2 |
-| 6 — Polish | `docs/results.md`, runbook complete, README quick start, retention job | M2 |
+| 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19 |
+| 1 | — | RS-U15, RS-U18 |
+| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, PG-U04 |
+| 3 | — | RS-U08 |
+| 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
+| 6 | — | RS-U16 |
+| 7 | — | RS-U03 (re-measured before M2 closes) |
+| Not owed | AWS-U08, PG-U05: the ADR that switches to the Aurora fallback settles them | — |
 
-**M3 — Stretch** (no slice IDs yet): SDK and CLI published to npm with semver; real AWS load numbers
-from the 10k burst; a learning log of the AWS and distributed-systems decisions.
+**Moved, with reasons:** RS-U08 from *durable ingest* to slice 3, because the measured ingest p99
+comes from the burst run there. PG-U03 from *durable ingest* to slice 4, because the hourly
+reconciler is the first idle waker: before it, an idle stack never opens a connection (ADR-015).
+RS-U20 is new in this step (a replayed delivery passes the 5-minute timestamp window); it rides on
+the RS-U01 experiment.
 
 ## Risks & mitigations
 
 | Risk | Mitigation |
 | --- | --- |
-| Cost runaway while the stack is kept up | Hard budget cap + alarm in the stack (ADR-010); no idle resources |
-| Concurrent workers updating the same `recipient_state` from different emails | Lock recipient rows in sorted-address order after the email lock; recompute from all its emails; concurrency integration test |
-| Postgres connection exhaustion under burst | Event-source max concurrency (ADR-008); small per-Lambda pool |
-| Webhook auto-disabled and nobody notices | Reconciler enabled-check alarms with `webhook_disabled` (ADR-007) |
-| Reconcile competes with the team's sending for 10 req/s | `resend-client` budget with headroom (ADR-012); cadence is an open question in about.md |
-| Replayed deliveries rejected by the timestamp tolerance | Verify against [resend.md](resend.md) whether a replay is re-signed with a fresh timestamp before slice 3 |
-| Redaction breaks projection rebuilds | ADR-014 keeps projection inputs; rebuild-after-redaction test |
-| Outcome precedence wrong for async bounces or `created_at` semantics | Oracle property test; idea §10 Q3–Q4 carried to [about.md → Open questions](about.md#open-questions) |
-| PII leaks into a public repo or logs | `@resend.dev` fixtures only; log redaction; [data-modeling.md → PII & retention](data-modeling.md#pii--retention) |
+| Cost runaway while the stack is kept up | Guardrails stack, kill switch on in the owner's deployment, overshoot bounded to about one day at the throttled rate (ADR-010, AWS-34); AWS-U01 and AWS-U02 settled in slice 2 |
+| Neon deletes an inactive Free project, losing the ledger (PG-U01) | Settled in slice 2 from Neon's docs or support; the hourly reconciler writes a row from slice 4; Aurora fallback trigger (ADR-005) |
+| Neon suspends the compute for quota (PG-U03) | The worker pauses and the queue holds events up to 13 days (ADR-015); quota use measured in slice 4; fallback trigger |
+| A database outage longer than SQS retention (13 days) | Queue-age alarm fires within the hour (slice 3); past retention, reconcile recovers only within List Events reach (RS-U03) |
+| A per-message error misclassified as a connection error pauses the pipeline | The fresh-connection retry first; the hourly resume bounds the stall to one hour; classification unit test (ADR-015) |
+| A flapping database spends receive counts across pause and resume cycles | Resume only after a successful probe; a message that still reaches the DLQ is redriven, deduplicated on `svix_id` (ADR-004, ADR-008) |
+| Kill switch tripped: webhooks fail meanwhile | Owner's deployment only; scripted re-arm, then `ledger reconcile` within List Events reach ([about.md → Risk appetite](about.md#risk-appetite)) |
+| Concurrent workers update the same `recipient_state` from different emails | Lock recipient rows in sorted-address order after the email lock; recompute from all its emails; concurrency integration test (slice 1) and through the pooler (PG-U02, slice 2) |
+| Postgres connection exhaustion under burst | One connection per container, `MaximumConcurrency` caps containers (ADR-008); Neon's pooler accepts far more |
+| Webhook auto-disabled and nobody notices | The reconciler reads `status` every run and alarms with `webhook_disabled` (ADR-007) |
+| Reconcile competes with the team's sending for 10 req/s | One limiter at 2 req/s that yields on low `remaining` (ADR-012) |
+| Replays fail verification or land under a new id (RS-U01, RS-U20) | Settled in slice 4 by one Ask-first replay of a stored event, before recovery is called done |
+| Outcome precedence wrong for async bounces or `created_at` semantics | Oracle property test under both answers (ADR-003); RS-U10, RS-U11, RS-U12 in slice 0 |
+| PII or secrets leak through logs, responses or tool output | Test addresses only; ids in logs, never addresses or bodies (AWS-29); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
 
 ## Open decisions
 
-- **Postgres host** — decided in [integrations.md](integrations.md#decision--neon): Neon Free,
-  public TLS endpoint, Aurora Serverless v2 + Data API as the fallback. Drives the next item.
-- **Lambda inside or outside a VPC.** A VPC-only database needs NAT or VPC endpoints for SQS,
-  Secrets Manager and Resend's API; NAT breaks the cost brake. Preview lean: outside a VPC, TLS to a
-  managed host, if integrations.md picks one that allows it.
-- **Read API runtime.** Preview lean: Lambda behind the same HTTP API; a container only on the
-  Deferred tripwire.
-- **CONFLICT — how the M1 CLI reads state.** [idea §7](../docs/idea.md#7-implementation-plan) Phase 1
-  has `ledger email` / `ledger recipient` read the database directly, while
-  [root AGENTS.md → Module boundaries](../AGENTS.md#module-boundaries) says the CLI is built only on
-  `packages/sdk`. M1 requires a usable CLI. Options: (a) pull a minimal read API + SDK
-  (`GET /emails/:id`, `GET /recipients/:address`) and the matching CLI reads into M1, as the table
-  above previews — recommended, it keeps one contract; (b) a dev-only inspection script outside
-  `apps/cli` for slice 1, with the real CLI in M2. Owner rules at step 7.
+- **Read API token storage and issuance.** ADR-011 fixes the scopes, not where tokens live or how
+  the first one is issued. Owned by [data-modeling.md](data-modeling.md) (step 8) and
+  [api-contract.md](api-contract.md) (step 9). Constraints: no plaintext token at rest, no idle cost
+  beyond one secret, and issuing the first token is scripted in the deploy command (owner
+  operations, [about.md → Platform scale assumptions](about.md#platform-scale-assumptions)).
+- **Neon paid plan if the Free quota is hit.** Owner decision when PG-U03 or a quota suspension
+  fires ([integrations.md → Open decisions](integrations.md#open-decisions)).
