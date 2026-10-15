@@ -6,6 +6,10 @@ tools/
 # Per-developer agent settings (template: AGENTS.local.example.md)
 AGENTS.local.md
 
+# Local secrets (API keys, webhook signing secrets). Never committed.
+.env*
+!.env.example
+
 # Dependencies
 node_modules/
 
