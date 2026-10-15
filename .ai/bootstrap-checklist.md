@@ -65,9 +65,10 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 3 — `features.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Produces:** [features.md](features.md) — adopter lifecycle (binding), journeys, capability inventory, Ingester parity (non-binding).
 - **Depends on:** 1. MAY run in parallel with 4 and 5.
+- **Owner input (2026-10-15):** *verify* is one real test send to `delivered@resend.dev` plus `ledger email`; the simulator never targets a stack holding adopter data. A project domain is deferred on a tripwire ([about.md](about.md#open-questions)).
 
 ### Step 4 — `resend.md`
 
@@ -75,6 +76,7 @@ These answers are inputs to steps 1–2 and are not re-asked:
 - **Produces:** [resend.md](resend.md) — every Resend behavior Ledger relies on, as stable `RS-NN` facts with cited pages.
 - **Depends on:** 1. MAY run in parallel with 3 and 5.
 - **Note:** read-only research. Any **write** call against a live Resend account is Ask-first.
+- **Back-fill:** replace the Resend page links in [features.md](features.md) with their `RS-NN` ids.
 
 ### Step 5 — `aws.md`
 
@@ -108,12 +110,14 @@ These answers are inputs to steps 1–2 and are not re-asked:
 - **Produces:** [api-contract.md](api-contract.md) — every operation with its surfaces (route, SDK, CLI, MCP), scopes, errors, and the error-code registry.
 - **Depends on:** 3, 7, 8.
 - **Note:** the post-propose gate BLOCKs any change citing an operation missing from this file, so it MUST be final before the first `opsx:propose`.
+- **Back-fill:** every surface a [features.md journey](features.md#journeys) names resolves to an operation here (DLQ inspect/redrive and the health read included).
 
 ### Step 10 — `build-checklist.md`
 
 - **Status:** `[ ]`
 - **Produces:** [build-checklist.md](build-checklist.md) — one card per slice, in the exact format the `wf-*` scripts parse.
 - **Depends on:** 7, 8, 9.
+- **Back-fill:** replace the phase-named slice pointers in [features.md](features.md) (`· recovery · M1`) with card anchors (`build-checklist.md#<id>--<kebab-title>`).
 
 ### Step 11 — `check-before-launch.md`
 

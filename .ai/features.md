@@ -1,181 +1,162 @@
 # Features
 
-> **TEMPLATE — not ratified.** Bootstrap step 3 in [bootstrap-checklist.md](bootstrap-checklist.md). The preview content below is illustrative, drafted from [docs/idea.md](../docs/idea.md) without research. Nothing here is binding until this banner and the instructions comment are removed.
-
-<!-- AGENT INSTRUCTIONS
-Purpose: The capability view of Ledger. One binding table (Adopter lifecycle: what a team adopting
-  Ledger does, stage by stage, and what Ledger owes at each), plus non-binding inventories that
-  make scoping arguments cheap: journeys, capabilities by area, and parity with Resend's Webhook
-  Ingester.
-Consumers: wf-before-propose (the card's Refs links a section here; the lifecycle table is what the
-  self-service test is argued against, per .agents/skills/wf-before-propose/references/doc-map.md);
-  architecture.md build order (step 7); api-contract.md Coverage (step 9); build-checklist.md Refs.
-Inputs (read first): root AGENTS.md (decision lens, Permissions, Error shape); .ai/AGENTS.md;
-  about.md (step 1: personas, milestones, non-goals, risk appetite, open questions);
-  bootstrap-checklist.md -> Owner calibration (binding: M1/M2/M3, no dates, deploy-and-keep AWS
-  posture with mandatory budget alarms, the working definition of overdoing it);
-  docs/idea.md §2.2, §3, §4, §5 (all), §6.4, §7 incl. the 5-minute demo.
-Research:
-  - Read Resend's Webhook Ingester README and docs page (https://resend.com/docs/webhooks/ingester)
-    and its open PRs/issues (#8, #12, #13 at minimum) to re-verify every Ingester parity row; cite
-    the commit or PR read and the date. Do NOT assume idea §2.2 is still current.
-  - No Resend API behavior is restated here: cite resend.md `RS-NN` ids instead.
-  - Check each lifecycle stance against architecture.md ADRs and the build order once they exist.
-Required structure (headings MUST exist, in this order): status note (prose, top) ·
-  `## Adopter lifecycle` (closed table Stage | What the adopter does | Stance; the ten stages
-  below, no more, no fewer; every row carries a stance, its evidence pointer and the slice that
-  delivers it) · `## Journeys` (one `###` per journey: Actor / Trigger / Steps / Surfaces /
-  Evidence) · one H2 per capability area (Ingest, Ledger & projections, Recovery, Reactions,
-  Interfaces, Operations, Evidence harness) · `## Ingester parity (reference, non-binding)`.
-Evidence rules:
-  - Every capability bullet and every lifecycle stance MUST carry an evidence pointer: a unit,
-    property or integration test, a simulator invariant (idea §5.9), or a cited doc page. While
-    the evidence does not exist yet, the pointer names the kind of evidence and the slice that
-    owes it (`evidence: property test, slice 0`). A bullet with no possible evidence is deleted or
-    moved to about.md#open-questions.
-  - Slice links MUST use build-checklist anchors (`build-checklist.md#<id>--<kebab-title>`) and
-    MUST be checked against the final card headings from step 10.
-  - Resend behavior is cited as resend.md RS-NN, never paraphrased from memory.
-Owner decisions to surface (one batched round, each with a recommended pick):
-  - Tear down: confirm it stays owner-triggered under deploy-and-keep (recommend: yes, one
-    command, documented; never automatic).
-  - Rotate secret: whether multi-secret verification is an M1 or M2 commitment (depends on the
-    rotation-overlap open question in about.md; recommend M2 unless resend.md settles it).
-  - Extend: which extension seams are committed (app callback, unknown-event storage) vs. deferred
-    (recommend: only those already in idea §5.6).
-Done when: banner and this comment removed; every lifecycle row has a stance, an evidence pointer
-  and a slice; every journey's Surfaces resolve to api-contract.md operations or simulator runs;
-  every parity row cites a re-verified Ingester source; no preview text survives unverified.
--->
-
 **Status (MUST).** Only [Adopter lifecycle](#adopter-lifecycle) binds. Journeys, capability
 sections and [Ingester parity](#ingester-parity-reference-non-binding) are reference inventories
 for scoping: a bullet there MUST NOT be read as a commitment. Commitments live in the lifecycle
 table, an [ADR](architecture.md), or a [build-checklist](build-checklist.md) card.
 
+**Pointer format.** Every stance and bullet ends in `evidence: <kind> · <slice>`. Evidence names a
+unit, property or integration test, a simulator invariant
+([idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness)) or a cited doc page; until it
+exists, the pointer names the kind and the slice that owes it. A slice is named by its
+[idea §7](../docs/idea.md#7-implementation-plan) phase and [milestone](about.md#milestones)
+(e.g. *recovery · M1*); [architecture.md](architecture.md) assigns the final IDs and
+[build-checklist.md](build-checklist.md) the card anchors that replace these names. Resend behavior
+is cited by its docs page, never paraphrased from memory.
+
 ## Adopter lifecycle
 
 The stages a team adopting Ledger passes through, in order. The set is closed. Every row MUST carry
-a stance; a stage where Ledger owes nothing says so, so an unanswered stage shows as an empty row.
-A stage that needs a human outside the adopter (an email to the maintainer, a manual console step
-nobody documented) is a defect unless recorded here with its reason.
+a stance; a stage where Ledger owes nothing says so. A stage that needs a human outside the adopter,
+or an undocumented manual step, is a defect unless recorded here with its reason. This table is
+what the [self-service test](about.md#guiding-principles) is argued against.
 
-| Stage | What the adopter does | Stance (evidence + slice) |
+| Stage | What the adopter does | Stance (evidence · slice) |
 | --- | --- | --- |
-| **discover** | Reads the README, decides whether Ledger fits beside or instead of the Ingester | README states the problem, the parity table and every reliability claim with a link to its evidence. Evidence: link check in CI · [slice 0](build-checklist.md#0--foundations) _(preview)_ |
-| **deploy** | Runs one command against their own AWS account | `cdk deploy` of one stack; budget alarm with a hard monthly cap created in the same deploy, not as polish ([owner calibration](bootstrap-checklist.md#owner-calibration-ratified-2026-10-15)). Evidence: `cdk synth` snapshot test asserting no NAT, no provisioned DB · slice TBD (durable ingest) |
-| **connect webhook** | Points a Resend webhook at `POST /webhooks/resend` and stores the signing secret | Documented steps; secret lives in Secrets Manager, never in env files committed. Evidence: deploy guide walked in a WALKTHROUGH · slice TBD |
-| **verify** | Confirms events are arriving and correct | `ledger simulate` against the deployed stack, then the invariants print; real traffic via `resend webhooks listen` locally. Evidence: simulator invariants 1–2 ([idea §5.9](../docs/idea.md#59-the-chaos-and-simulation-harness)) · [slice 1](build-checklist.md#1--local-v0) _(preview)_ |
-| **query** | Asks "what happened to email X / recipient Y?" | `ledger email`, `ledger recipient`, SDK, MCP read tools over one contract ([api-contract.md](api-contract.md)). Evidence: contract tests per surface · slice TBD (interfaces) |
-| **operate** | Watches health, handles poison messages | Alarms → SNS → email; DLQ inspect and redrive from the CLI. Evidence: integration test for poison isolation · slice TBD |
-| **recover** | Closes gaps after an outage longer than the retry window | Scheduled + on-demand reconcile; `webhook_disabled` stops it with a hint. Evidence: "down > 28h" integration test against a fake Resend API · slice TBD (recovery) |
-| **rotate secret** | Rotates the Resend signing secret without dropped deliveries | Multiple active secrets accepted during overlap `[Unverified]` — depends on Resend's rotation semantics ([about.md → Open questions](about.md#open-questions)). Evidence: unit test · slice TBD |
-| **extend** | Reacts to state changes in their own app | Signed app callback via the outbox; unknown event types stored raw, never fatal. Evidence: `--chaos worker-crash` yields no duplicate dispatch · slice TBD (reactions) |
-| **tear down** | Removes everything | One command (`cdk destroy`), **owner-triggered** under deploy-and-keep; what it leaves behind is listed in [check-before-launch.md](check-before-launch.md#cost--teardown). Evidence: post-destroy resource listing · slice TBD |
+| **discover** | Reads the README; decides whether Ledger fits beside the Ingester | The README states the problem, the [positioning](about.md#positioning) against the Ingester (complement, same reconcile approach as its PR #13, no affiliation), and links every reliability claim to its evidence. Each milestone leaves the README claims coherent ([lens clause 3](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)). evidence: link check in CI + 0 unlinked claims ([success metrics](about.md#success-metrics)) · foundations · M1 |
+| **deploy** | Runs one command against their own AWS account (CDK bootstrapped) | One stack, serverless, no always-on resources; the budget alarm with a hard monthly cap is created by the same deploy ([owner calibration](bootstrap-checklist.md#owner-calibration-ratified-2026-10-15)). The Postgres database is the one external prerequisite; its host is decided in [integrations.md](integrations.md#postgres-host). Whether an adopter's deploy ships the kill switch, and its default, is decided in [aws.md](aws.md#budget-alarms). Target: newcomer deploy ≤ 15 min. evidence: CDK assertion test on the synthesized template (no NAT gateway, no provisioned DB, budget present) · durable ingest · M1; timed README walkthrough · polish · M2 |
+| **connect webhook** | Creates a Resend webhook pointing at the deployed ingest URL; stores its signing secret | A documented one-time step per installation: the secret goes to Secrets Manager, never an env file or the repo. Not scripted while the endpoint URL is stable across redeploys of the same stack. Tripwire: if a redeploy changes the URL, the step recurs and MUST be scripted ([owner operations](about.md#platform-scale-assumptions)). evidence: deploy guide walked in the slice WALKTHROUGH · durable ingest · M1 |
+| **verify** | Confirms real events arrive and the state is right | The adopter sends **one** email from their own Resend account to `delivered@resend.dev`, a sink Resend documents for testing webhooks without harming reputation ([send test emails](https://resend.com/docs/dashboard/emails/send-test-emails)), then reads it with `ledger email <id>` (`sent` → `delivered`) and a health read (queue and DLQ at 0). The simulator never targets a stack holding an adopter's real data, and an adopter's stack never accepts a second, test signing secret: how the owner's demo runs the simulator against AWS is decided in [architecture.md](architecture.md). Locally, real traffic arrives via `resend webhooks listen`. evidence: WALKTHROUGH of the deployed slice; unit test that ingest accepts only the configured Resend secrets · durable ingest · M1 |
+| **query** | Asks "what happened to email X / recipient Y?" | CLI `ledger email`, `ledger recipient` from M1 (read path decided in [architecture.md](architecture.md), see [open questions](about.md#open-questions)). Read API, SDK and MCP read tools over one contract ([api-contract.md](api-contract.md)) at M2; the application developer's SDK/HTTP surface is the gap that slice carries. evidence: projection property tests · foundations · M1; CLI output contract tests · local v0 · M1; contract tests per surface · interfaces · M2 |
+| **operate** | Watches health; handles poison messages | CloudWatch alarms → SNS → email, each alarm with a runbook entry. Poison messages isolated in a DLQ; inspect and redrive from the CLI, not a console click. Threshold alert emails through Resend arrive with reactions. evidence: integration test (poison isolated after N attempts, others unaffected) + simulator invariant 4 · durable ingest · M1; `--chaos worker-crash` sends no duplicate alert · reactions · M2 |
+| **recover** | Closes gaps after an outage longer than Resend's retry schedule | Scheduled and on-demand `ledger reconcile`: ids diffed against List Events, missing ones replayed through normal ingest — the same approach as Ingester PR #13, not a new one. Rate-limit aware, leaving headroom in the shared team budget. A disabled webhook stops the run with `webhook_disabled` and a hint. Recoverable range is bounded by List Events reach and the retry window, both `[Unverified]` ([open questions](about.md#open-questions)). evidence: integration test against a fake Resend API (outage past the retry schedule → 100% recovered, 0 duplicates); disabled-webhook test; `retry-after` test · recovery · M1 |
+| **rotate secret** | Rotates the Resend signing secret without dropped deliveries | Resend signs with both the new and the previous secret for 24 h after a rotation ([rotate signing secret](https://resend.com/docs/api-reference/webhooks/rotate-signing-secret)); ingest verifies against the configured secret set, so the adopter adds the new secret, rotates, and retires the old one inside that window. Documented in the runbook; the 24 h window bounds the manual step. evidence: unit test (old, new, both accepted during overlap; retired secret → `401`) · recovery · M1 |
+| **extend** | Reacts to state changes in their own app | Two committed seams, both from [idea §5.6](../docs/idea.md#56-reactions-via-a-transactional-outbox) and [§5.3](../docs/idea.md#53-worker-and-the-event-ledger): a signed app callback delivered through the outbox; unknown and non-email event types stored raw, never fatal. Any other seam is deferred on a tripwire. evidence: unit test (unknown type stored raw, projection skipped, metric emitted) · local v0 · M1; simulator invariant 3 under `--chaos worker-crash` · reactions · M2 |
+| **tear down** | Removes everything | One command, **owner-triggered**, never automatic ([lens clause 7](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)). The kill switch stops compute; it does not tear down. What the command leaves behind is listed in [check-before-launch.md](check-before-launch.md#cost--teardown). The guide tells the adopter to delete the Resend webhook too, or Resend keeps retrying a dead endpoint. evidence: post-destroy listing of stack-tagged resources · durable ingest · M1 |
 
 ## Journeys
 
-### J1 — Support lookup
+Operation names are provisional until [api-contract.md](api-contract.md) lists every surface named
+here.
+
+### J1 — First deploy
+
+- **Actor:** application developer adopting Ledger.
+- **Trigger:** wants recipient deliverability without writing webhook plumbing.
+- **Steps:** deploy → connect webhook → one test send to `delivered@resend.dev` → `ledger email <id>` shows `delivered`.
+- **Surfaces:** deploy command; `email.get`; health read.
+- **Evidence:** timed README walkthrough ([success metrics](about.md#success-metrics)) · polish · M2.
+
+### J2 — Support lookup
 
 - **Actor:** support / on-call engineer.
 - **Trigger:** "I never got the password-reset email."
-- **Steps:** `ledger email <id>` → status, timeline, bounce detail → `ledger recipient <address>` → deliverability and cause.
-- **Surfaces:** `email.get`, `recipient.get` ([api-contract.md](api-contract.md#read-operations)).
-- **Evidence:** contract test for both CLI outputs; projection property tests behind the status.
+- **Steps:** `ledger email <id>` → status, timeline, bounce detail → `ledger recipient <address>` → deliverability and the email that caused it.
+- **Surfaces:** `email.get`, `recipient.get`.
+- **Evidence:** CLI output contract tests · local v0 · M1; projection property tests · foundations · M1.
 
-### J2 — Outage → recovery
+### J3 — Outage → recovery
 
 - **Actor:** operator.
-- **Trigger:** ingest or database down longer than Resend's retry schedule.
+- **Trigger:** ingest down longer than Resend's retry schedule.
 - **Steps:** alarm fires → `ledger gaps --since 24h` → `ledger reconcile --dry-run` → `ledger reconcile` → `ledger gaps` shows zero missing.
 - **Surfaces:** `gaps.list`, `reconcile.start`.
-- **Evidence:** "down > 28h" integration test recovers 100% with no duplicates.
-
-### J3 — Agent explanation via MCP
-
-- **Actor:** AI agent acting for support.
-- **Trigger:** "Did delivered@resend.dev get the confirm email? Why not?"
-- **Steps:** MCP read tools fetch state + timeline → deterministic explanation with next step.
-- **Surfaces:** MCP `get_email_status`, `explain_delivery`; operate tools not registered without the `operate` scope.
-- **Evidence:** MCP tool tests; a test that operate tools are absent under a read token.
+- **Evidence:** fake-API integration test, 100% recovered, 0 duplicates · recovery · M1.
 
 ### J4 — Poison message → redrive
 
 - **Actor:** operator.
 - **Trigger:** DLQ depth alarm > 0.
 - **Steps:** `ledger dlq inspect` → fix deployed → `ledger dlq redrive` → depth returns to 0.
-- **Surfaces:** DLQ read and redrive operations (entries owed in api-contract.md).
-- **Evidence:** integration test: poison isolated after N attempts, others unaffected; simulator invariant 4.
+- **Surfaces:** DLQ inspect and redrive operations.
+- **Evidence:** poison-isolation integration test + simulator invariant 4 · durable ingest · M1.
 
 ### J5 — Secret rotation
 
 - **Actor:** operator.
 - **Trigger:** scheduled rotation or suspected leak.
-- **Steps:** add new secret to the active list → rotate at Resend → confirm acceptance → retire old secret.
-- **Surfaces:** deploy guide; ingest metrics `ingest.rejected{reason}`.
-- **Evidence:** unit test for multi-secret verification `[Unverified]` overlap semantics.
+- **Steps:** add the new secret to the configured set → rotate at Resend → confirm `ingest.rejected` stays flat → retire the old secret within 24 h.
+- **Surfaces:** runbook; `ingest.rejected{reason}` metric.
+- **Evidence:** multi-secret unit test · recovery · M1.
 
-### J6 — Burst
+### J6 — Agent explanation via MCP
 
-- **Actor:** application developer (indirectly: a broadcast).
-- **Trigger:** a broadcast produces thousands of webhooks in seconds.
+- **Actor:** AI agent acting for support.
+- **Trigger:** "Did delivered@resend.dev get the confirm email? Why not?"
+- **Steps:** MCP read tools fetch state and timeline → deterministic explanation with a next step, no hidden LLM call.
+- **Surfaces:** MCP `get_email_status`, `explain_delivery`; operate tools unregistered without the `operate` scope.
+- **Evidence:** MCP tool tests; test that operate tools are absent under a read token; redaction test on tool output · interfaces · M2.
+
+### J7 — Burst
+
+- **Actor:** application developer, indirectly (a broadcast).
+- **Trigger:** thousands of webhooks in seconds, up to the [ceiling](about.md#platform-scale-assumptions) of 10,000 in 10 s.
 - **Steps:** ingest keeps returning `200` → queue depth rises → worker drains at the bounded rate.
-- **Surfaces:** `ledger simulate --burst 10000/10s`; health read; CloudWatch dashboard.
-- **Evidence:** burst run recorded in `docs/results.md` (p50/p99 ingest latency, drain time).
+- **Surfaces:** `ledger simulate --burst 10000/10s` (owner demo); health read.
+- **Evidence:** simulator invariants after burst · durable ingest · M1; published p50/p99 ingest latency and drain time in `docs/results.md` · M3.
 
 ## Ingest
 
-- Signature + timestamp verification on the raw body, before enqueue. Evidence: unit test · slice 1.
-- `200` on enqueue, `401` on bad signature, `503` on enqueue failure. Evidence: unit test · slice TBD.
-- No database in the request path. Evidence: `--chaos db-outage` keeps ingest at `200` · slice TBD.
+- Signature and timestamp verified on the raw body before enqueue; bad signature → `401`. evidence: unit test · local v0 · M1.
+- `200` on enqueue, `503` on enqueue failure so Resend retries. evidence: unit test · durable ingest · M1.
+- No database in the request path: a database outage is not a failed delivery. evidence: `--chaos db-outage` keeps ingest at `200` with 0 lost · durable ingest · M1.
 
 ## Ledger & projections
 
-- One row per `svix_id`, ever; duplicates counted, never re-applied. Evidence: property test + simulator invariant 1.
-- `projectEmail` is a pure function of the event set (permutation, idempotence, monotonicity, oracle). Evidence: fast-check properties · slice 0.
-- Recipient deliverability derived from email states. Evidence: property test · slice 1.
-- Unknown event types stored raw, projection skipped, metric emitted. Evidence: unit test.
+- One row per `svix_id`, ever; duplicates counted, never re-applied. evidence: property test + simulator invariant 1 · local v0 · M1.
+- `projectEmail` is a pure function of the event set: permutation invariance, idempotence, monotonicity, oracle agreement. evidence: fast-check properties · foundations · M1.
+- Recipient deliverability derived from email states, with the email that caused each transition. evidence: property test · local v0 · M1.
+- Unknown event types stored raw, projection skipped, metric emitted. evidence: unit test · local v0 · M1.
 
 ## Recovery
 
-- Gap detection by id comparison against List Events (cite resend.md RS-NN). Evidence: fake-API integration test.
-- Rate-limit aware against the shared team budget. Evidence: fake-API test with `retry-after`.
-- Disabled webhook stops the run with `webhook_disabled`. Evidence: integration test.
+- Gap detection by id diff against List Events; replays re-enter through ingest. evidence: fake-API integration test · recovery · M1.
+- Rate-limit aware against the shared team budget ([rate limits](https://resend.com/docs/api-reference/rate-limit)). evidence: fake-API test with `retry-after` · recovery · M1.
+- A disabled webhook stops the run with `webhook_disabled` ([retries and replays](https://resend.com/docs/webhooks/retries-and-replays)). evidence: integration test · recovery · M1.
 
 ## Reactions
 
-- Outbox row in the same transaction as the event. Evidence: simulator invariant 3.
-- Signed app callback; alert email via Resend idempotency keys. Evidence: `--chaos worker-crash` · slice TBD.
+- Outbox entry in the same transaction as the event. evidence: simulator invariant 3 · reactions · M2.
+- Signed app callback; operational alert email through Resend with idempotency keys derived from the `dedupe_key` ([idempotency keys](https://resend.com/docs/dashboard/emails/idempotency-keys)). evidence: `--chaos worker-crash` yields no duplicate dispatch · reactions · M2.
 
 ## Interfaces
 
-- One contract, four surfaces: read API, SDK, CLI, MCP ([api-contract.md](api-contract.md)). Evidence: contract tests.
-- One error shape everywhere ([AGENTS.md → Error shape](../AGENTS.md#error-shape)). Evidence: registry-mirror test.
-- MCP read-only by default. Evidence: tool-registration test.
+- One contract, four surfaces: read API, SDK, CLI, MCP ([api-contract.md](api-contract.md)). evidence: contract tests · interfaces · M2.
+- One error shape everywhere ([error shape](../AGENTS.md#error-shape)). evidence: registry-mirror test · interfaces · M2.
+- MCP read-only by default; no secrets and optional redaction in tool output. evidence: tool-registration and redaction tests · interfaces · M2.
+- SDK and CLI published to npm with semver. evidence: published package versions · M3.
 
 ## Operations
 
-- Structured JSON logs with `svix_id`, `email_id`, `type`; EMF metrics; alarms with runbook entries. Evidence: runbook link per alarm.
-- Budget alarm with hard monthly cap; near-zero idle cost. Evidence: synth assertion + [check-before-launch.md](check-before-launch.md).
+- Structured JSON logs carrying `svix_id`, `email_id`, `type`; EMF metrics; one runbook entry per alarm. evidence: alarm-to-runbook link check · durable ingest · M1.
+- Budget alarm with a hard monthly cap from the first deploy; idle cost near zero ([success metrics](about.md#success-metrics)). evidence: CDK assertion test + recorded kill-switch trip drill ([aws.md](aws.md#budget-alarms)) · durable ingest · M1.
 
 ## Evidence harness
 
-- `ledger simulate` with duplicates, shuffle, burst and chaos knobs; four invariants checked after every run. Evidence: the harness is its own evidence; results in `docs/results.md`.
+- `ledger simulate` with duplicate, shuffle, burst and chaos knobs; four invariants checked after every run. evidence: the run output itself · local v0 · M1 (duplicates, shuffle), durable ingest · M1 (burst, chaos).
+- Real-AWS burst numbers published in `docs/results.md`. evidence: the results doc · M3.
 
 ## Ingester parity (reference, non-binding)
 
-Against Resend's [Webhook Ingester](https://resend.com/docs/webhooks/ingester) as summarized in
-[idea §2.2](../docs/idea.md#22-what-already-exists-the-resend-webhook-ingester). Every row MUST be
-re-verified against the Ingester repo before this file is final.
+Against Resend's [Webhook Ingester](https://resend.com/docs/webhooks/ingester), re-verified
+2026-10-15 at `main` @ [`41dda70`](https://github.com/resend/resend-webhooks-ingester/commit/41dda701f98138490528935689baae6edafc3524)
+(committed 2026-05-27), plus open [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13)
+(last updated 2026-09-25, no reviews). Ledger's column states intent; each cell's evidence is in the
+sections above.
 
-| Capability | Ingester (+ PR #13) | Ledger |
+| Capability | Ingester | Ledger |
 | --- | --- | --- |
-| Signature verification | Yes | Yes (multi-secret during rotation `[Unverified]`) |
-| Idempotent raw storage | Yes | Yes |
-| Recover missed events | Yes (PR #13, open) | Yes (replays re-enter through ingest) |
-| Many database connectors | Yes | No — Postgres only (non-goal) |
-| Ingest decoupled from storage | No | Yes (queue buffer) |
-| Order-independent current state | No | Yes |
+| Signature verification | Yes — `svix` `Webhook.verify` (`src/lib/verify-webhook.ts`) | Yes |
+| Several signing secrets during rotation | No — one `RESEND_WEBHOOK_SECRET` | Yes |
+| Idempotent raw storage | Yes — unique `svix_id`; ClickHouse collapses duplicates only on background merge | Yes — Postgres `svix_id` primary key |
+| Recover missed events | No on `main`; open PR #13 (Postgres-only `/reconcile`: List Events diff + replay) | Yes — the same approach, replays land in the queue path |
+| Database connectors | 9 endpoints, 10 listed databases (README) | Postgres only ([non-goal](about.md#non-goals--out-of-scope)) |
+| Ingest decoupled from storage | No — writes in the request; a failed write returns `500` | Yes — queue buffer |
+| Backpressure under spikes | No | Yes — bounded worker concurrency |
+| Current per-email state, order-independent | No — append-only rows; status computed at read time | Yes |
+| Per-recipient deliverability state | No | Yes |
 | Safe side effects (outbox) | No | Yes |
 | Poison isolation (DLQ + redrive) | No | Yes |
-| CLI / SDK / MCP | No | Yes |
+| Unknown event types | Routed by type prefix; an unknown prefix returns `400` | Stored raw, never fatal |
+| CLI / SDK / MCP | No — only `POST /{connector}` | Yes |
+| Deploy targets | Vercel, Railway, Render, Docker image | AWS via CDK |
