@@ -1,0 +1,7 @@
+# Git-ignored files Claude Code copies from the source checkout into each new
+# worktree (.gitignore syntax; a file is copied only if it matches here AND is
+# git-ignored). Keep to local config that is not regenerable — never build
+# output, node_modules, logs or test runs.
+
+# Per-developer agent settings and rules — CLAUDE.md imports it.
+AGENTS.local.md
