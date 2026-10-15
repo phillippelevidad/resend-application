@@ -1,75 +1,42 @@
 # Build checklist
 
-> **TEMPLATE — not ratified.** Bootstrap step 10 in [bootstrap-checklist.md](bootstrap-checklist.md). The preview content below is illustrative, drafted from [docs/idea.md](../docs/idea.md) without research. Nothing here is binding until this banner and the instructions comment are removed.
-
-<!-- AGENT INSTRUCTIONS
-Purpose: The per-slice execution tracker. One card per vertical slice: goal, dependencies, refs,
-  a capability-level Ships done-list, the surfaces a walkthrough exercises, owner ops, and the
-  deferred tail. It is the progress layer over architecture.md's build order and owns neither the
-  ordering nor the rationale.
-Consumers: wf-before-propose, wf-before-propose-check, wf-after-propose-check,
-  wf-after-apply-check. Their scripts PARSE this file, and they also detect the repo root by the
-  existence of .ai/build-checklist.md: deleting or renaming it breaks every wf-* script.
-Inputs (read first): root AGENTS.md (decision lens, Permissions); .ai/AGENTS.md; about.md
-  (milestones, non-goals); bootstrap-checklist.md Owner calibration (binding: M1 MVP, M2 Feature
-  complete, M3 Stretch, no dates; deploy-and-keep AWS posture with mandatory budget alarms);
-  architecture.md#build-order-vertical-slices (step 7: the FINAL slice list, ids and milestone
-  mapping come from there, not from this preview); data-modeling.md; api-contract.md (every
-  operation a card implies MUST have an entry whose Slices line names the card); features.md.
-Research: none external. Cross-check every Refs anchor resolves and every Ships bullet is
-  traceable to an ADR, a data-modeling section, an api-contract entry or a features.md row.
-Parser contract (verified against the scripts; do not restyle):
-  - Card heading: level-3 heading, then `<ID> — <Title>` with an em dash; ID matches \d+[A-Za-z]?
-    (e.g. 2, 2B). Headings carry NO status marker: they are link anchors.
-  - Card bullets are top-level, in this order: Status, Goal, Depends on, Refs, Ships, UI surfaces,
-    Ops, Deferred tail. Status holds the marker in backticks.
-  - Ships is followed by indented one-line checkbox bullets (two spaces, dash, box, text). Only
-    the todo and done boxes are allowed there; no nesting; no continuation prose.
-  - A card region runs from its heading to the next level-3 heading, crossing milestone headings.
-    The scripts count every checkbox line in that region, so NO checkbox line may appear anywhere
-    in this file outside a Ships list: not in the intro, the legend, milestone intros or here.
-  - Change folders are named slice-<id>-<kebab-title>; the scripts read the id from that name.
-Required structure (in this order): intro prose · `## How to work this checklist` (anchor cited
-  by skills) · `## Legend` · `## M1 — MVP` · `## M2 — Feature complete` · `## M3 — Stretch`, each
-  holding its cards.
-Evidence rules: every Ships bullet names the evidence that proves it (test, property, invariant,
-  measured number, working command). A bullet with no checkable evidence is cut, per the owner's
-  working definition of overdoing it.
-Owner decisions to surface: the M1 slice cut (owned by step 7; do not re-ask here), and whether
-  slice 1's CLI reads Postgres directly (idea §7 phase 1) or goes through the SDK (AGENTS.md
-  module boundaries). This preview phrases slice 1 neutrally; the ratified card MUST pick one.
-Done when: banner and this comment removed; one card per slice in architecture.md's build order,
-  ids and titles identical; every card has all eight fields; every Status starts at todo; a dry
-  run of the three check.mjs scripts against a scratch change resolves a card and its Ships list.
--->
-
 Execution tracker, one card per vertical slice. **This file does not own ordering or rationale**:
-both are canonical in [architecture.md → Build order](architecture.md#build-order-vertical-slices).
-The "what" of each slice is assembled from [features.md](features.md),
-[data-modeling.md](data-modeling.md) and [api-contract.md](api-contract.md); links point out rather
-than restate. Milestones carry no dates
-([owner calibration](bootstrap-checklist.md#owner-calibration-ratified-2026-10-15)).
+both are canonical in [architecture.md → Build order](architecture.md#build-order-vertical-slices),
+and the IDs and titles here are copied from it verbatim. The "what" of each slice is assembled from
+the [ADRs](architecture.md#decisions), [data-modeling.md](data-modeling.md),
+[api-contract.md](api-contract.md) and [features.md](features.md); links point out rather than
+restate. Milestones carry no dates ([about.md → Milestones](about.md#milestones)).
 
 ## How to work this checklist
 
 - **Read order:** [`.ai/AGENTS.md`](AGENTS.md) → [about.md](about.md) →
   [architecture.md → Build order](architecture.md#build-order-vertical-slices) → the card you are
   taking → its `Refs`.
-- **Spine vs. parallel tracks.** The spine is the slice order in architecture.md; finish each spine
-  slice before the next. A slice with a letter suffix (e.g. `2B`) is a branch off its number, not a
-  spine link, and MAY run in parallel once its `Depends on` are done. Take the first unblocked todo
-  slice on the track you are advancing.
-- **Continuous deploy, one public demo.** Under the deploy-and-keep posture, slices from durable
-  ingest onward deploy to the owner's AWS account as they finish; the README demo is published once
-  M1 is done. A gap that a **named later slice** carries is fine; a finished slice whose surfaces
-  cannot be exercised by hand is not finished.
+- **Spine vs. parallel tracks.** The spine is 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7, then M3 in any order.
+  Finish each spine slice before the next. A slice with a letter suffix (`2B`) is a branch off its
+  number, not a spine link: it MAY run in parallel once its `Depends on` are done, and its card
+  says when it MUST land. Take the first unblocked todo slice on the track you are advancing.
+- **Deploy and keep, one demo per milestone.** From slice 2 on, every finished slice is deployed to
+  the owner's AWS account and stays up ([lens clause 7](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
+  The README claims, the demo and the deploy are made coherent at each milestone boundary (slices 4,
+  7 and the last M3 slice), not between slices (lens clause 3). A gap that a **named later slice**
+  carries is fine; a finished slice whose surfaces cannot be exercised by hand is not finished.
+- **The Ships list is the done-list.** Every bullet names its evidence: a test, a property, a
+  simulator invariant, a measured number or a working command. An `[Unverified]` row a card owes
+  ([architecture.md → Open questions owed by slice](architecture.md#open-questions-owed-by-slice))
+  appears as a Ships bullet naming the row and the experiment that settles it, or the test that
+  proves the design safe either way. Settling one updates its row in [resend.md](resend.md#unverified),
+  [aws.md](aws.md#unverified) or [integrations.md](integrations.md#unverified) in the same change.
+  Experiments that write to a live Resend account and every AWS deploy are Ask-first: the card's
+  `Ops` line lists them.
 - **The walkthrough a slice owes.** Every slice's change folder (`openspec/changes/slice-<id>-<kebab>/`)
   MUST contain a `WALKTHROUGH.md` before its `Status` is ticked: numbered steps, one path per surface
   the card's `UI surfaces` line names, each with the exact CLI command, API request or simulator run
   and its expected output. A step that cannot be completed today MUST name the slice that covers it,
   inline. A surface the card claims but no step reaches is a finding against this slice.
 - **Ships are capability-level.** Explode them into tasks when the slice starts (OpenSpec
-  `tasks.md`), not up front.
+  `tasks.md`), not up front. The propose gates compare Ships text verbatim, so a reworded bullet is
+  a scope change: edit the card first.
 - **Status only, no history.** Update the `Status` line and the `Ships` boxes in place; no
   changelog, no dated notes. An unresolved question goes to
   [about.md → Open questions](about.md#open-questions) and the card is marked blocked with a
@@ -80,74 +47,224 @@ than restate. Milestones carry no dates
 `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked on an owner decision (one-line why).
 
 The marker lives on the card's `Status` line, in backticks, and nowhere else. Headings MUST stay
-marker-free. A ticked `Status` over an unticked `Ships` box is the card lying.
+marker-free: they are link anchors (`#2b--local-mode-queue-and-docker-compose`). Checkbox lines
+appear only inside a `Ships` list. A ticked `Status` over an unticked `Ships` box is the card lying.
 
 ## M1 — MVP
 
 Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; evidence over breadth.
-_(Preview: only slices 0 and 1 are drafted; the rest of M1 comes from architecture.md.)_
 
 ### 0 — Foundations
 
 - **Status:** `[ ]`
-- **Goal:** A monorepo where the projection logic is proven by property tests and CI gates every push.
+- **Goal:** A monorepo where the projection logic is proven by property tests, the simulator generates histories, and CI gates every push.
 - **Depends on:** — (foundational).
-- **Refs:** [architecture.md → Build order](architecture.md#build-order-vertical-slices) · [idea §7 phase 0](../docs/idea.md#7-implementation-plan) · [idea §5.4](../docs/idea.md#54-order-independent-projections)
+- **Refs:** [ADR-003](architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [resend.md → Event types and payloads](resend.md#event-types-and-payloads-rs-25rs-30) · [features.md → Ledger & projections](features.md#ledger--projections) · [features.md → discover](features.md#adopter-lifecycle)
 - **Ships:**
-  - [ ] pnpm workspace with Biome, Vitest and strict TypeScript; one `pnpm verify` that mirrors CI stage for stage.
-  - [ ] GitHub Actions CI running `pnpm verify` on every push and PR.
-  - [ ] `packages/core` event types and `projectEmail`, with no AWS, Postgres or Resend imports.
-  - [ ] fast-check properties green: permutation invariance, idempotence, monotonicity, oracle agreement.
-- **UI surfaces:** `pnpm verify` locally; the CI run on a pushed commit.
-- **Ops:** — none.
-- **Deferred tail:** Recipient projection and Drizzle schema ([slice 1](#1--local-v0)). Any AWS resource (durable-ingest slice).
+  - [ ] pnpm workspace with strict TypeScript, Biome and Vitest; `pnpm verify` mirrors CI stage for stage and exits 0 only when every stage ran and passed.
+  - [ ] GitHub Actions CI runs `pnpm verify` on every push and pull request; evidence: a green run on a pushed commit.
+  - [ ] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
+  - [ ] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity, oracle agreement (ADR-003).
+  - [ ] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage.
+  - [ ] `sim` history generator with seed, duplicate and shuffle knobs; `pnpm sim` prints the projection of a generated, shuffled history, identical for a fixed seed.
+  - [ ] README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
+  - [ ] RS-U10, RS-U11, RS-U12 and RS-U19 proved safe either way by named property and schema tests, each [Unverified] row citing its test.
+- **UI surfaces:** `pnpm verify` locally · the CI run on a pushed commit · `pnpm sim` printing a projection.
+- **Ops:** owner approves the CI workflow (Ask-first: CI change) and each new dependency (Ask-first). No Resend or AWS step.
+- **Deferred tail:** Drizzle schema, ingest, worker and read path ([slice 1](#1--local-ledger-and-read-path)). Any AWS resource ([slice 2](#2--durable-ingest-on-aws)). Simulator runs against a live process ([slice 1](#1--local-ledger-and-read-path)) and on AWS ([slice 3](#3--operations-and-evidence-on-aws)).
 
-### 1 — Local v0
+### 1 — Local ledger and read path
 
 - **Status:** `[ ]`
-- **Goal:** Real Resend events, verified locally, land once in a Postgres ledger and project into correct email and recipient state.
+- **Goal:** Real and simulated Resend events, verified locally, land once in a Postgres ledger, project into email and recipient state, and are read through the read API, SDK and CLI.
 - **Depends on:** 0.
-- **Refs:** [architecture.md → Build order](architecture.md#build-order-vertical-slices) · [idea §7 phase 1](../docs/idea.md#7-implementation-plan) · [api-contract.md → email.get](api-contract.md#emailget) · [api-contract.md → recipient.get](api-contract.md#recipientget)
+- **Refs:** [ADR-001](architecture.md#adr-001--verify-then-enqueue) · [ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them) · [webhook_events](data-modeling.md#webhook_events--the-immutable-ledger) · [email_state](data-modeling.md#email_state--current-state-per-email) · [email_recipients](data-modeling.md#email_recipients--outcome-per-email-and-recipient) · [recipient_state](data-modeling.md#recipient_state--deliverability-per-address) · [PII & retention](data-modeling.md#pii--retention) · [email.get](api-contract.md#emailget) · [recipient.get](api-contract.md#recipientget) · [Ingest boundary](api-contract.md#ingest-boundary) · [J2](features.md#j2--support-lookup)
 - **Ships:**
-  - [ ] Local ingest verifies signature and timestamp on the raw body and rejects forgeries with `401`.
-  - [ ] Drizzle schema and migrations for the ledger and both projections; one transaction per event keyed on `svix_id`.
-  - [ ] `projectRecipient` with property tests; recipient state upserted in the event transaction.
-  - [ ] `ledger email` and `ledger recipient` print state and timeline, with `--json` in the error shape.
-  - [ ] `ledger simulate --duplicates --shuffle` passes simulator invariants 1 and 2.
-- **UI surfaces:** `POST /webhooks/resend` (local) · `resend webhooks listen` · `ledger email <id>` · `ledger recipient <address>` · `ledger simulate --duplicates 0.2 --shuffle`.
-- **Ops:** owner: a Resend test API key and webhook signing secret in a local, git-ignored `.env`; use only `@resend.dev` test addresses.
-- **Deferred tail:** SQS, DLQ and CDK (durable-ingest slice). Read API and SDK (interfaces slice). Multi-secret verification (recovery slice).
+  - [ ] Local ingest verifies signature and timestamp on the raw body against the configured secret set, first match wins, and returns `200` with a fixed body or `401`; evidence: unit tests with old, new and both signatures, forged and stale requests.
+  - [ ] `packages/db` Drizzle schema and expand-only migrations for `webhook_events`, `email_state`, `email_recipients` and `recipient_state`; CI applies every migration to a fresh Postgres before the integration tests (ADR-018).
+  - [ ] Worker runs one transaction per message behind the in-process queue port, deduplicating on `svix_id` (ADR-004, ADR-013); evidence: Testcontainers tests for a duplicate insert and a crash between steps.
+  - [ ] Recipient rows locked in sorted `address_hash` order after the email lock; evidence: concurrency integration test with two emails sharing a recipient.
+  - [ ] Projections hold masks and keyed address hashes only; evidence: integration test finding no raw address or subject in any projection row.
+  - [ ] Unknown and non-email event types stored raw, projection skipped, metric emitted; evidence: unit test.
+  - [ ] Minimal read API (OpenAPI, Zod), SDK, `ledger email <email_id>` and `ledger recipient <address>` with `--json` in the error shape, auth skipped only on loopback; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
+  - [ ] `pnpm sim --duplicates 0.2 --shuffle` against the local process passes invariants 1 and 2.
+  - [ ] RS-U21 settled by the Ask-first two-recipient send to `delivered@resend.dev` and `bounced@resend.dev`, observed through `resend webhooks listen`, with the result in resend.md.
+  - [ ] RS-U15 recorded from the Ask-first test-address sends, with simulator fixtures mirroring the observed sequences; RS-U18 checked by a read-only `GET /webhooks` after an interrupted `listen` session.
+- **UI surfaces:** `POST /webhooks/resend` (local) · `resend webhooks listen` · `ledger email <email_id>` · `ledger recipient <address>` · `pnpm sim --duplicates 0.2 --shuffle`.
+- **Ops:** owner: a Resend API key and webhook signing secret in the git-ignored `.env.local`; approve each `resend webhooks listen` session (it creates a temporary webhook, RS-33) and each test send (Ask-first); `@resend.dev` test addresses only; Docker for Testcontainers.
+- **Deferred tail:** SQS, DLQ, CDK and bearer tokens ([slice 2](#2--durable-ingest-on-aws)). DLQ operations ([slice 3](#3--operations-and-evidence-on-aws)). Rotation runbook and retired-secret test ([slice 4](#4--recovery)). `email.explainDelivery` and MCP ([slice 5](#5--mcp-server-and-contract-hardening)). `docker compose` local mode ([slice 2B](#2b--local-mode-queue-and-docker-compose)).
+
+### 2 — Durable ingest on AWS
+
+- **Status:** `[ ]`
+- **Goal:** Ledger runs in the owner's AWS account under a hard budget cap: ingest answers `200` only after enqueue, the worker drains SQS and holds events through a database outage, and the read path is token-protected.
+- **Depends on:** 1.
+- **Refs:** [ADR-001](architecture.md#adr-001--verify-then-enqueue) · [ADR-002](architecture.md#adr-002--sqs-standard-not-fifo) · [ADR-008](architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq) · [ADR-010](architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack) · [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) · [ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them) · [aws.md → Budget alarms](aws.md#budget-alarms) · [aws.md → Teardown](aws.md#teardown) · [integrations.md → Decision — Neon](integrations.md#decision--neon) · [integrations.md → Secrets layout](integrations.md#secrets-layout) · [api_tokens](data-modeling.md#api_tokens--read-api-bearer-tokens) · [health.get](api-contract.md#healthget) · [worker.resumeEventSource](api-contract.md#workerresumeeventsource) · [token.create](api-contract.md#tokencreate) · [token.list](api-contract.md#tokenlist) · [token.revoke](api-contract.md#tokenrevoke) · [token.getCurrent](api-contract.md#tokengetcurrent) · [features.md → deploy, connect webhook, verify, tear down](features.md#adopter-lifecycle)
+- **Ships:**
+  - [ ] App stack with HTTP API, ingest, SQS (13 days) and DLQ (14 days), worker ESM with `MaximumConcurrency`, batch size 10 and `ReportBatchItemFailures`, no VPC; evidence: CDK assertion tests on the synthesized template.
+  - [ ] Ingest decodes both body encodings and answers `200` after enqueue, `401` on a bad signature and `503` when the enqueue fails; evidence: unit tests for both encodings and the three responses.
+  - [ ] Worker builds its failure list from per-message results; evidence: batch-failure unit test.
+  - [ ] On a database outage the worker retries once on a fresh connection, then fails the batch and disables its own ESM; the hourly cron and `ledger worker resume` re-enable it after a successful probe (ADR-015); evidence: error-classification unit test and a Testcontainers test where no message reaches the DLQ.
+  - [ ] Hashed `api_tokens` with `read` and `operate` scopes, `ledger token create|list|revoke|current`, the first `operate` token issued by the deploy command; evidence: API and CLI tests for `401`, `403 forbidden` and `last_operate_token`.
+  - [ ] `ledger health` reports queue depth and age, DLQ depth, event-source state and database reachability, and answers during a database outage; evidence: unit test with the database unreachable.
+  - [ ] Guardrails stack with the USD 50 budget, SNS, the kill switch (on in the owner's deployment) and a scripted re-arm; AWS-U01 and AWS-U02 settled by the recorded trip drill.
+  - [ ] One deploy command (migrate with the direct URL, then deploy both stacks) and one teardown command; evidence: a post-destroy listing of stack-tagged resources finds nothing billable.
+  - [ ] PG-U01 settled from Neon's docs or support; PG-U02 settled by a deployed test where two transactions on one `email_id` serialize through the pooled URL.
+  - [ ] Verify stage walked with one Ask-first send to `delivered@resend.dev`, `ledger email` showing `delivered` and `ledger health` showing queue and DLQ at 0; it settles RS-U14 and AWS-U04.
+  - [ ] RS-U07 closed by the Ask-first test webhook pointed at an endpoint that returns `401`, or proved safe by the exact-`200` contract, its row citing the result.
+  - [ ] AWS-U03, AWS-U05, AWS-U06, AWS-U07 and PG-U04 closed or proved safe either way, each [Unverified] row citing its test, measurement or teardown drill.
+- **UI surfaces:** deploy command · teardown command · `POST /webhooks/resend` (deployed) · `ledger email <email_id>` · `ledger recipient <address>` · `ledger health` · `ledger worker resume` · `ledger token create|list|revoke|current` · trip drill and re-arm scripts.
+- **Ops:** owner: approve the first deploy and every AWS resource (Ask-first); an AWS account CDK-bootstrapped in us-east-2, with `aws lambda get-account-settings` read before the deploy (AWS-U05); a Neon Free project in `aws-us-east-2` and its direct and pooled URLs; create the Resend webhook for the ingest URL and put its signing secret in Secrets Manager; approve the verify-stage send and the RS-U07 experiment (Ask-first); run the trip drill.
+- **Deferred tail:** Alarms, runbook, DLQ inspect and redrive, simulator secret, burst and chaos runs ([slice 3](#3--operations-and-evidence-on-aws)). Reconciler and its Resend key ([slice 4](#4--recovery)). Scripted webhook creation (tripwire in [architecture.md → Deferred](architecture.md#deferred-yagni)).
+
+### 3 — Operations and evidence on AWS
+
+- **Status:** `[ ]`
+- **Goal:** The deployed stack is operable and its reliability claims are measured: alarms reach the owner with runbook entries, poison messages are inspected and redriven from the CLI, and burst, outage and poison runs prove invariants 1, 2 and 4 on AWS.
+- **Depends on:** 2.
+- **Refs:** [ADR-002](architecture.md#adr-002--sqs-standard-not-fifo) · [ADR-008](architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq) · [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) · [ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret) · [aws.md → CloudWatch and SNS](aws.md#cloudwatch-and-sns) · [dlq.listMessages](api-contract.md#dlqlistmessages) · [dlq.startRedrive](api-contract.md#dlqstartredrive) · [features.md → operate](features.md#adopter-lifecycle) · [J4](features.md#j4--poison-message--redrive) · [J7](features.md#j7--burst)
+- **Ships:**
+  - [ ] CloudWatch alarms → SNS → email, each with one runbook entry; evidence: the alarm-to-runbook link check.
+  - [ ] `ledger dlq inspect` returns a sample with no address, subject or payload, and `ledger dlq redrive` refuses a second concurrent task; evidence: API and CLI tests, plus a redaction test on the inspect output.
+  - [ ] Off-by-default simulator secret (ADR-016); evidence: CDK assertion test (without the flag, no secret and no ingest reference) and a unit test rejecting a simulator-signed request when the secret is absent.
+  - [ ] `pnpm sim --burst 10000/10s` on the deployed stack passes invariants 1 and 2 and records the ingest p99, closing RS-U08.
+  - [ ] `pnpm sim --chaos db-outage` on AWS keeps ingest at `200` and the DLQ at 0, and the queue drains after resume, with invariants 1 and 2.
+  - [ ] A poison message reaches the DLQ after `maxReceiveCount` while the others commit (invariant 4), and a redrive after the fix returns the depth to 0.
+  - [ ] `pnpm sim --duplicates 0.2 --shuffle` passes invariants 1 and 2 through the deployed queue (ADR-002).
+- **UI surfaces:** `pnpm sim --burst 10000/10s` · `pnpm sim --chaos db-outage` · `pnpm sim` poison run · `ledger dlq inspect` · `ledger dlq redrive` · `ledger health` · alarm email.
+- **Ops:** owner: confirm the SNS email subscription; set the simulator flag in the owner's deployment only; approve the redeploys (Ask-first); watch the budget during the burst.
+- **Deferred tail:** Published latency, drain and cost numbers ([slice 9](#9--real-aws-burst-numbers)). MCP `inspect_dlq` and `redrive_dlq` ([slice 5](#5--mcp-server-and-contract-hardening)). Local-mode DLQ ([slice 2B](#2b--local-mode-queue-and-docker-compose)).
+
+### 4 — Recovery
+
+- **Status:** `[ ]`
+- **Goal:** Events missed during an outage longer than Resend's retry schedule are found by id diff and replayed through ingest, hourly and on demand, with no duplicates.
+- **Depends on:** 3.
+- **Refs:** [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller) · [resend.md → Headless Webhook API](resend.md#headless-webhook-api-rs-13rs-18) · [integrations.md → Locked rules](integrations.md#locked-rules-must) · [integrations.md → Secrets layout](integrations.md#secrets-layout) · [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) · [gaps.list](api-contract.md#gapslist) · [reconcile.getRun](api-contract.md#reconcilegetrun) · [reconcile.start](api-contract.md#reconcilestart) · [health.get](api-contract.md#healthget) · [features.md → recover, rotate secret](features.md#adopter-lifecycle) · [J3](features.md#j3--outage--recovery) · [J5](features.md#j5--secret-rotation)
+- **Ships:**
+  - [ ] `packages/resend-client` with one 2 req/s limiter that yields on low `ratelimit-remaining` and waits `retry-after` on `429`, every response checked and mapped by status then name; evidence: limiter unit tests.
+  - [ ] Reconciler on the hourly cron and on demand writes one `reconcile_runs` row per run and never overlaps; evidence: fake-API integration test where an outage past the retry schedule ends 100 % recovered with 0 duplicates.
+  - [ ] A disabled webhook stops the run with `webhook_disabled`, and a `429` storm with `retry-after` still completes; evidence: fake-API integration tests.
+  - [ ] `ledger gaps [--since]` and `ledger reconcile [--dry-run] [--lookback] [--no-wait]`, with the last run in `ledger health`; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
+  - [ ] Rotation runbook entry; evidence: unit test where a retired secret gets `401`.
+  - [ ] RS-U01 and RS-U20 settled by one Ask-first replay of a stored event on the owner's webhook; RS-U02 settled read-only by comparing stored `svix_id`s with List Events ids.
+  - [ ] RS-U03 reach of at least the 3-day lookback, RS-U13 visibility lag and RS-U17 revoked-key status closed by read-only checks; PG-U03 by Neon's usage page; RS-U06 proved safe by the status read every run.
+  - [ ] RS-U04 and RS-U05 closed by the Ask-first disabled-webhook experiments, RS-U09 by an Ask-first secret rotation on a test webhook, RS-U10 by the RS-U01 replay, or each proved safe either way, its row citing the result.
+  - [ ] M1 boundary: the README states only claims whose evidence landed in slices 0–4, with 0 unlinked claims and the CI link check green.
+- **UI surfaces:** `ledger gaps --since 24h` · `ledger reconcile --dry-run` · `ledger reconcile` · `ledger health` · the hourly cron run.
+- **Ops:** owner: a `full_access` Resend key in Secrets Manager for the reconciler only; approve the replay experiment and the disabled-webhook experiments (Ask-first); walk the M1 demo against the kept deploy.
+- **Deferred tail:** RS-U03 re-measured before M2 closes ([slice 7](#7--polish-and-retention)). MCP `list_gaps` and `reconcile` ([slice 5](#5--mcp-server-and-contract-hardening)).
 
 ## M2 — Feature complete
 
-Every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, a real AWS deploy, simulator
-evidence. _(Preview stub.)_
+Every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, a real AWS deploy,
+simulator evidence.
 
-### 5 — Reactions
+### 2B — Local-mode queue and docker compose
+
+- **Status:** `[ ]`
+- **Goal:** The whole system runs with `docker compose up` and no AWS account, through a Postgres-backed queue behind the same port.
+- **Depends on:** 2. MUST land before M2 closes ([slice 7](#7--polish-and-retention)).
+- **Refs:** [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue) · [health.get](api-contract.md#healthget) · [dlq.listMessages](api-contract.md#dlqlistmessages) · [dlq.startRedrive](api-contract.md#dlqstartredrive)
+- **Ships:**
+  - [ ] Postgres-backed queue (`FOR UPDATE SKIP LOCKED`, pooler-safe) implements the queue port with receive counts and dead rows; evidence: Testcontainers tests for claim, retry and dead-lettering.
+  - [ ] `docker compose up` starts Postgres, ingest, worker and the read API, and `pnpm sim` against it passes invariants 1, 2 and 4.
+  - [ ] `ledger health`, `ledger dlq inspect` and `ledger dlq redrive` work in local mode; evidence: the same contract tests run against both modes.
+- **UI surfaces:** `docker compose up` · `pnpm sim` (local mode) · `ledger health` · `ledger dlq inspect` · `ledger dlq redrive`.
+- **Ops:** — none (Docker on the developer's machine).
+- **Deferred tail:** — none.
+
+### 5 — MCP server and contract hardening
+
+- **Status:** `[ ]`
+- **Goal:** An AI agent answers "why did this delivery fail?" from MCP alone, under least privilege, with no PII in tool output.
+- **Depends on:** 4.
+- **Refs:** [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) · [api-contract.md → Conventions](api-contract.md#conventions) · [Error codes](api-contract.md#error-codes) · [email.explainDelivery](api-contract.md#emailexplaindelivery) · [email.get](api-contract.md#emailget) · [recipient.get](api-contract.md#recipientget) · [gaps.list](api-contract.md#gapslist) · [dlq.listMessages](api-contract.md#dlqlistmessages) · [token.getCurrent](api-contract.md#tokengetcurrent) · [reconcile.start](api-contract.md#reconcilestart) · [dlq.startRedrive](api-contract.md#dlqstartredrive) · [J6](features.md#j6--agent-explanation-via-mcp) · [about.md → Open questions](about.md#open-questions)
+- **Ships:**
+  - [ ] `email.explainDelivery` as a pure `packages/core` function with a closed verdict set, served through `ledger explain <email_id>`, the SDK and MCP `explain_delivery`; evidence: a unit test per verdict and a contract test.
+  - [ ] MCP server on the SDK with `get_email_status`, `get_recipient_status`, `list_gaps`, `inspect_dlq` and `explain_delivery`, choosing its tools at startup through `token.getCurrent`; evidence: MCP tool tests.
+  - [ ] Operate tools `reconcile` and `redrive_dlq` are not registered under a `read` token; evidence: tool-registration test per scope.
+  - [ ] Every tool's output carries masks only, no secrets and no payload; evidence: redaction tests.
+  - [ ] Every code in api-contract.md → Error codes exists in code, and no other; evidence: error-registry mirror test.
+  - [ ] SDK retries idempotent reads and never `token.create`; evidence: SDK unit tests.
+  - [ ] The about.md question on the MCP SDK line and tool annotations closed when the package is picked.
+- **UI surfaces:** MCP `get_email_status` · `explain_delivery` · `get_recipient_status` · `list_gaps` · `inspect_dlq` · `reconcile` · `redrive_dlq` · `ledger explain <email_id>`.
+- **Ops:** owner approves the MCP SDK dependency (Ask-first); an MCP client to walk J6.
+- **Deferred tail:** SDK and CLI on npm ([slice 8](#8--npm-release)).
+
+### 6 — Reactions
 
 - **Status:** `[ ]`
 - **Goal:** Reactions fire exactly once on top of at-least-once delivery.
-- **Depends on:** the durable-ingest slice (id from architecture.md).
-- **Refs:** [idea §5.6](../docs/idea.md#56-reactions-via-a-transactional-outbox)
+- **Depends on:** 5.
+- **Refs:** [ADR-006](architecture.md#adr-006--transactional-outbox-for-reactions) · [ADR-017](architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep) · [outbox](data-modeling.md#outbox--reactions-awaiting-delivery) · [integrations.md → Secrets layout](integrations.md#secrets-layout) · [resend.md → Idempotent sends](resend.md#idempotent-sends-rs-17-rs-24) · [features.md → Reactions](features.md#reactions) · [features.md → extend](features.md#adopter-lifecycle)
 - **Ships:**
-  - [ ] Outbox rows written in the event transaction; dispatcher with retries and backoff.
-  - [ ] `--chaos worker-crash` run produces no duplicate dispatch (simulator invariant 3).
-- **UI surfaces:** `ledger simulate --chaos worker-crash:0.05`.
-- **Ops:** owner approves any live send through Resend (Ask-first); a verified sending domain for alerts.
-- **Deferred tail:** Threshold alert rules beyond the v0 set.
+  - [ ] Outbox rows with a unique `dedupe_key` written in the causing event's transaction; evidence: integration test.
+  - [ ] Dispatcher invoked after commit plus the hourly sweep, claiming due rows under row locks; evidence: integration test where an invoke dropped after commit is delivered by the sweep, once.
+  - [ ] Signed app callback with stable ids; evidence: signature unit test.
+  - [ ] Alert email through a `sending_access` key with an `Idempotency-Key` derived from `dedupe_key`, retries stopping inside 24 h; evidence: retry-horizon unit test.
+  - [ ] `pnpm sim --chaos worker-crash:0.05` on AWS produces no duplicate dispatch (invariant 3).
+  - [ ] RS-U16 proved safe with one sending key, its row citing the secrets layout.
+- **UI surfaces:** `pnpm sim --chaos worker-crash:0.05` · alert email at the owner's Resend account address · app callback receiver.
+- **Ops:** owner: a `sending_access` Resend key in Secrets Manager for the dispatcher; approve live alert sends (Ask-first); alerts go from `resend.dev` to the owner's own address (project-domain tripwire in [architecture.md → Deferred](architecture.md#deferred-yagni)).
+- **Deferred tail:** Any reaction seam beyond the app callback and the alert email (tripwire in [features.md → extend](features.md#adopter-lifecycle)).
+
+### 7 — Polish and retention
+
+- **Status:** `[ ]`
+- **Goal:** A newcomer deploys Ledger and runs the demo from the README in 15 minutes or less, and raw payloads are redacted on schedule without breaking rebuilds.
+- **Depends on:** 6 and 2B.
+- **Refs:** [ADR-014](architecture.md#adr-014--raw-payload-retention-and-redaction) · [PII & retention](data-modeling.md#pii--retention) · [about.md → Success metrics](about.md#success-metrics) · [J1](features.md#j1--first-deploy) · [resend.md → \[Unverified\]](resend.md#unverified)
+- **Ships:**
+  - [ ] Retention job masks `to`, `from` and `subject` and nulls unread fields after N days; evidence: integration test where a rebuild after redaction yields identical projections.
+  - [ ] `docs/results.md` holds the simulator results from slices 1–6, each linked to its run.
+  - [ ] Runbook covers every alarm, secret rotation, a database outage and the kill-switch re-arm; evidence: the alarm-to-runbook link check.
+  - [ ] README quick start, with a timed newcomer deploy of 15 minutes or less recorded.
+  - [ ] RS-U03 re-measured once the owner's webhook is older than 30 days, its row updated.
+  - [ ] M2 boundary: slice 2B done, 0 unlinked README claims, and the deploy and demo coherent.
+- **UI surfaces:** README quick start (timed walk) · deploy command · retention job run · `ledger email <email_id>` after redaction.
+- **Ops:** owner: time the newcomer walk; approve the redeploy (Ask-first).
+- **Deferred tail:** Inngest adapter, read-only UI and inbound projection (tripwires in [about.md → Open questions](about.md#open-questions)).
 
 ## M3 — Stretch
 
-npm releases with semver, real AWS load numbers, a learning log. _(Preview stub.)_
+npm releases with semver, real AWS load numbers, a learning log. Any order once M2 is done.
 
-### 7 — Publish SDK and CLI to npm
+### 8 — npm release
 
 - **Status:** `[ ]`
 - **Goal:** Adopters install the SDK and CLI from npm with semver guarantees.
-- **Depends on:** the interfaces slice (id from architecture.md).
-- **Refs:** [api-contract.md → Conventions](api-contract.md#conventions)
+- **Depends on:** 7; the final name ([about.md → Open questions](about.md#open-questions)).
+- **Refs:** [api-contract.md → Conventions](api-contract.md#conventions) · [features.md → Interfaces](features.md#interfaces)
 - **Ships:**
-  - [ ] Versioned release workflow publishing `packages/sdk` and `apps/cli` with provenance.
-- **UI surfaces:** `npx <cli-package> email <id>` against the deployed stack.
-- **Ops:** owner: npm account and package names; adding the release workflow changes CI (Ask-first).
-- **Deferred tail:** Changelog automation.
+  - [ ] Final name picked and recorded in about.md before the first publish.
+  - [ ] Release workflow publishes `packages/sdk` and `apps/cli` with semver and provenance; evidence: the published versions on npm.
+  - [ ] An `npx` install of the published CLI reads an email from the deployed stack.
+- **UI surfaces:** `npx <cli-package> email <email_id>` · `npm view <sdk-package> versions`.
+- **Ops:** owner: npm account and package names; approve the release workflow (Ask-first: CI change) and each publish.
+- **Deferred tail:** — none.
+
+### 9 — Real-AWS burst numbers
+
+- **Status:** `[ ]`
+- **Goal:** One measured 10k burst on real AWS, with latency, drain time and cost published.
+- **Depends on:** 7.
+- **Refs:** [about.md → Success metrics](about.md#success-metrics) · [aws.md → Cost shape](aws.md#cost-shape) · [J7](features.md#j7--burst) · [features.md → Evidence harness](features.md#evidence-harness)
+- **Ships:**
+  - [ ] One recorded `pnpm sim --burst 10000/10s` on the deployed stack, with p50/p99 ingest latency and queue drain time in `docs/results.md`.
+  - [ ] The burst's AWS cost from Cost Explorer recorded beside it.
+- **UI surfaces:** `pnpm sim --burst 10000/10s` · the Cost Explorer line.
+- **Ops:** owner: approve the burst run; read Cost Explorer.
+- **Deferred tail:** — none.
+
+### 10 — Learning log
+
+- **Status:** `[ ]`
+- **Goal:** The AWS and distributed-systems decisions are told as a log a reviewer can check.
+- **Depends on:** 7.
+- **Refs:** [architecture.md → Decisions](architecture.md#decisions) · [aws.md → Learning notes](aws.md#learning-notes)
+- **Ships:**
+  - [ ] A learning log in `docs/` with each entry linked to its ADR, test or measured number; evidence: the CI link check.
+- **UI surfaces:** the log's links.
+- **Ops:** — none.
+- **Deferred tail:** — none.

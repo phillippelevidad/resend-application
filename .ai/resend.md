@@ -32,7 +32,7 @@ Four gaps shape the design:
   every write (RS-05, RS-18).
 - **Two unverified links in the recovery chain.** Whether a replay keeps the original `svix-id`
   (RS-U01), and whether List Events ids are `svix-id`s (RS-U02). Both MUST be settled before the
-  recovery slice is done.
+  recovery slice ([slice 4](build-checklist.md#4--recovery)) is done.
 
 ## Facts
 
@@ -181,7 +181,7 @@ simulator traffic is the default local loop.
    bounce from `bounce.type = Permanent` (RS-U12).
 8. **Idempotency keys expire after 24 h** (RS-24). *Impact:* a dispatcher retry after 24 h could
    send a second alert, a duplicate effect. *Resolution:* the alert-email retry horizon is under
-   24 h; past it the entry dead-letters. Owed by *reactions · M2*.
+   24 h; past it the entry dead-letters. Owed by [slice 6](build-checklist.md#6--reactions).
 9. **A replay can't be made idempotent** (RS-17). A retried replay call queues another delivery.
    *Resolution:* harmless only if RS-U01 holds. Otherwise it blocks recovery.
 10. **No read-only key** (RS-05, RS-18). *Impact:* the reconciler's key can read the signing secret
@@ -193,8 +193,8 @@ simulator traffic is the default local loop.
     readable through List Attempts and the dashboard. *Resolution:* ingest responds with a fixed
     short body: no payload echo, no PII, no secret.
 12. **`verify` takes one secret per call** (RS-02). *Resolution:* ingest loops over the configured
-    secret set (Mechanisms → Signing). The slice that adds `resend` (Ask-first dependency)
-    re-checks RS-02 against the pinned version's types.
+    secret set (Mechanisms → Signing). [Slice 1](build-checklist.md#1--local-ledger-and-read-path), which adds `resend`
+    (Ask-first dependency), re-checks RS-02 against the pinned version's types.
 13. **Forward-only pagination** (RS-14). *Resolution:* each reconcile run pages newest to oldest
     down to the horizon. A run can't resume from the oldest end.
 14. **SDK error names differ from the docs** (RS-22). *Resolution:* map by status, then name, with
@@ -216,34 +216,34 @@ Resend.
 
 ## [Unverified]
 
-Each row names the slice that owes it: a slice *named by its phase and milestone* until
-[build-checklist.md](build-checklist.md) assigns card anchors. "Safe either way" means the slice MAY
+Each row links the [build-checklist.md](build-checklist.md) card that owes it, and that card's
+Ships list names the row and its experiment. "Safe either way" means the slice MAY
 close by proving the design correct under both answers. Every Ask-first experiment needs the
 owner's approval when it runs.
 
 | Id | Claim | Why unsettled | What would settle it | Owed by |
 | --- | --- | --- | --- | --- |
-| RS-U01 | A **replay** carries the same `svix-id` as the original delivery | No Resend page says so. RS-08 covers retries; Svix covers "resent due to a previous failure"; community-verified in [ingester#12](https://github.com/resend/resend-webhooks-ingester/issues/12). If false, a replayed event lands under a new id, the original stays "missing", and reconcile replays it forever: duplicate effects | Ask-first: replay one already-stored event on the owner's webhook and compare `svix_id`s | *recovery · M1*. MUST be settled, not proved safe either way |
-| RS-U02 | The List Events `id` equals the delivered `svix-id` header | Same `msg_` shape; no page states it. The reconcile id diff depends on it | Read-only, after the first real delivery: compare the stored `svix_id` with List Events ids | *recovery · M1*. MUST be settled |
-| RS-U03 | How far back **List Events** reaches | Only email data retention (30 days, RS-31) is stated. It bounds the longest recoverable outage and kill-switch gaps | Read-only: page the owner's webhook to its oldest event and record it. Repeat once the webhook is older than 30 days | *recovery · M1* confirms reach ≥ the default lookback; re-measured before M2 closes |
-| RS-U04 | A replay to a **disabled** webhook is not delivered (accepted, rejected or dropped?) | RS-11 says delivery attempts stop; replays aren't named | Ask-first: disable a test webhook, replay one event, read the response and List Attempts | *recovery · M1*. Safe either way (status checked first) |
-| RS-U05 | What happens to events created while a webhook is disabled, and whether re-enabling redelivers them | Not stated | Ask-first: disable, send one test email, re-enable, then List Events and Attempts | *recovery · M1*. Safe either way (reconcile after re-enable) |
-| RS-U06 | The auto-disable threshold | "Keeps failing" is unquantified. `[Svix]` default: 5 days of failures | Resend docs or support | *recovery · M1*. Safe either way (status read every run) |
-| RS-U07 | Which responses count as failure besides "not 200": other 2xx, and whether any 4xx (`401`, `410`) stops retries | RS-10's three sources disagree | Ask-first: a test webhook pointing at an endpoint that returns `401`; read List Attempts | *durable ingest · M1*. Safe either way (exact `200`; Constraint 4) |
-| RS-U08 | Resend's delivery timeout | Not stated. `[Svix]`: 15 s | Resend docs; or Attempts against a deliberately slow endpoint (Ask-first) | *durable ingest · M1*: measured ingest p99 well under 15 s, from the burst run (slice 3, [architecture.md](architecture.md#open-questions-owed-by-slice)) |
-| RS-U09 | How both signatures appear in `svix-signature` during the rotation overlap | RS-04 doesn't say. The `[Svix]` format suggests two space-separated `v1` entries. Security-relevant | Ask-first: rotate a test webhook's secret and capture one delivery's headers | *recovery · M1*. Safe either way (per-secret loop; unit test with old, new and both) |
-| RS-U10 | The top-level `created_at` stays the same across retries and replays, and tracks when the event happened | RS-26 says "when the webhook event was created" and nothing more | Compare stored `created_at` across a replay (same experiment as RS-U01) | *foundations · M1* (the projection uses it at most as a tie-break); *recovery · M1* experiment |
-| RS-U11 | `email.bounced` can follow `email.delivered` | Not stated. `email.complained` always does (RS-29) | Resend docs or support | *foundations · M1*. Precedence property-tested under both answers |
-| RS-U12 | What an `email.bounced` with `bounce.type: Temporary` means for deliverability | RS-28 contradicts itself | Resend docs or support; the `bounced@resend.dev` payload (Ask-first send) | *foundations · M1* (hard bounce only on `Permanent`) |
-| RS-U13 | New events take ≈ 8 s to appear in List Events | Community only (ingester#12) | Read-only: timestamps of the first real deliveries vs their List Events visibility | *recovery · M1*. Safe if the grace window (10 min default) holds |
-| RS-U14 | `resend.dev` test addresses are exempt from the own-address rule (RS-34) | Every quickstart sends `onboarding@resend.dev` → `delivered@resend.dev`, but no page states the exemption | Ask-first: that one send. It is also the verify-stage send | *durable ingest · M1* (verify stage) |
-| RS-U15 | The webhook event sequence each test address produces | RS-32 describes scenarios, not event types | Ask-first sends observed through `resend webhooks listen` | *local v0 · M1* (simulator fixtures mirror real sequences) |
-| RS-U16 | Idempotency keys are scoped per team, not per API key | Not stated | Resend docs or support | *reactions · M2*. Safe with one sending key |
-| RS-U17 | Which status a deleted or invalid key gets on non-sending endpoints | The errors page says `400`; the introduction says `401`/`403` | Read-only: one call with a revoked test key | *recovery · M1*. Safe either way (all three map to one config error) |
-| RS-U18 | `resend webhooks listen` leaves its temporary webhook behind if killed without Ctrl+C | Not stated | Read-only `GET /webhooks` after an interrupted session | *local v0 · M1* (dev guide checks after each session) |
-| RS-U19 | `email.suppressed` always carries `data.suppressed` | It appears in the example only | A real `suppressed@resend.dev` payload (Ask-first send) | *foundations · M1* (Zod field optional) |
-| RS-U20 | A **replayed** delivery carries a fresh `svix-timestamp`, so it passes the 5-minute window (RS-02, RS-03) | RS-16 says a replay "queues one additional delivery"; no page says it is re-signed at send time. If it keeps the original timestamp, ingest rejects every replay older than 5 min and recovery fails ([architecture.md → ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)) | The RS-U01 experiment: the replayed delivery passes verification | *recovery · M1*. MUST be settled |
-| RS-U21 | On a multi-recipient email, a per-recipient event (`bounced`, `complained`, `delivered`) lists only the **impacted** recipients in `data.to` | RS-27 says "Array of impacted recipient email addresses"; no page shows a multi-recipient payload. If the list were complete, no projection could pin a bounce to one recipient, and a healthy co-recipient would read `hard_bounced` | Ask-first: one send to `delivered@resend.dev` and `bounced@resend.dev` together, observed through `resend webhooks listen` (rides on the RS-U15 sends) | *local v0 · M1*. MUST be settled. `email_recipients` folds each event's own `to`, so it is exact under the documented reading ([data-modeling.md](data-modeling.md#email_recipients--outcome-per-email-and-recipient)) |
+| RS-U01 | A **replay** carries the same `svix-id` as the original delivery | No Resend page says so. RS-08 covers retries; Svix covers "resent due to a previous failure"; community-verified in [ingester#12](https://github.com/resend/resend-webhooks-ingester/issues/12). If false, a replayed event lands under a new id, the original stays "missing", and reconcile replays it forever: duplicate effects | Ask-first: replay one already-stored event on the owner's webhook and compare `svix_id`s | [slice 4](build-checklist.md#4--recovery). MUST be settled, not proved safe either way |
+| RS-U02 | The List Events `id` equals the delivered `svix-id` header | Same `msg_` shape; no page states it. The reconcile id diff depends on it | Read-only, after the first real delivery: compare the stored `svix_id` with List Events ids | [slice 4](build-checklist.md#4--recovery). MUST be settled |
+| RS-U03 | How far back **List Events** reaches | Only email data retention (30 days, RS-31) is stated. It bounds the longest recoverable outage and kill-switch gaps | Read-only: page the owner's webhook to its oldest event and record it. Repeat once the webhook is older than 30 days | [slice 4](build-checklist.md#4--recovery) confirms reach ≥ the default lookback; re-measured in [slice 7](build-checklist.md#7--polish-and-retention) before M2 closes |
+| RS-U04 | A replay to a **disabled** webhook is not delivered (accepted, rejected or dropped?) | RS-11 says delivery attempts stop; replays aren't named | Ask-first: disable a test webhook, replay one event, read the response and List Attempts | [slice 4](build-checklist.md#4--recovery). Safe either way (status checked first) |
+| RS-U05 | What happens to events created while a webhook is disabled, and whether re-enabling redelivers them | Not stated | Ask-first: disable, send one test email, re-enable, then List Events and Attempts | [slice 4](build-checklist.md#4--recovery). Safe either way (reconcile after re-enable) |
+| RS-U06 | The auto-disable threshold | "Keeps failing" is unquantified. `[Svix]` default: 5 days of failures | Resend docs or support | [slice 4](build-checklist.md#4--recovery). Safe either way (status read every run) |
+| RS-U07 | Which responses count as failure besides "not 200": other 2xx, and whether any 4xx (`401`, `410`) stops retries | RS-10's three sources disagree | Ask-first: a test webhook pointing at an endpoint that returns `401`; read List Attempts | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (exact `200`; Constraint 4) |
+| RS-U08 | Resend's delivery timeout | Not stated. `[Svix]`: 15 s | Resend docs; or Attempts against a deliberately slow endpoint (Ask-first) | [slice 3](build-checklist.md#3--operations-and-evidence-on-aws): measured ingest p99 well under 15 s, from the burst run |
+| RS-U09 | How both signatures appear in `svix-signature` during the rotation overlap | RS-04 doesn't say. The `[Svix]` format suggests two space-separated `v1` entries. Security-relevant | Ask-first: rotate a test webhook's secret and capture one delivery's headers | [slice 4](build-checklist.md#4--recovery). Safe either way (per-secret loop; unit test with old, new and both) |
+| RS-U10 | The top-level `created_at` stays the same across retries and replays, and tracks when the event happened | RS-26 says "when the webhook event was created" and nothing more | Compare stored `created_at` across a replay (same experiment as RS-U01) | [slice 0](build-checklist.md#0--foundations) (the projection uses it at most as a tie-break); experiment in [slice 4](build-checklist.md#4--recovery) |
+| RS-U11 | `email.bounced` can follow `email.delivered` | Not stated. `email.complained` always does (RS-29) | Resend docs or support | [slice 0](build-checklist.md#0--foundations). Precedence property-tested under both answers |
+| RS-U12 | What an `email.bounced` with `bounce.type: Temporary` means for deliverability | RS-28 contradicts itself | Resend docs or support; the `bounced@resend.dev` payload (Ask-first send) | [slice 0](build-checklist.md#0--foundations) (hard bounce only on `Permanent`) |
+| RS-U13 | New events take ≈ 8 s to appear in List Events | Community only (ingester#12) | Read-only: timestamps of the first real deliveries vs their List Events visibility | [slice 4](build-checklist.md#4--recovery). Safe if the grace window (10 min default) holds |
+| RS-U14 | `resend.dev` test addresses are exempt from the own-address rule (RS-34) | Every quickstart sends `onboarding@resend.dev` → `delivered@resend.dev`, but no page states the exemption | Ask-first: that one send. It is also the verify-stage send | [slice 2](build-checklist.md#2--durable-ingest-on-aws) (verify stage) |
+| RS-U15 | The webhook event sequence each test address produces | RS-32 describes scenarios, not event types | Ask-first sends observed through `resend webhooks listen` | [slice 1](build-checklist.md#1--local-ledger-and-read-path) (simulator fixtures mirror real sequences) |
+| RS-U16 | Idempotency keys are scoped per team, not per API key | Not stated | Resend docs or support | [slice 6](build-checklist.md#6--reactions). Safe with one sending key |
+| RS-U17 | Which status a deleted or invalid key gets on non-sending endpoints | The errors page says `400`; the introduction says `401`/`403` | Read-only: one call with a revoked test key | [slice 4](build-checklist.md#4--recovery). Safe either way (all three map to one config error) |
+| RS-U18 | `resend webhooks listen` leaves its temporary webhook behind if killed without Ctrl+C | Not stated | Read-only `GET /webhooks` after an interrupted session | [slice 1](build-checklist.md#1--local-ledger-and-read-path) (dev guide checks after each session) |
+| RS-U19 | `email.suppressed` always carries `data.suppressed` | It appears in the example only | A real `suppressed@resend.dev` payload (Ask-first send) | [slice 0](build-checklist.md#0--foundations) (Zod field optional) |
+| RS-U20 | A **replayed** delivery carries a fresh `svix-timestamp`, so it passes the 5-minute window (RS-02, RS-03) | RS-16 says a replay "queues one additional delivery"; no page says it is re-signed at send time. If it keeps the original timestamp, ingest rejects every replay older than 5 min and recovery fails ([architecture.md → ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)) | The RS-U01 experiment: the replayed delivery passes verification | [slice 4](build-checklist.md#4--recovery). MUST be settled |
+| RS-U21 | On a multi-recipient email, a per-recipient event (`bounced`, `complained`, `delivered`) lists only the **impacted** recipients in `data.to` | RS-27 says "Array of impacted recipient email addresses"; no page shows a multi-recipient payload. If the list were complete, no projection could pin a bounce to one recipient, and a healthy co-recipient would read `hard_bounced` | Ask-first: one send to `delivered@resend.dev` and `bounced@resend.dev` together, observed through `resend webhooks listen` (rides on the RS-U15 sends) | [slice 1](build-checklist.md#1--local-ledger-and-read-path). MUST be settled. `email_recipients` folds each event's own `to`, so it is exact under the documented reading ([data-modeling.md](data-modeling.md#email_recipients--outcome-per-email-and-recipient)) |
 
 ## Sources
 

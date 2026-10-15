@@ -213,7 +213,7 @@ below was ratified by the owner on 2026-10-15.
 8. **Evidence.** A CDK assertion test proves the budget, the notifications and the kill-switch wiring exist.
    A recorded **trip drill** (publish to the trip topic, observe each throttle, re-arm, reconcile) proves
    they work ([features.md → Operations](features.md#operations), [CBL-04](check-before-launch.md)).
-   Owed by *durable ingest · M1*.
+   Owed by [slice 2](build-checklist.md#2--durable-ingest-on-aws).
 
 ## Teardown
 
@@ -233,7 +233,7 @@ tears down ([features.md → tear down](features.md#adopter-lifecycle)). This li
 | SNS email subscription | Deleted with its topic | Nothing to do |
 
 **Evidence:** a post-destroy listing of stack-tagged resources and of `/aws/lambda/*` log groups
-finds nothing billable ([features.md → tear down](features.md#adopter-lifecycle)) · *durable ingest · M1*.
+finds nothing billable ([features.md → tear down](features.md#adopter-lifecycle)) · [slice 2](build-checklist.md#2--durable-ingest-on-aws).
 
 ## Constraints and sharp edges
 
@@ -270,13 +270,13 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 
 | Id | Claim | Why unsettled | What would settle it | Owed by |
 | --- | --- | --- | --- | --- |
-| AWS-U01 | `AWS::Budgets::Budget` deploys from a us-east-2 stack, and publishes to a us-east-2 SNS topic | The Budgets endpoint is listed in us-east-1 only, among US regions (AWS-35). The CloudFormation page states no restriction | The first guardrails deploy, then a forced low-threshold notification that reaches email and the trip topic (CBL-04). Fallback: deploy the guardrails stack to us-east-1, with the kill switch acting on us-east-2 | *durable ingest · M1*. MUST be settled |
-| AWS-U02 | An HTTP API route throttle of `0` rejects every request, and throttled requests are not billed | No page states either (AWS-14). If not, a flood keeps billing API Gateway after a trip | The trip drill: send requests after the trip, read the status codes, and read API Gateway usage in Cost Explorer. Fallback: the lowest throttle that is accepted, with its worst-case spend stated | *durable ingest · M1*. MUST be settled |
-| AWS-U03 | ESM polling of an idle queue stays inside the SQS free tier (est. 0.13–0.65M requests/month) | No page states the poll rate (AWS-04, AWS-24). The estimate assumes back-to-back 20 s long polls by 1–5 pollers | 30 idle days: SQS request usage in Cost Explorer | *durable ingest · M1*. Safe either way (≤ USD 0.26/month at 5 pollers) |
-| AWS-U04 | When an HTTP API base64-encodes the request body | Only the function URL page states a rule (AWS-01) | Read `isBase64Encoded` on the first real Resend delivery | *durable ingest · M1*. Safe either way (decode when `true`; unit test both) |
-| AWS-U05 | The owner's account concurrency quota | New-account quotas are reduced and unpublished (AWS-16) | `aws lambda get-account-settings` before the first deploy (read-only) | *durable ingest · M1*. Safe either way (no reserved concurrency except the kill switch's `0`; `MaximumConcurrency` ≤ quota) |
-| AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | *durable ingest · M1*. Safe on cost (no charge while pending, AWS-11) |
-| AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change | The first month's bill | *durable ingest · M1*. Safe either way (≤ USD 0.30/month at idle) |
+| AWS-U01 | `AWS::Budgets::Budget` deploys from a us-east-2 stack, and publishes to a us-east-2 SNS topic | The Budgets endpoint is listed in us-east-1 only, among US regions (AWS-35). The CloudFormation page states no restriction | The first guardrails deploy, then a forced low-threshold notification that reaches email and the trip topic (CBL-04). Fallback: deploy the guardrails stack to us-east-1, with the kill switch acting on us-east-2 | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
+| AWS-U02 | An HTTP API route throttle of `0` rejects every request, and throttled requests are not billed | No page states either (AWS-14). If not, a flood keeps billing API Gateway after a trip | The trip drill: send requests after the trip, read the status codes, and read API Gateway usage in Cost Explorer. Fallback: the lowest throttle that is accepted, with its worst-case spend stated | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
+| AWS-U03 | ESM polling of an idle queue stays inside the SQS free tier (est. 0.13–0.65M requests/month) | No page states the poll rate (AWS-04, AWS-24). The estimate assumes back-to-back 20 s long polls by 1–5 pollers | 30 idle days: SQS request usage in Cost Explorer | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.26/month at 5 pollers) |
+| AWS-U04 | When an HTTP API base64-encodes the request body | Only the function URL page states a rule (AWS-01) | Read `isBase64Encoded` on the first real Resend delivery | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (decode when `true`; unit test both) |
+| AWS-U05 | The owner's account concurrency quota | New-account quotas are reduced and unpublished (AWS-16) | `aws lambda get-account-settings` before the first deploy (read-only) | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (no reserved concurrency except the kill switch's `0`; `MaximumConcurrency` ≤ quota) |
+| AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe on cost (no charge while pending, AWS-11) |
+| AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change | The first month's bill | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.30/month at idle) |
 | AWS-U08 | `SELECT … FOR UPDATE` locks taken in a Data API transaction hold across its later calls | AWS-46 says connections are pooled and `DISCARD ALL` runs between uses. No page says a transaction is pinned to one connection | A two-transaction lock test against a real fallback cluster | Not owed while Neon holds. The ADR that switches to the Aurora fallback MUST settle it ([integrations.md](integrations.md#decision--neon)) |
 
 ## Sources

@@ -119,7 +119,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 10 — `build-checklist.md`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** none needed; slice IDs, order and the SDK read path were settled in step 7. Back-fill also covered aws.md and integrations.md. Only `wf-before-propose-check` could be dry-run (scope OK on 2B); the two post-propose scripts need `openspec/` (step 15).
 - **Produces:** [build-checklist.md](build-checklist.md) — one card per slice, in the exact format the `wf-*` scripts parse.
 - **Depends on:** 7, 8, 9.
 - **Back-fill:** replace the phase-named slice pointers in [features.md](features.md) (`· recovery · M1`) with card anchors (`build-checklist.md#<id>--<kebab-title>`). Do the same for the *Owed by* column in [resend.md → \[Unverified\]](resend.md#unverified) and the slice names in [about.md → Open questions](about.md#open-questions). Each owing card's done-when MUST name the `RS-UNN` it settles, or proves safe either way, along with its Ask-first experiment.

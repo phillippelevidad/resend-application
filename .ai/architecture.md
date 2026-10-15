@@ -377,11 +377,10 @@ claims, the demo and the deploy coherent.
 | 9 — Real-AWS burst numbers | p50/p99 ingest latency, queue drain time and AWS cost of one 10k burst in `docs/results.md` | The recorded burst run and its Cost Explorer line | M3 |
 | 10 — Learning log | AWS and distributed-systems decisions, each linked to its ADR, test or measured number | The log's links resolve | M3 |
 
-**Phase-name mapping** for the pointers in [features.md](features.md), [resend.md](resend.md),
-[aws.md](aws.md), [integrations.md](integrations.md) and [about.md](about.md) until step 10
-replaces them with card anchors: *foundations* → 0 · *local v0* → 1 · *durable ingest* → 2, or 3
-for alarms, runbook, DLQ operations, burst and chaos · *recovery* → 4 · *interfaces* → 5 ·
-*reactions* → 6 · *polish* → 7.
+The phase names of [idea §7](../docs/idea.md#7-implementation-plan) map to slices as
+*foundations* → 0 · *local v0* → 1 · *durable ingest* → 2 and 3 · *recovery* → 4 · *interfaces* →
+5 · *reactions* → 6 · *polish* → 7; the other `.ai/` docs link the
+[build-checklist.md](build-checklist.md) cards directly.
 
 ## Open questions owed by slice
 
@@ -400,8 +399,8 @@ account are Ask-first.
 | 7 | — | RS-U03 (re-measured before M2 closes) |
 | Not owed | AWS-U08, PG-U05: the ADR that switches to the Aurora fallback settles them | — |
 
-**Moved, with reasons:** RS-U08 from *durable ingest* to slice 3, because the measured ingest p99
-comes from the burst run there. PG-U03 from *durable ingest* to slice 4, because the hourly
+**Moved, with reasons:** RS-U08 from slice 2 to slice 3, because the measured ingest p99
+comes from the burst run there. PG-U03 from slice 2 to slice 4, because the hourly
 reconciler is the first idle waker: before it, an idle stack never opens a connection (ADR-015).
 RS-U20 is new in this step (a replayed delivery passes the 5-minute timestamp window); it rides on
 the RS-U01 experiment. RS-U21 is new in bootstrap step 8 (per-event `data.to` lists only the

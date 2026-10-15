@@ -25,7 +25,7 @@ Manager, [Secrets layout](#secrets-layout))
    and any CLI-triggered call share it. *Why 2:* Ledger is a background consumer of the team's
    budget. At 2 req/s, recovering a 10,000-event gap (100 List Events pages plus 10,000 replays,
    RS-14, RS-16) takes ≈ 85 min, which is acceptable for recovery work. Evidence: limiter unit
-   tests (rate, yield on low `remaining`, `retry-after` on `429`) · *recovery · M1*.
+   tests (rate, yield on low `remaining`, `retry-after` on `429`) · [slice 4](build-checklist.md#4--recovery).
 3. **Default reconcile cadence: hourly** (owner, 2026-10-15). Resend's own retries cover the first
    ≈ 27.6 h (RS-09), so the cadence sets only how quickly loss is detected. It is also the
    database wake budget ([Postgres host → Cadence](#cadence-and-the-database)). A run has a time
@@ -67,7 +67,7 @@ boundary, each USD 0.40/month (AWS-11):
 | `ledger/webhook-signing-secrets` | The configured set of `whsec_` secrets (a JSON array, so rotation adds one before retiring one, RS-04) | `apps/ingest` only | M1 |
 | `ledger/resend-api-key` | A `full_access` key, the only kind the Headless Webhook API accepts (RS-18) | `apps/reconciler` only | M1 |
 | `ledger/database` | A JSON object holding the pooled Postgres connection string ([Decision](#decision--neon)) and the deployer-held address-hash key ([data-modeling.md → PII & retention](data-modeling.md#pii--retention)) | worker, dispatcher, reconciler, read API | M1 |
-| `ledger/resend-sending-key` | A `sending_access` key, optionally scoped to one domain with `domain_id` (RS-18) | `apps/dispatcher` only | *reactions · M2* |
+| `ledger/resend-sending-key` | A `sending_access` key, optionally scoped to one domain with `domain_id` (RS-18) | `apps/dispatcher` only | M2 ([slice 6](build-checklist.md#6--reactions)) |
 | `ledger/simulator-signing-secret` | The simulator's signing secret; created only by an off-by-default deploy flag ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | `apps/ingest` only | Slice 3, owner's deployment only |
 
 That is USD 1.20/month in M1 and 1.60 from M2 ([aws.md → Cost shape](aws.md#cost-shape)). Secret
@@ -222,10 +222,10 @@ Ids are stable: never renumber, never reuse.
 
 | Id | Claim | Why unsettled | What would settle it | Owed by |
 | --- | --- | --- | --- | --- |
-| PG-U01 | Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box. Whether it covers AWS regions, and what counts as activity, is unstated. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | *durable ingest · M1*. MUST be settled |
-| PG-U02 | `SELECT … FOR UPDATE` locks hold for the whole transaction through Neon's transaction-mode pooler | Inferred from PgBouncer's definition. Neon's page doesn't name it | A deployed concurrency test: two transactions on one `email_id` through the pooled URL serialize | *durable ingest · M1*. MUST be settled |
-| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month) | An estimate from the 5-min suspend window | Neon's usage page after 30 idle days, recorded beside [aws.md → Cost shape](aws.md#cost-shape) | *recovery · M1* (moved from durable ingest: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)) |
-| PG-U04 | A module-scope connection survives the compute suspending under it | Neon doesn't say what happens to open client connections at suspend | A worker or tick test after > 5 min idle | *durable ingest · M1*. Safe either way (a connection error is retryable; reconnect on error) |
+| PG-U01 | Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box. Whether it covers AWS regions, and what counts as activity, is unstated. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
+| PG-U02 | `SELECT … FOR UPDATE` locks hold for the whole transaction through Neon's transaction-mode pooler | Inferred from PgBouncer's definition. Neon's page doesn't name it | A deployed concurrency test: two transactions on one `email_id` through the pooled URL serialize | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
+| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month) | An estimate from the 5-min suspend window | Neon's usage page after 30 idle days, recorded beside [aws.md → Cost shape](aws.md#cost-shape) | [slice 4](build-checklist.md#4--recovery) (moved from slice 2: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)) |
+| PG-U04 | A module-scope connection survives the compute suspending under it | Neon doesn't say what happens to open client connections at suspend | A worker or tick test after > 5 min idle | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (a connection error is retryable; reconnect on error) |
 | PG-U05 | Drizzle's `aws-data-api/pg` driver supports `db.transaction()` | Neither the connect page nor the transactions page says | Drizzle's source or a test against a real cluster | Not owed while Neon holds. The ADR that switches to the fallback settles it |
 
 ## Open decisions
