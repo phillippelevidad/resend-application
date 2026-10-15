@@ -155,7 +155,8 @@ These answers are inputs to steps 1–2 and are not re-asked:
 
 ### Step 15 — Install OpenSpec
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
+- **Owner input (2026-10-15):** `@fission-ai/openspec` 1.14.2 as a pinned root devDependency; `openspec init --tools agents,claude --profile core`, so the skills land in the canonical `.agents/skills/` and `.claude/commands/opsx/` keeps the `/opsx:*` names; the generated files are committed, and customization goes through `config.yaml` only. Decided from the docs: `wf-after-propose-check` now calls `npx --no-install openspec validate`, like the after-apply gate, so it no longer depends on a global install.
 - **Produces:** `openspec/` (`changes/`, `specs/`, `config.yaml` injecting the `.ai/` read order and per-artifact rules). Required by the post-propose and post-apply gates.
 - **Depends on:** 13, 14. **Ask-first** (new dependency).
 
