@@ -9,3 +9,7 @@ it missed.
 > It's an independent project, not affiliated with or endorsed by Resend.
 
 **Status:** idea stage. Start with the [idea doc](docs/idea.md).
+
+## License
+
+[MIT](LICENSE)
