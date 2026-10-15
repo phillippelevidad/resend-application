@@ -11,3 +11,6 @@ node_modules/
 
 # Claude skills (synced from .agents/skills via pnpm sync-skills)
 .claude/skills
+
+# Agent worktrees (isolated checkouts for parallel sessions)
+.claude/worktrees/
