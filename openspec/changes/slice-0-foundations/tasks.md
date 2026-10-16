@@ -115,7 +115,7 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 10. Walkthrough
 
-- [ ] 10.1 Write `openspec/changes/slice-0-foundations/WALKTHROUGH.md` in the format of `.agents/skills/rsa-manual-test/references/walkthrough-format.md`, following PP §21. Verify: as stated after the outline below.
+- [x] 10.1 Write `openspec/changes/slice-0-foundations/WALKTHROUGH.md` in the format of `.agents/skills/rsa-manual-test/references/walkthrough-format.md`, following PP §21. Verify: as stated after the outline below.
   - Before you start: `pnpm install`, Docker running. Ask-first steps: none.
   - Path A: secret scan, walked as Reviewer.
   - Path B: link check, walked as Application developer. B1 is the README run; B2 is the temp `probe.md` missing-anchor case.
@@ -125,11 +125,11 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
   - "What this walk cannot reach today" table: the local `pnpm verify` run and the suites go to `wf-after-apply-check`; `pnpm sim` against a live process goes to slice 1.
 
   Verify: every card `UI surfaces` entry is reached; both personas walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; no numbered line carries a blocked word without `→ slice N`.
-- [ ] 10.2 Verify all ten `Ships` boxes on the card are ticked. The `Status` line stays `[~]` until the walk passes (PP §22; see Workflow follow-up). Then commit and push. Verify: `git status --short` is empty after the push.
+- [x] 10.2 Verify all ten `Ships` boxes on the card are ticked. The `Status` line stays `[~]` until the walk passes (PP §22; see Workflow follow-up). Then commit and push. Verify: `git status --short` is empty after the push.
 
 ## 11. Gate
 
-- [ ] 11.1 Run `pnpm exec openspec validate slice-0-foundations --type change --strict`. Verify: it reports the change is valid.
+- [x] 11.1 Run `pnpm exec openspec validate slice-0-foundations --type change --strict`. Verify: it reports the change is valid.
 - [ ] 11.2 After the final push, run `gh run list --branch slice-0-foundations --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `secrets` and `links` stages passing. Report an in-progress run as in progress.
 - [ ] 11.3 Run `pnpm verify` in the background, redirected to a log. Verify: it exits 0 and ends `VERIFY PASSED`.
 
