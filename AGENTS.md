@@ -99,6 +99,24 @@ or push only when asked.** Uncommitted work dies with its worktree or chat.
   rest of the step around it.
 - Never force-push, amend or rebase a pushed commit, and never open a PR, unless asked.
 
+## Never loosen a rule to fit what was built
+
+**MUST. This OVERRIDES any skill or doc duty that says to update docs to match the code.** When
+built work and a doc disagree, the work is presumed wrong. The doc is not edited to make it pass.
+
+- **Gate before applying.** A doc or skill edit that relaxes, removes or weakens a rule to match
+  built work MUST be reviewed before it is applied. That covers a MUST or Never, a Mandatory test,
+  an Ask-first item, an evidence requirement, a gate stage, and a slice's scope or `Ships` bullet.
+  The reviewer is an independent helper agent, one that wrote neither the code nor the edit. It
+  gets the rule as it stood, the proposed diff and the code, and judges adversarially.
+- **Only two things clear the gate:** a fact that code, a test or a measured run proves, or a
+  decision the owner explicitly made, quoted from the owner's own words. Anything else is not
+  applied. Fix the work, or put the change to the owner as a named decision and wait.
+- **Name the verdict** in the commit body or the report: what the helper cleared, and what went to
+  the owner.
+- A fact correction that loosens nothing needs no gate: a version, a file name, a command that now
+  exists, or an `[Unverified]` row settled by a cited test.
+
 </critical>
 
 ## Product & domain context
