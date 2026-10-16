@@ -1,0 +1,175 @@
+# Command anatomy
+
+How `apps/cli` is put together. The sketches are the convention's shape, not an API: check the
+installed `commander`, `@commander-js/extra-typings` and the SDK's real signatures first
+([version rule](../../pp-general/SKILL.md#check-the-installed-version-not-memory)). File names
+follow [pp-general → Role suffixes](../../pp-general/references/coding-standards.md#role-suffixes).
+
+```text
+apps/cli/src/
+  main.ts                 composition root: env, SDK client, program, exit mapping
+  cli.config.ts           Zod schema for LEDGER_URL and LEDGER_TOKEN
+  create-program.ts       builds the configured root and registers every command
+  create-output.ts        the one writer of stdout and stderr
+  run-operation.ts        unwraps { data, error } and sets the exit code
+  wait-for-run.ts         the poll loop and its interval constant (slice 4)
+  commands/<noun>-<verb>.cli.ts
+```
+
+## The composition root
+
+`main.ts` holds the only `process.env` read, and `create-program.ts` takes everything as
+arguments, so a test builds the same program over a fake SDK and in-memory streams
+([cli-tests.md](cli-tests.md)).
+
+```ts
+// apps/cli/src/main.ts
+import { CommanderError } from '@commander-js/extra-typings';
+import { createLedgerClient } from '@ledger/sdk';
+import { loadConfig } from '@ledger/shared';
+import { cliConfig } from './cli.config.ts';
+import { createOutput } from './create-output.ts';
+import { createProgram } from './create-program.ts';
+
+const output = createOutput({ stdout: process.stdout, stderr: process.stderr });
+// Built on first use, in the action, so `ledger --help` needs no LEDGER_URL.
+const client = () => createLedgerClient(loadConfig(cliConfig, process.env));
+const setExitCode = (code: number) => {
+  process.exitCode = code;
+};
+const program = createProgram({ client, output, setExitCode });
+
+try {
+  await program.parseAsync(process.argv);
+} catch (err) {
+  setExitCode(exitCodeFor(err, output));
+}
+```
+
+`setExitCode` is the only exit path: tests pass a recorder instead, so no test reads or resets the
+global `process.exitCode`.
+
+`createLedgerClient` stands for the SDK's factory (its name is pp-backend's and slice 1's). The
+exit mapping is the CLI's one error mapper
+([one mapping per surface](../../pp-general/references/errors.md#one-mapping-per-surface)):
+
+| Caught | Exit | Output |
+| --- | --- | --- |
+| `CommanderError` with `exitCode` `0` (`--help`) | `0` | Commander already wrote it |
+| Any other `CommanderError` | `2` | Commander already wrote its message to stderr |
+| The config loader's error (a missing or invalid variable) | `2` | Its message: the variable's name, never its value ([config](../../pp-general/references/config-and-env.md#parse-once-at-the-composition-root)) |
+| Anything else | `1` | One constant stderr line; never the exception's text, stack or `cause`. Whether it also prints `internal_error` under `--json` waits on an owner decision: the registry names `packages/api` as that code's only raiser ([Error codes](../../../../.ai/api-contract.md#error-codes)) |
+
+Registry errors never reach this mapper: `run-operation.ts` handles them, because the SDK returns
+them instead of throwing (owner, O-10).
+
+**Why `exitOverride()`:** commander exits `1` on a usage error by default (`error()` defaults
+`exitCode` to `1`; [source](https://github.com/tj/commander.js/blob/master/lib/command.js)), and
+the contract wants `2`. With `exitOverride()`, commander throws a `CommanderError` carrying
+`exitCode` and `code` instead of calling `process.exit()`; help exits `0`
+([README](https://github.com/tj/commander.js), "Override exit and output handling").
+
+```ts
+// apps/cli/src/create-program.ts
+import { Command } from '@commander-js/extra-typings';
+
+export function createProgram(deps: CliDeps): Command {
+  const program = new Command('ledger')
+    .exitOverride()
+    .configureOutput({ writeOut: deps.output.out, writeErr: deps.output.err });
+  // Subcommands made with .command() copy exitOverride and configureOutput from here;
+  // addCommand() copies nothing, so it is never used.
+  emailGetCli(program, deps);
+  const token = program.command('token');
+  tokenCreateCli(token, deps);
+  return program;
+}
+```
+
+`.command()` calls `copyInheritedSettings`, which copies the exit callback, the output
+configuration and the help settings; `addCommand()` does not ([source](https://github.com/tj/commander.js/blob/master/lib/command.js)).
+Configure the root first: the copy happens when the subcommand is created. A group (`token`,
+`dlq`, `worker`) is a plain `.command()` with no action.
+
+## A command
+
+```ts
+// apps/cli/src/commands/email-get.cli.ts
+import type { Command } from '@commander-js/extra-typings';
+import { runOperation } from '../run-operation.ts';
+
+export function emailGetCli(parent: Command, deps: CliDeps): void {
+  parent
+    .command('email')
+    .argument('<email_id>')
+    .option('--json', 'print the result or the error object as JSON')
+    .action(async (emailId, options) => {
+      await runOperation(deps, options, () => deps.client().emails.get({ email_id: emailId }), renderEmail);
+    });
+}
+```
+
+- **One chain per command**: extra-typings infers `emailId` and `options` only from the chain
+  ([README](https://github.com/commander-js/extra-typings)). How a typed `parent` is passed in is
+  checked against the installed types.
+- **Arguments are passed through as strings.** An `argParser` only converts to the SDK's type (an
+  integer `--limit`) and throws `InvalidArgumentError` on failure, which is exit `2`. Ranges and
+  formats stay with the API.
+- **The description** says what the command shows. It names no behavior Ledger does not implement.
+- `renderEmail` is the human layout (the slice 1 pre-proposal's). It reads the masked `data` only.
+
+## Unwrapping
+
+```ts
+// apps/cli/src/run-operation.ts
+export async function runOperation<T>(deps, options: { json?: true }, call: () => Promise<SdkResult<T>>, render: (data: T) => string) {
+  const { data, error } = await call();
+  if (error) {
+    if (options.json) deps.output.json({ error });
+    else deps.output.failure(error.message, error.hint);
+    deps.setExitCode(1);
+    return;
+  }
+  if (options.json) deps.output.json(data);
+  else deps.output.result(render(data));
+}
+```
+
+The SDK's `error` is the inner object `{ code, message, hint, docs }`
+([pp-backend → sdk.md](../../pp-backend/references/sdk.md)); it is wrapped once, here, into the
+[error shape](../../../../AGENTS.md#error-shape). Success leaves the exit code at `0`; nothing
+calls `process.exit()`.
+
+## The output writer
+
+`create-output.ts` is the only file that writes to stdout or stderr. It exposes `out` and `err`
+(raw, for commander), `json(value)` (`JSON.stringify` plus a newline, to stdout, never styled),
+`result(text)` (stdout), `failure(message, hint)` (stderr) and `notice(text)` (stderr).
+
+- Colour goes through `styleText(format, text, { stream })` with the stream being written, so the
+  TTY check and `NO_COLOR` are Node's ([util.styleText](https://nodejs.org/docs/latest-v24.x/api/util.html#utilstyletextformat-text-options);
+  `stream` defaults to `process.stdout`, so a stderr line MUST pass `process.stderr`).
+- In tests the streams are in-memory writers, which are not TTYs, so output is uncoloured.
+
+## Waiting
+
+```ts
+// apps/cli/src/wait-for-run.ts
+import { setTimeout as sleep } from 'node:timers/promises';
+
+// Each poll costs one HTTP API request, one Lambda invocation and one Postgres read, and counts
+// against the HTTP API throttle (AWS-14). Value: slice 4 pre-proposal.
+export const RUN_POLL_INTERVAL_MS = /* slice 4 */;
+```
+
+- `ledger reconcile` declares `--no-wait` alone, so `options.wait` defaults to `true` and the flag
+  sets it `false` ([README](https://github.com/tj/commander.js), "Other option types, negatable
+  boolean"; commander 15 keeps that default for a lone `--no-*` option,
+  [CHANGELOG](https://github.com/tj/commander.js/blob/master/CHANGELOG.md) 15.0.0).
+- The loop calls `reconcile.getRun` until `finished_at` is set, and stops at the run's time
+  budget otherwise (slice 4 settles how the budget is known). Each poll unwraps through
+  `runOperation`'s rules: an `error` from `getRun` ends the wait with exit `1`.
+- Progress lines, if any, go to stderr through `notice`. Under `--json`, stdout gets only the final
+  run, or the run's `error` in the error shape.
+- `sleep` is injected in tests, so a wait test runs without real time
+  ([cli-tests.md](cli-tests.md#waiting)).
