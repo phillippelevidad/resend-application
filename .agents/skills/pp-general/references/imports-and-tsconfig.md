@@ -127,10 +127,11 @@ The installed compiler is TypeScript 7.0.2 (the native compiler; root `devDepend
 ## Lint enforcement (Biome)
 
 A ban without enforcement drifts. These are configured in `biome.json` (Biome 2.5.15). The
-`noRestrictedImports` bans were observed to fire by hand with throwaway violating files in core,
-worker, aws and ingest: unproven until build-checklist slice 0's committed deliberate-violation
-fixture lands ([slice 0](../../../../.ai/build-checklist.md#0--foundations)). Check a rule name against the
-installed version before changing it ([version rule](../SKILL.md#check-the-installed-version-not-memory)).
+`packages/core` bans and the `packages/aws` override are pinned by
+[`packages/core/src/import-boundaries.test.ts`](../../../../packages/core/src/import-boundaries.test.ts),
+which runs the installed Biome with the committed `biome.json` over deliberate-violation fixtures in
+a temp directory (unit tier). The worker and ingest bans were observed to fire by hand with
+throwaway violating files. Check a rule name against the installed version before changing it ([version rule](../SKILL.md#check-the-installed-version-not-memory)).
 
 | Ban | Biome rule |
 | --- | --- |
@@ -143,11 +144,11 @@ installed version before changing it ([version rule](../SKILL.md#check-the-insta
 | An import cycle | [`suspicious/noImportCycles`](https://biomejs.dev/linter/rules/no-import-cycles/) (since v2.0.0) |
 | A relative import without its extension | [`correctness/useImportExtensions`](https://biomejs.dev/linter/rules/use-import-extensions/) (suggests `.ts` for a TS file) |
 
-None of these is in Biome's recommended set, so each is enabled explicitly. [Unverified]: how a
-folder-scoped `noRestrictedImports` entry in Biome `overrides` combines with the base ban list.
-Observed by hand: it replaces the base list rather than merging with it, so `biome.json` repeats
-each folder's full list (the deep-import pattern included); unproven until slice 0's
-deliberate-violation fixture lands. Where Biome does not carry a ban, the
+None of these is in Biome's recommended set, so each is enabled explicitly. A folder-scoped
+`noRestrictedImports` entry in Biome `overrides` replaces the base ban list rather than merging
+with it, so `biome.json` repeats each folder's full list (the deep-import pattern included):
+`import-boundaries.test.ts` pins it (in `packages/aws`, `@aws-sdk/client-sqs` raises nothing and a
+deep `@ledger/db/src/x.ts` import still raises the rule). Where Biome does not carry a ban, the
 [review greps](boundaries.md#review-greps) do.
 
 ## Engines

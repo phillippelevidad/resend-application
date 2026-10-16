@@ -18,8 +18,8 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 1. Dependencies (Ask-first, owner-approved 2026-10-16 in PP §7)
 
-- [ ] 1.1 Add `"zod": "4.6.7"` to `packages/core` `dependencies`, `"fast-check": "4.10.2"` to the `devDependencies` of `packages/core` and `sim`, and `"@ledger/core": "workspace:*"` to `sim` `dependencies` (not Ask-first, O-09). Use exact versions and nothing else. Any other package stops for the owner. Run `pnpm install`. Verify: `git diff pnpm-lock.yaml` adds only these entries and their transitive deps, and `pnpm install --frozen-lockfile` exits 0.
-- [ ] 1.2 Run `pnpm check`, then commit and push the manifests and lockfile. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 1.1 Add `"zod": "4.6.7"` to `packages/core` `dependencies`, `"fast-check": "4.10.2"` to the `devDependencies` of `packages/core` and `sim`, and `"@ledger/core": "workspace:*"` to `sim` `dependencies` (not Ask-first, O-09). Use exact versions and nothing else. Any other package stops for the owner. Run `pnpm install`. Verify: `git diff pnpm-lock.yaml` adds only these entries and their transitive deps, and `pnpm install --frozen-lockfile` exits 0.
+- [x] 1.2 Run `pnpm check`, then commit and push the manifests and lockfile. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 2. Event schemas and Resend fixtures (Ships 4, RS-U19; D11, D12)
 
@@ -83,14 +83,14 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 7. Core import boundary (Ships 7; D17)
 
-- [ ] 7.1 First, confirm Biome lints from a temp directory holding copies of `biome.json`, `packages/core/package.json` and `packages/aws/package.json`, launched as the running `node` binary on `node_modules/@biomejs/biome/bin/biome` (it did when probed on 2026-10-16). If it no longer does, stop and report. Do not commit a violating file into the tree. Verify: one run over a `pg` fixture reports `lint/style/noRestrictedImports`.
-- [ ] 7.2 Write `packages/core/src/import-boundaries.test.ts` per D17, matching diagnostic paths after normalizing `\` to `/`. In `packages/core/src/`, `pg`, `drizzle-orm`, `drizzle-orm/pg-core`, `resend` and `@aws-sdk/client-sqs` each raise `lint/style/noRestrictedImports`, and `zod` raises none. In `packages/aws/src/`, `@aws-sdk/client-sqs` raises none and a deep `@ledger/db/src/x.ts` raises it (replace semantics, as probed). Verify: `pnpm test` passes, and deleting the `packages/core/**` override from `biome.json` makes the test fail (revert after).
-- [ ] 7.3 Docs. Verify: ADR-013's evidence still names the slice 2B item, `git grep -n "unproven until slice 0" -- .agents` prints nothing, and the card's seventh `Ships` box reads `[x]`.
+- [x] 7.1 First, confirm Biome lints from a temp directory holding copies of `biome.json`, `packages/core/package.json` and `packages/aws/package.json`, launched as the running `node` binary on `node_modules/@biomejs/biome/bin/biome` (it did when probed on 2026-10-16). If it no longer does, stop and report. Do not commit a violating file into the tree. Verify: one run over a `pg` fixture reports `lint/style/noRestrictedImports`.
+- [x] 7.2 Write `packages/core/src/import-boundaries.test.ts` per D17, matching diagnostic paths after normalizing `\` to `/`. In `packages/core/src/`, `pg`, `drizzle-orm`, `drizzle-orm/pg-core`, `resend` and `@aws-sdk/client-sqs` each raise `lint/style/noRestrictedImports`, and `zod` raises none. In `packages/aws/src/`, `@aws-sdk/client-sqs` raises none and a deep `@ledger/db/src/x.ts` raises it (replace semantics, as probed). Verify: `pnpm test` passes, and deleting the `packages/core/**` override from `biome.json` makes the test fail (revert after).
+- [x] 7.3 Docs. Verify: ADR-013's evidence still names the slice 2B item, `git grep -n "unproven until slice 0" -- .agents` prints nothing, and the card's seventh `Ships` box reads `[x]`.
   - architecture.md: ADR-013 **Evidence** links the test for the lint half and keeps "sim invariants pass in local mode (slice 2B)" pending.
   - about.md: the "Biome `overrides` scoping" bullet moves to Resolved: an override's list replaces the base list, as the test pins.
   - pp-general imports-and-tsconfig.md (Lint enforcement): the `[Unverified]` / "unproven until slice 0" sentences are replaced by the verified fact and the test's path.
   - Card: tick `Ships` 7.
-- [ ] 7.4 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 7.4 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 8. Secret-scan stage (Ships 3; Ask-first image and CI stage, owner-approved 2026-10-16 in PP §7; D18)
 
