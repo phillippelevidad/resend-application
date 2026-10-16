@@ -1,0 +1,112 @@
+# Postgres harness
+
+The integration tier exists because the database enforces the rule: the unique key on `svix_id`,
+the row locks, the grants, the transaction that commits all or nothing. A mocked client proves none
+of it ([Test tiers](../../pp-workflow/SKILL.md#test-tiers)). The deployed driver is
+`drizzle-orm/node-postgres`, the one these tests use, so the tested path is the deployed path
+([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)). The harness is
+Postgres access, so it lives in `packages/db` and is exported through `@ledger/db/testing`
+([module boundaries](../../../../AGENTS.md#module-boundaries)). Schema, grants and migrations are
+[pp-database](../../pp-database/SKILL.md)'s; this file owns how tests get a database.
+
+## Lifecycle (one run)
+
+The `int` project's global setup, `packages/db/src/testing/postgres-global-setup.ts`
+([vitest-layout.md](vitest-layout.md#root-config)):
+
+1. **Start one container** with `@testcontainers/postgresql`'s `PostgreSqlContainer(image)`, the
+   image argument required and [pinned](#the-image), its database set by `.withDatabase()` to the
+   template's name, never `postgres` ([Testcontainers → PostgreSQL](https://node.testcontainers.org/modules/postgresql/)).
+   The container's user is the owner role.
+2. **Ensure the runtime role**, through the same function the deploy command calls (S-05), with a
+   password the harness generates for the run. Roles are cluster-wide, so every clone sees it.
+3. **Migrate the template** as the owner, through the one migrate entry point the deploy command
+   and the local setup command also call
+   ([pp-database → Running migrations](../../pp-database/references/migrations-and-grants.md#running-migrations)).
+   Each table-creating migration grants its DML to the runtime role, so the template carries the
+   grants. This step is how "CI applies every migration to a fresh Postgres before the integration
+   tests" holds ([slice 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path)).
+4. **Close every connection to the template, then mark it a template:**
+   `ALTER DATABASE <template> WITH is_template = true`. "No other sessions can be connected to the
+   source database while it is being copied"
+   ([Postgres → Template databases](https://www.postgresql.org/docs/current/manage-ag-templatedbs.html)).
+5. **Hand the tests what they need** with `project.provide(…)`: the owner URL of the maintenance
+   database, the runtime role's credentials and the template name. Tests read them with `inject`
+   from `vitest`; type them by augmenting `ProvidedContext`
+   ([Vitest → globalSetup](https://vitest.dev/config/globalsetup)).
+6. **Teardown** stops the container.
+
+Steps 2 and 3 are code that does not exist yet: slice 1 lands the role-and-migrate entry point in
+`packages/db` and the harness calls it; slice 2's deploy command calls the same one. Its name is the
+slice 1 pre-proposal's.
+
+**Why not `snapshot()` / `restoreSnapshot()`.** The module's restore drops the container's database
+and recreates it from the snapshot, in place
+([source](https://raw.githubusercontent.com/testcontainers/testcontainers-node/main/packages/modules/postgresql/src/postgresql-container.ts)).
+One database restored in place cannot serve files running in parallel; a clone per file can.
+
+## Per test file
+
+```ts
+// shape, not an API: slice 1 writes it
+import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
+
+let t: TestDatabase;
+beforeAll(async () => { t = await createTestDatabase(); });
+afterAll(async () => { await t.drop(); });
+```
+
+- `createTestDatabase()` runs `CREATE DATABASE "<unique name>" TEMPLATE <template>` over the owner
+  URL, then opens the file's handles: `t.db`, a Drizzle database **connected as the runtime role**,
+  which is what tests pass to repositories, commands and readers; `t.owner`, an owner connection to
+  the same clone, for [fault injection](#faults-and-concurrency) only.
+- `drop()` closes both pools, then `DROP DATABASE … WITH (FORCE)`.
+- **One clone per file, never truncated, never shared.** Tests inside a file share it, so each test
+  generates its own `svix_id`s, `email_id`s and test addresses (`delivered+<n>@resend.dev`) and
+  asserts only on its own ids. A test never depends on another test's rows or order.
+- **Grants are tested for free.** A query the runtime role may not run fails as `permission denied`
+  in the test that needs it. The slice 2 role test asserts it directly: `DELETE FROM webhook_events`
+  and `CREATE TABLE` as the runtime role are refused
+  ([slice 2](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws)).
+- `CREATE DATABASE` copies the template's tables and their grants, but not database-level `GRANT`s
+  (Postgres → Template databases). The clone keeps the default `CONNECT` for `PUBLIC`; a
+  database-level grant the deploy command adds MUST be re-applied by `createTestDatabase()`.
+
+## Faults and concurrency
+
+- **A crash between steps** (ADR-004's evidence): make a later step fail inside the real
+  transaction from `t.owner`, for example
+  `ALTER TABLE email_state ADD CONSTRAINT test_fault CHECK (false) NOT VALID`, which rejects every
+  new row while leaving existing ones alone. Run the message: it throws, and **nothing** committed
+  (no `webhook_events` row either). Drop the constraint, run the same message again: one row of
+  everything. The fault lives in the file's own clone and dies with it.
+- **Two concurrent containers** (the recipient lock order, ADR-017's two invokes): open one pool of
+  size 1 per simulated Lambda container, as production does
+  ([ADR-005](../../../../.ai/architecture.md#adr-005--postgres-only)). Interleave by observation, not
+  by sleeping: hold transaction A open, start B, poll `pg_stat_activity` from `t.owner` until B's
+  `wait_event_type` is `Lock`, then commit A, and assert the final rows.
+- **Never** a mocked client, a stubbed repository or a `vi.mock` of `pg` to fake a failure: the
+  failure has to come from Postgres for the test to prove what Postgres does.
+
+## Outage tests
+
+ADR-015's "database stopped, ESM pause requested, no message reaches the DLQ" and slice 2's health
+test "with Postgres stopped" stop the server, which would break every other file on the shared
+container. **A test that stops or breaks the server starts its own container** through the same
+setup function as the global setup (steps 1–4), stops it mid-test, and asserts the consequence.
+It is the one exception to one container per run ([Case-by-case](../SKILL.md#case-by-case)).
+
+## The image
+
+**`[Unverified]` — the Postgres major.** The harness MUST run the major the Neon project runs.
+integrations.md does not state it. Neon "currently supports Postgres 14, 15, 16, 17, and 18", and
+"You select the major version of Postgres when creating a Neon project"
+([Neon → version policy](https://neon.com/docs/postgresql/postgres-version-policy)). So the major is
+chosen once: the slice 1 pre-proposal picks it, records it in
+[integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon), and slice 2
+creates the Neon project on it. The image tag names the exact minor, never `latest` or a bare major,
+so CI runs are reproducible.
+
+`@testcontainers/postgresql` is a dev dependency of `packages/db` only, Ask-first when slice 1 adds
+it ([Permissions](../../../../AGENTS.md#permissions)). The harness needs Docker locally and in CI
+([pp-workflow → Definition of done](../../pp-workflow/references/definition-of-done.md#1--the-gate)).
