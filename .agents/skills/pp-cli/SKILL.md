@@ -32,12 +32,10 @@ pp-general; a doc beats both.
 
 ## Stack and layout
 
-- **`commander` 14 with `@commander-js/extra-typings`** ([ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack)).
+- **`commander` 15 with `@commander-js/extra-typings` 15** (owner, O-13; the slice 1 pre-proposal
+  applies it to [ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack)).
   Import `Command` from `@commander-js/extra-typings` (major and minor matching `commander`); types
   build up only through one chain per command ([README](https://github.com/commander-js/extra-typings)).
-  npm's `latest` is 15.0.0 (ES modules only; 14 gets security fixes to May 2027,
-  [CHANGELOG](https://github.com/tj/commander.js/blob/master/CHANGELOG.md)): 14 or an ADR-019
-  amendment to 15 is the slice 1 pre-proposal's call, owner-approved.
 - **`apps/cli` is `@ledger/app-cli`, `bin` `ledger`.** It imports `@ledger/sdk` and
   `@ledger/shared` (the config loader) and no other workspace package
   ([review grep 13](../pp-general/references/boundaries.md#review-greps)). How the bin starts in the
@@ -63,7 +61,7 @@ Exactly [api-contract.md → Conventions](../../../.ai/api-contract.md#conventio
 | A registry error from the SDK (`api_unavailable`, an unknown `code` and a run outcome included) | `1` | `--json`: `{ "error": { code, message, hint, docs } }` | Without `--json`: `message`, then `hint` |
 | A usage error: rejected by commander (unknown command or option, missing or excess argument, a value that does not convert to its SDK type) or a missing required variable | `2` | Nothing | Commander's message, or the variable's name |
 | `--help` | `0` | Help | Nothing |
-| An unexpected throw (a defect) | `1` | Nothing | One constant line |
+| An unexpected throw (a defect) | `1` | `--json`: the `internal_error` object (O-12) | Without `--json`: one constant line |
 
 - **Unwrap once.** `const { data, error } = await ledger.<resource>.<verb>(…)` (the SDK's return
   style, owner, O-10; [pp-backend → sdk.md](../pp-backend/references/sdk.md)). `error` is printed as
@@ -84,20 +82,10 @@ Exactly [api-contract.md → Conventions](../../../.ai/api-contract.md#conventio
 
 ## Waiting on a `202`
 
-- **A command waits when its Surfaces line names `--no-wait`**: today only `ledger reconcile`
-  ([reconcile.start](../../../.ai/api-contract.md#reconcilestart)), polling `reconcile.getRun`.
-  `--no-wait` prints the `202` result and exits `0`. A finished run with an `error` exits `1` with
-  it in the error shape; under `--json` only the final document is printed.
-- **The poll interval is one constant with its reason** beside it: each poll is an HTTP API request,
-  a Lambda invocation and a Postgres read, inside the HTTP API throttle. Its value is the slice 4
-  pre-proposal's.
-- **The wait is bounded.** A run with no `finished_at` past its time budget is crashed, never
-  running ([reconcile_runs](../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run));
-  how the CLI learns that budget and what it prints then is the slice 4 pre-proposal's.
-- **Ctrl-C stops the wait, not the run.** So before waiting, human mode prints the run id to stderr
-  and points at `ledger gaps`; no signal handler is needed.
-
-Mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#waiting).
+A command waits when its Surfaces line names `--no-wait`: today only `ledger reconcile`
+([reconcile.start](../../../.ai/api-contract.md#reconcilestart)), polling `reconcile.getRun` through
+one interval constant, bounded by the run's time budget; Ctrl-C stops the wait, not the run. Rules
+and mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#waiting).
 
 ## Always
 
@@ -119,7 +107,6 @@ Mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#waitin
 | Exit `2`, not `1` | Commander or the config loader rejected it, so no SDK call was made |
 | Attach an `argParser` | The SDK input type is not a string (`--limit` → integer). Never on an argument that can carry an address: commander quotes a rejected value in its message |
 | Check a value's range or format in the CLI | Never. The API answers `validation_failed` (exit `1`); one home for validation |
-| Wait by default | The Surfaces line names `--no-wait` |
 | Add a helper module in `apps/cli/src/` | A third command uses it, or it is one of the single homes: the output writer, the exit mapping, the wait |
 
 ## Never
@@ -157,7 +144,7 @@ until slice 0 lands `pnpm verify`, then `pnpm verify` exits 0 with every stage r
 **Then read the diff** (each yes or no; expected output of each grep: none) · every new command is
 one `apps/cli/src/commands/<noun>-<verb>.cli.ts` named for its operation id, and its command,
 arguments and flags match the Surfaces line word for word · every `.cli.ts` declares `--json`:
-`git grep -L -e "'--json'" -- 'apps/cli/src/commands/*.cli.ts'` · every `.cli.ts` has a sibling
+`git grep -L -E "['\"]--json['\"]" -- 'apps/cli/src/commands/*.cli.ts'` · every `.cli.ts` has a sibling
 `.cli.test.ts` with a success, an error and a usage case · no token flag:
 `git grep -n -e "--token" -- apps/cli` · SDK only: review grep 13 · no early exit:
 `git grep -n "process\.exit(" -- apps/cli` · no raw colour:

@@ -9,7 +9,8 @@ and `isError` are from the v2 docs
 
 ```text
 apps/mcp/src/
-  main.ts                  composition root: flags, env, SDK client, scope, selection, serve
+  main.ts                  composition root: flags, env, SDK client; calls startServer
+  start-server.ts          scope read, fail-closed exit, selection, serve
   mcp.config.ts            Zod schema for LEDGER_URL and LEDGER_TOKEN
   create-server.ts         builds the McpServer from a chosen tool list
   to-tool-result.ts        the one mapper from { data, error } to a tool result
@@ -25,24 +26,36 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { createLedgerClient } from '@ledger/sdk';
 import { loadConfig } from '@ledger/shared';
 import { mcpConfig } from './mcp.config.ts';
-import { createServer, selectTools } from './create-server.ts';
+import { startServer } from './start-server.ts';
 
 const { values } = parseArgs({
   options: { 'enable-operate': { type: 'boolean', default: false } },
   strict: true,
   allowPositionals: false,
 });
-const ledger = createLedgerClient(loadConfig(mcpConfig, process.env));
+await startServer({
+  ledger: createLedgerClient(loadConfig(mcpConfig, process.env)),
+  enableOperate: values['enable-operate'],
+  serve: serveStdio,
+  stderr: process.stderr,
+  // process.exitCode, not exit(): a piped stderr write is asynchronous on POSIX
+  // (Node → A note on process I/O).
+  setExitCode: (code) => { process.exitCode = code; },
+});
+```
 
-const { data, error } = await ledger.tokens.getCurrent();
-if (error) {
-  // Fail closed: no known scope, no tool set. process.exitCode, not exit(): a piped stderr write
-  // is asynchronous on POSIX (Node → A note on process I/O).
-  process.stderr.write(`${JSON.stringify({ error })}\n`);
-  process.exitCode = 1;
-} else {
-  const tools = selectTools({ scope: data.scope, enableOperate: values['enable-operate'] });
-  serveStdio(() => createServer({ ledger, tools }));
+```ts
+// apps/mcp/src/start-server.ts
+export async function startServer({ ledger, enableOperate, serve, stderr, setExitCode }) {
+  const { data, error } = await ledger.tokens.getCurrent();
+  if (error) {
+    // Fail closed: no known scope, no tool set.
+    stderr.write(`${JSON.stringify({ error })}\n`);
+    setExitCode(1);
+    return;
+  }
+  const tools = selectTools({ scope: data.scope, enableOperate });
+  serve(() => createServer({ ledger, tools }));
 }
 ```
 
@@ -54,6 +67,11 @@ if (error) {
   over a tool list already decided. Whether `serveStdio`'s factory may be async is not documented;
   nothing depends on it.
 - `createLedgerClient` stands for the SDK's factory (pp-backend, slice 1).
+- **The startup sequence is testable without a process.** The scope read, the fail-closed exit,
+  the selection and the serve call are `startServer({ ledger, enableOperate, serve, stderr,
+  setExitCode })` in `start-server.ts`. `main.ts` passes `serveStdio`, `process.stderr` and an
+  exit-code setter, so the failing-`getCurrent` case runs over the fake SDK without a spawned
+  process.
 - If the pinned version documents `new StdioServerTransport()` plus `await server.connect(transport)`
   instead, use that ([README](https://github.com/modelcontextprotocol/typescript-sdk)). `[Unverified]`
   until slice 5 pins the version.
@@ -144,8 +162,8 @@ export async function toToolResult<T>(call: () => Promise<SdkResult<T>>): Promis
 - The SDK's `error` is the inner `{ code, message, hint, docs }` (owner, O-10;
   [pp-backend → sdk.md](../../pp-backend/references/sdk.md)), wrapped once into the
   [error shape](../../../../AGENTS.md#error-shape). An unknown `code` passes through as received.
-- `UNEXPECTED_FAILURE_TEXT` is one constant. Whether it carries the `internal_error` object is
-  pending an owner decision on the registry (it is raised by `packages/api` today,
-  [Error codes](../../../../.ai/api-contract.md#error-codes)).
+- `UNEXPECTED_FAILURE_TEXT` is `JSON.stringify({ error: internalError })`, the registry's
+  `internal_error` object exported by the SDK (O-12,
+  [Error codes](../../../../.ai/api-contract.md#error-codes)), built once.
 - The caught exception is logged by its name only, to stderr
   ([logger](../../pp-general/references/logging-and-pii.md#logger)).

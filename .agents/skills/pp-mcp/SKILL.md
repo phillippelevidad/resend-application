@@ -87,8 +87,8 @@ Evidence: the tool-registration test per scope ([slice 5](../../../.ai/build-che
   protocol error ([Conventions → Errors](../../../.ai/api-contract.md#conventions)).
 - **Never let a handler throw.** The SDK turns a thrown error's message into the result text
   ([v2 → Errors](https://ts.sdk.modelcontextprotocol.io/v2/servers/errors.html)), so internals would
-  reach the model. Every handler returns through the one mapper; an unexpected throw becomes one
-  constant text.
+  reach the model. Every handler returns through the one mapper; an unexpected throw becomes
+  `isError: true` with the `internal_error` object (O-12), never the exception's text.
 - **`inputSchema` holds JSON types only** (string, boolean, integer, with descriptions). The SDK
   rejects arguments that fail it with its own `isError` text, outside the error shape
   ([v2 → Tools](https://ts.sdk.modelcontextprotocol.io/v2/servers/tools.html)); domain checks stay
@@ -154,7 +154,7 @@ until slice 0 lands `pnpm verify`, then `pnpm verify` exits 0 with every stage r
 **Then read the diff** (each yes or no; expected output of each grep: none) · the `name` strings in
 `apps/mcp/src/tools/*.tool.ts` are exactly api-contract's MCP tool names, and each `scope` equals
 its entry's Scope · no v1 SDK: `git grep -n "@modelcontextprotocol/sdk" -- apps/mcp` · stdout
-untouched: `git grep -nE "console\.log|process\.stdout" -- apps/mcp/src ':!*.test.ts'` · SDK only:
+untouched: `git grep -nE "console\.|process\.stdout" -- apps/mcp/src ':!*.test.ts'` · SDK only:
 review grep 13 · no throw in a tool: `git grep -nE "throw |ProtocolError" -- apps/mcp/src/tools` ·
 no runtime toggling: `git grep -nE "\.(enable|disable|remove)\(|list_changed|ListChanged" -- apps/mcp/src`
 · stdio only: `git grep -nE "createMcpHandler|StreamableHTTP|@modelcontextprotocol/(node|express|hono|fastify)" -- apps/mcp/src ':!*.test.ts'`

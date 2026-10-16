@@ -58,7 +58,7 @@ exit mapping is the CLI's one error mapper
 | `CommanderError` with `exitCode` `0` (`--help`) | `0` | Commander already wrote it |
 | Any other `CommanderError` | `2` | Commander already wrote its message to stderr |
 | The config loader's error (a missing or invalid variable) | `2` | Its message: the variable's name, never its value ([config](../../pp-general/references/config-and-env.md#parse-once-at-the-composition-root)) |
-| Anything else | `1` | One constant stderr line; never the exception's text, stack or `cause`. Whether it also prints `internal_error` under `--json` waits on an owner decision: the registry names `packages/api` as that code's only raiser ([Error codes](../../../../.ai/api-contract.md#error-codes)) |
+| Anything else | `1` | Under `--json`, the `internal_error` object on stdout (O-12, [Error codes](../../../../.ai/api-contract.md#error-codes)); otherwise one constant stderr line. Never the exception's text, stack or `cause` |
 
 Registry errors never reach this mapper: `run-operation.ts` handles them, because the SDK returns
 them instead of throwing (owner, O-10).
@@ -122,18 +122,29 @@ export function emailGetCli(parent: Command, deps: CliDeps): void {
 
 ```ts
 // apps/cli/src/run-operation.ts
+import { internalError } from '@ledger/sdk';
+
 export async function runOperation<T>(deps, options: { json?: true }, call: () => Promise<SdkResult<T>>, render: (data: T) => string) {
-  const { data, error } = await call();
-  if (error) {
-    if (options.json) deps.output.json({ error });
-    else deps.output.failure(error.message, error.hint);
-    deps.setExitCode(1);
-    return;
+  try {
+    const { data, error } = await call();
+    if (error) return fail(deps, options, error);
+    if (options.json) deps.output.json(data);
+    else deps.output.result(render(data));
+  } catch {
+    // A defect: never the exception's text, stack or cause (O-12).
+    fail(deps, options, internalError);
   }
-  if (options.json) deps.output.json(data);
-  else deps.output.result(render(data));
+}
+
+function fail(deps, options: { json?: true }, error: SdkError) {
+  if (options.json) deps.output.json({ error });
+  else deps.output.failure(error.message, error.hint);
+  deps.setExitCode(1);
 }
 ```
+
+`internalError` is the registry's `internal_error` object the SDK exports beside `api_unavailable`
+([pp-backend → sdk.md](../../pp-backend/references/sdk.md)), so the CLI writes no `code` literal.
 
 The SDK's `error` is the inner object `{ code, message, hint, docs }`
 ([pp-backend → sdk.md](../../pp-backend/references/sdk.md)); it is wrapped once, here, into the
@@ -152,6 +163,14 @@ calls `process.exit()`.
 - In tests the streams are in-memory writers, which are not TTYs, so output is uncoloured.
 
 ## Waiting
+
+- **`--no-wait`** prints the `202` result and exits `0`. A finished run with an `error` exits `1`
+  with it in the error shape.
+- **Bounded.** A run with no `finished_at` past its time budget is crashed, never running
+  ([reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)); how
+  the CLI learns that budget and what it prints then is the slice 4 pre-proposal's.
+- **Ctrl-C stops the wait, not the run.** So before waiting, human mode prints the run id to stderr
+  and points at `ledger gaps`; no signal handler is needed.
 
 ```ts
 // apps/cli/src/wait-for-run.ts
