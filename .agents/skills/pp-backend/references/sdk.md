@@ -53,9 +53,11 @@ surface that sits close to Resend's. Everything inside the server still throws.
 - **An unknown `code` passes through unchanged**; consumers treat it as a generic failure. Unknown
   response fields are ignored, never rejected (Conventions → Versioning).
 - **A network failure** (`fetch` throws; `openapi-fetch` surfaces it through its `onError`
-  middleware, [API](https://openapi-ts.dev/openapi-fetch/api)) is caught and returned as `error`,
-  never thrown. Which code it maps to is the slice 1 pre-proposal's: no registry code names "no
-  answer", and widening `api_unavailable`'s meaning is a registry edit (Ask-first).
+  middleware, [API](https://openapi-ts.dev/openapi-fetch/api)) is caught and returned as `error` with the
+  client-side `api_unavailable`, never thrown ([Error codes](../../../../.ai/api-contract.md#error-codes)).
+- **It exports the client-side error objects** `api_unavailable` and `internal_error`, with their
+  registry `message`, `hint` and `docs`, so the CLI and the MCP server write no `code` literal for
+  an unexpected client-side failure (O-12).
 - **The CLI and the MCP server unwrap it and map once**: exit code and output for the CLI
   ([pp-cli](../../pp-cli/SKILL.md#output-and-exit-codes)), a tool result with `isError: true` for MCP
   ([pp-mcp](../../pp-mcp/SKILL.md)).

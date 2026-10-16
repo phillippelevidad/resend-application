@@ -22,8 +22,8 @@ the bytes and the three `svix-*` headers to the function `packages/ingest` built
    ([integrations.md → Locked rules](../../../../.ai/integrations.md#locked-rules-must), rule 1).
    `webhooks.verify` enforces the 5-minute timestamp window (RS-02).
 3. **On no match: `401`**, the `ingest.rejected` metric with `reason` `signature` or `timestamp`,
-   and nothing enqueued. How `reason` tells a stale timestamp from a bad signature is the slice 1
-   pre-proposal's; comparing `svix-timestamp` with the clock port before `verify` needs no parsing
+   and nothing enqueued. How `reason` tells a stale timestamp from a bad signature is the pre-proposal of
+   the slice that ships the metric (slice 4); comparing `svix-timestamp` with the clock port before `verify` needs no parsing
    of the SDK's thrown error.
 4. **Builds the envelope** `{ svixId, receivedAt, source, rawBody, headers subset }` and reads
    `type` for the log line.

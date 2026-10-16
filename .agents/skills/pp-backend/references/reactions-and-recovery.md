@@ -30,8 +30,9 @@ Lands in slice 6.
 
 - **Triggered** by the worker's async invoke after commit, plus the shared hourly sweep. No
   sub-hourly schedule touches Postgres.
-- **Single-flight:** its transaction first takes `pg_try_advisory_xact_lock` on a fixed key; an
-  invocation that does not get it exits at once.
+- **Single-flight:** each batch runs in its own transaction, which first takes
+  `pg_try_advisory_xact_lock` on a fixed key. The lock ends with that batch's commit, so every
+  batch takes it again, and an invocation or batch that does not get it exits at once.
 - **The holder claims up to 10 due rows `FOR UPDATE SKIP LOCKED`**, delivers them, records each
   outcome, commits the batch, and repeats until none is due. This is the one transaction that makes
   an external call ([commands-and-readers.md](commands-and-readers.md#a-command-owns-its-transaction)):

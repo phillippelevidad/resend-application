@@ -1,6 +1,6 @@
 ---
 name: pp-backend
-description: Ledger's backend patterns — package factories over ports and the hand-wired `main.ts` of each `apps/*` entry point, the port set, commands and readers with one `execute(input)` and the transaction a command owns, verify-then-enqueue ingest, the worker's one transaction per message with partial batch failure and the outage pause, the outbox, dispatcher, reconciler and DLQ redrive, `packages/resend-client` (sole Resend caller, limiter, error mapping), the read API on Hono, the SDK, and the rules every surface shares. Load it before writing or reviewing anything under `packages/{ingest,worker,dispatcher,reconciler,api,sdk,resend-client,aws,shared}/**` or `apps/{ingest,worker,dispatcher,reconciler,api,local}/**` — "add a route", "expose an operation", "write the handler", "wire main.ts", "add a port", "call Resend", "emit a reaction", "make this idempotent", "handle the batch failure", "SDK method". Load it alongside pp-workflow and pp-general, not instead of them; pp-database owns `packages/db`, pp-cli and pp-mcp own their apps. When it and a linked doc disagree, the doc wins and this file is fixed.
+description: Ledger's backend patterns — package factories over ports and the hand-wired `main.ts` of each `apps/*` entry point, the port set, commands and readers with one `execute(input)` and the transaction a command owns, verify-then-enqueue ingest, the worker's one transaction per message with partial batch failure and the outage pause, the outbox, dispatcher, reconciler and DLQ redrive, `packages/resend-client` (sole Resend caller, limiter, error mapping), the read API on Hono, the SDK, and the rules every surface shares. Load it before writing or reviewing anything under `packages/{core,ingest,worker,dispatcher,reconciler,api,sdk,resend-client,aws,shared}/**` or `apps/{ingest,worker,dispatcher,reconciler,api,local}/**` — "add a route", "expose an operation", "write the handler", "wire main.ts", "add a port", "call Resend", "emit a reaction", "make this idempotent", "handle the batch failure", "SDK method". Load it alongside pp-workflow and pp-general, not instead of them; pp-database owns `packages/db`, pp-cli and pp-mcp own their apps. When it and a linked doc disagree, the doc wins and this file is fixed.
 ---
 
 # pp-backend — patterns and practices, functions, read API and SDK
@@ -61,8 +61,6 @@ migrations, grants → [pp-database](../pp-database/SKILL.md) · tests, fakes, `
   mapping and `User-Agent` ([ADR-012](../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)).
 - Each route: one `createRoute` per api-contract entry, one command or reader, one mapper that
   applies the masks ([read-api.md](references/read-api.md)).
-- Log through the shared logger, [Log fields](../../../.ai/data-modeling.md#log-fields) keys only
-  ([logger](../pp-general/references/logging-and-pii.md#logger)).
 
 ## Case-by-case
 
@@ -72,15 +70,12 @@ migrations, grants → [pp-database](../pp-database/SKILL.md) · tests, fakes, `
 | Return an object of functions from a factory | One Lambda serves two event kinds (the worker: batch and resume) |
 | Run a step after commit instead of writing an outbox row | Losing it is harmless because a sweep repeats it (the dispatcher invoke, [ADR-017](../../../.ai/architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep)); any other effect is an outbox row |
 | Make an external call inside a transaction | It is the dispatcher's claimed batch (ADR-017); nothing else qualifies |
-| Retry in the SDK | The operation's entry says "the SDK retries it" |
 | Settle a slice-owned choice here | Never: write "the slice N pre-proposal settles it" and the constraint the docs fix |
 
 ## Never
 
 Each entry names its alternative.
 
-- **A Resend API call outside `packages/resend-client`** → a method on that client; ingest uses only
-  `webhooks.verify` ([ADR-012](../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)).
 - **A side effect inside the worker transaction** → an outbox row, delivered by the dispatcher
   ([ADR-006](../../../.ai/architecture.md#adr-006--transactional-outbox-for-reactions)).
 - **State order taken from transport** (arrival, SQS order, FIFO, `received_at`) → the projection
@@ -99,8 +94,6 @@ Each entry names its alternative.
   failure list from per-message results (AWS-05; [ingest-and-worker.md](references/ingest-and-worker.md#worker-per-batch)).
 - **A Lambda event type in a package, or logic in a `.handler.ts`** → a domain input and the package
   factory ([composition.md](references/composition.md)).
-- **An app importing another app, or I/O in `packages/core`** → a package factory or a port
-  ([Module boundaries](../../../AGENTS.md#module-boundaries), [boundaries.md](../pp-general/references/boundaries.md)).
 - **An ambient or second transaction, or `tx` not passed down** → one `db.transaction`, `tx` explicit.
 - **A route not built with `createRoute`, a row on the wire, or a database connection before the token
   tag check** → [read-api.md](references/read-api.md).
@@ -126,24 +119,12 @@ Each entry names its alternative.
 - **Masks only**, never raw PII or the payload, on every surface, MCP tool output included.
 - **`LEDGER_URL` and `LEDGER_TOKEN`** from the environment, never a `--token` flag; scope is decided
   server-side from the bearer token.
-- **Addresses only in request bodies**, never in a path or query.
 
-**The SDK** (mechanics in [sdk.md](references/sdk.md)):
-
-- Generated types plus a thin client: `pnpm openapi:export` writes the committed
-  `packages/sdk/openapi.json` from `packages/api`; committed `openapi-typescript` types; a
-  hand-written client over `openapi-fetch`; a `pnpm verify` drift stage (ADR-011). No server import.
-- It takes `baseUrl` and `token`, reads no environment, sends the bearer header on every request.
-- It returns `{ data, error }` like Resend's SDK (RS-23), never throwing for an API error (owner,
-  O-10): the one named exception to [pp-general → Never](../pp-general/SKILL.md#never)'s "no
-  `Result` type". No error shape → `api_unavailable`; an unknown `code` is a generic failure.
-- It retries reads only, `recipient.get` included, on network errors, `429` and `5xx`; never a
-  command (slice 5).
-
-**The CLI and the MCP server** unwrap `{ data, error }` and map once (CLI exits `0` / `1` / `2` with
-`--json`; MCP operate tools registered only with an `operate` token **and** `--enable-operate`):
-[pp-cli → Output and exit codes](../pp-cli/SKILL.md#output-and-exit-codes) and
-[pp-mcp → Tool registration and least privilege](../pp-mcp/SKILL.md#tool-registration-and-least-privilege).
+**The SDK** returns `{ data, error }` like Resend's SDK (RS-23; owner, O-10), the one named
+exception to [pp-general → Never](../pp-general/SKILL.md#never)'s "no `Result` type"; its build
+path, error mapping and read-only retries are [sdk.md](references/sdk.md). **The CLI and the MCP
+server** unwrap it and map once ([pp-cli → Output and exit codes](../pp-cli/SKILL.md#output-and-exit-codes),
+[pp-mcp → Tool registration and least privilege](../pp-mcp/SKILL.md#tool-registration-and-least-privilege)).
 
 ## Gate — then read the diff
 
@@ -152,15 +133,14 @@ mandatory tiers this skill's paths trigger are in [Test tiers](../pp-workflow/SK
 
 **Then read the diff**, each item yes or no; the greps run from the repo root and expect no output
 unless noted: verify before enqueue, `200` only after it, with its test ·
-`git grep -n "aws-lambda" -- packages` · no `process.env`, pool or client built outside `main.ts` ·
+pp-general [review greps](../pp-general/references/boundaries.md#review-greps) 5, 6, 8 and 9 · no `process.env`, pool or client built outside `main.ts` ·
 each `db.transaction(` passes `tx` down and holds no Resend, SQS, invoke or `fetch` call (the
-dispatcher's batch excepted) · every side effect an outbox row · no cross-app import
-(`git grep -n "@ledger/app-" -- packages apps`) ·
-every insert on a keyed table uses `ON CONFLICT` (`git grep -n "onConflict" -- packages/db`, read each) ·
+dispatcher's batch excepted) · every side effect an outbox row ·
+every insert on a key in [Idempotency keys](../../../.ai/data-modeling.md#idempotency-keys) uses `ON CONFLICT` on it (`git grep -n "onConflict" -- packages/db`, read each) ·
 the worker returns `batchItemFailures` built from per-message results · idempotency proven by an
 integration test against real Postgres · `git grep -niE "redis|bullmq|ioredis" -- packages apps` ·
-no projection input read from `received_at` (`git grep -n "receivedAt" -- packages/core`) · no Resend
-call outside `resend-client` · every route through `createRoute` (`git grep -nE "\.(get|post|put|patch|delete)\(['\"]/" -- packages/api`) ·
+no projection input read from `received_at` (`git grep -nE "receivedAt|received_at" -- 'packages/core/**/*.projection.ts' 'packages/core/**/*.rule.ts'`) ·
+every route through `createRoute` (`git grep -nE "\.(get|post|put|patch|delete)\(['\"]/" -- packages/api`) ·
 every response built by a `.mapper.ts` · the request-id middleware sets no response header ·
 the generated SDK files changed only with `pnpm openapi:export` · no `throw` for an API error in
 `packages/sdk` · every new failure path mapped to a registered `code` · masks only on every surface ·

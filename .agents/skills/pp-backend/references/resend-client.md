@@ -17,8 +17,8 @@ faked in tests, and how its own tests stand in for Resend's API, are
 - **One instance per calling function**, built at module scope in that function's `main.ts`
   ([composition.md](composition.md#the-composition-root)), holding that function's key only: the
   reconciler a `full_access` key, the dispatcher a `sending_access` key
-  ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)). The key arrives as config from
-  the secret port; it never appears in a log, an error or an output (rule 7).
+  ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)). `main.ts` reads the key through the secret port at module scope and passes it to the
+  constructor, never through a config schema ([secrets](../../pp-general/references/config-and-env.md#secrets)); it never appears in a log, an error or an output (rule 7).
 - **Constructed with every option explicit:** `new Resend(key, { baseUrl, userAgent })`, `baseUrl`
   from the function's typed config. Left unset, the SDK reads `process.env.RESEND_BASE_URL`
   (`resend@6.33.0`), an env read outside the composition root that the config schema never sees;
@@ -66,7 +66,8 @@ exhaustive `switch` on the SDK's error-name union: it differs from the documente
 | --- | --- |
 | `2xx` | Return `data` |
 | `429` | The limiter's step 3; past the deadline, `rate_limited` |
-| `401`, `403` (any name) | `resend_auth_failed` |
+| `401`, `403` (any name) on a reconciler call | `resend_auth_failed` |
+| `401`, `403` on Send Email | Returned to the dispatcher by status and name for `last_error`: a `403 validation_error` there can be the `resend.dev` own-address rule (RS-34) |
 | `400` named `validation_error` with the message `API key is invalid` | `resend_auth_failed` (RS-U17, Constraint 14) |
 | `5xx` | Retried a bounded number of times with backoff, then `resend_unavailable` |
 | `409` from Send Email | Returned to the dispatcher by name: `concurrent_idempotent_requests` is retried, `invalid_idempotent_request` marks the row dead (RS-24, [reactions-and-recovery.md](reactions-and-recovery.md#dispatcher)) |

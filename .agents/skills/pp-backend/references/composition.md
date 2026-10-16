@@ -75,15 +75,15 @@ implementation ([adding-things.md](../../pp-general/references/adding-things.md#
 | Metrics helper's interface (the fixed EMF set, [metrics](../../pp-general/references/logging-and-pii.md#metrics)) | the EMF line writer; locally, through the logger | 1 |
 | Event source control (read state, enable, disable the worker ESM; AWS-18) | `packages/aws`; local mode reports the state as a no-op ([worker.resumeEventSource](../../../../.ai/api-contract.md#workerresumeeventsource)) | 2 |
 | Queue attributes (depth, oldest age; AWS-22) | `packages/aws`; local mode counts `local_queue_messages` | 2 |
-| Function invoke (async invoke: worker → dispatcher, API → worker resume, API → reconciler) | `packages/aws` | 2 |
+| Function invoke (async: worker → dispatcher, API → reconciler; synchronous, awaiting the result: API → worker resume, whose answer is the resulting state or `database_unavailable`) | `packages/aws` | 2 |
 | DLQ receive and redrive (AWS-50, AWS-21) | `packages/aws`; local mode reads and clears `dead_at` | 3 |
-| Secret reading (Secrets Manager, by the ARN in an internal variable; [secrets](../../pp-general/references/config-and-env.md#secrets)) | `packages/aws`; locally the value comes from `.env.local` config | 2 |
+| Secret reading (Secrets Manager, by the ARN in an internal variable; [secrets](../../pp-general/references/config-and-env.md#secrets)) | `packages/aws`; locally `apps/local`'s `main.ts` passes a static implementation over the values its config parsed from `.env.local`, so the factory always takes the port | 2 |
 
 ADR-013 lists Secrets Manager among `packages/aws`'s adapters without naming its port; ingest needs
 the secret set on AWS without importing `@aws-sdk/*`, so it reaches it through a port like the
 others. Each port's exact name and methods are settled by the slice that lands it; the table fixes
-which ports exist. A port that is not in this table needs an ADR seam or the
-[third duplicate](../../pp-general/references/adding-things.md#extract-an-abstraction).
+which ports exist. A port that is not in this table needs an ADR that names it
+([pp-general → Case-by-case](../../pp-general/SKILL.md#case-by-case)).
 
 **`resend-client` is not a port.** It is ADR-012's named seam: a package that exports the client
 its consumers type against ([resend-client.md](resend-client.md)). Nothing in `packages/shared`
