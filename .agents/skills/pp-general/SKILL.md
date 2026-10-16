@@ -25,7 +25,8 @@ docs linked below).
 1. A doc beats any skill: when they disagree, the doc wins and the skill is fixed in the same change
    ([root AGENTS.md → Patterns and practices](../../../AGENTS.md#patterns-and-practices)).
 2. On its own path, the path's skill beats pp-general (pp-database on `packages/db/**`, pp-infra on
-   `infra/**`, pp-cli on `apps/cli/**`, pp-mcp on `apps/mcp/**`, pp-testing on tests and `sim/**`).
+   `infra/**`, pp-cli on `apps/cli/**`, pp-mcp on `apps/mcp/**`, pp-testing on tests and `sim/**`,
+   pp-backend on the rest of `packages/**` and `apps/**`).
    Where it is silent, pp-general applies.
 3. pp-workflow owns process and no code rule; pp-general owns no process.
 4. An accepted ADR is applied, not re-litigated ([decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
@@ -41,6 +42,7 @@ docs linked below).
 | [errors.md](references/errors.md) | Throwing, catching or mapping an error; writing a `message` or `hint` |
 | [logging-and-pii.md](references/logging-and-pii.md) | Writing a log line or metric; handling an address, subject or payload |
 | [config-and-env.md](references/config-and-env.md) | Reading config; adding an environment variable; loading `.env.local` |
+| [versions.md](references/versions.md) | Writing against a library's API; pinning a package |
 
 ## Check the installed version, not memory
 
@@ -49,23 +51,7 @@ installed version (`pnpm -r list <pkg>`) and the docs or `.d.ts` for that versio
 memory. Several surfaces moved recently (`@hono/aws-lambda` left `hono`; the MCP SDK split into v2
 packages). The installed source beats memory. A package not yet installed is Ask-first, pinned in
 the slice that first needs it ([ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack)).
-Only ADR-fixed majors are written here.
-
-| Surface | Installed | Read this first |
-| --- | --- | --- |
-| Node.js 24 | `engines` in root `package.json` | [TypeScript in Node](https://nodejs.org/docs/latest-v24.x/api/typescript.html) |
-| TypeScript | see lockfile | [npm](https://www.npmjs.com/package/typescript) |
-| Zod 4 | see lockfile | [npm](https://www.npmjs.com/package/zod) |
-| Drizzle ORM, drizzle-kit, `pg` | see lockfile | [drizzle-orm](https://www.npmjs.com/package/drizzle-orm) · [pg](https://www.npmjs.com/package/pg) |
-| Hono, `@hono/zod-openapi`, `@hono/aws-lambda`, `@hono/node-server` | see lockfile | [Hono on Lambda](https://hono.dev/docs/getting-started/aws-lambda) · [zod-openapi](https://raw.githubusercontent.com/honojs/middleware/main/packages/zod-openapi/README.md) |
-| `commander` 14, `@commander-js/extra-typings` | see lockfile | [npm](https://www.npmjs.com/package/commander) |
-| `@modelcontextprotocol/server` v2 | see lockfile | [repo](https://github.com/modelcontextprotocol/typescript-sdk) |
-| `openapi-typescript`, `openapi-fetch` | see lockfile | [npm](https://www.npmjs.com/package/openapi-fetch) |
-| Winston | see lockfile | [npm](https://www.npmjs.com/package/winston) |
-| Vitest, fast-check, Testcontainers | see lockfile | [vitest](https://www.npmjs.com/package/vitest) · [fast-check](https://www.npmjs.com/package/fast-check) · [testcontainers](https://www.npmjs.com/package/testcontainers) |
-| Biome | see lockfile | [lint rules](https://biomejs.dev/linter/rules/) |
-| AWS CDK v2 | see lockfile | [aws-cdk-lib](https://www.npmjs.com/package/aws-cdk-lib) |
-| `resend` | see lockfile | [Resend docs](https://resend.com/docs/llms.txt) |
+The surfaces and the docs to read first: [versions.md](references/versions.md).
 
 ## Always
 
@@ -154,9 +140,10 @@ affected tests) and report their actual result. After it: `pnpm verify` exits 0 
 kebab-case with a [listed suffix](references/coding-standards.md#role-suffixes) · no deep
 `@ledger/<pkg>/…` import but `/testing`, no relative import leaving its package · every `@ledger/*`
 import declared `workspace:*` · `@aws-sdk/` only in `packages/aws` · `from 'resend'` only in
-`resend-client` and `ingest` · `process.env` only in a `main.ts` · no `enum `, runtime `namespace`,
-`constructor(private|public|readonly`, decorator or `"paths"` · no `Result<`, `Either<` or
-`throw new Error(` · every thrown `code` in [Error codes](../../../.ai/api-contract.md#error-codes) ·
+`resend-client` and `ingest` · `process.env` only in a composition root (a `main.ts` or an
+`infra/scripts/*.ts`, grep 14) · no `enum `, runtime `namespace`,
+`constructor(private|public|readonly`, decorator or `"paths"` · no `Result<` or `Either<`; no
+`throw new Error(` in `packages/` or `apps/` · every thrown `code` in [Error codes](../../../.ai/api-contract.md#error-codes) ·
 no log message built by template literal or `+` · every log key in
 [Log fields](../../../.ai/data-modeling.md#log-fields) · no address outside `@resend.dev` · each new
 dependency, public variable and error code approved ([Permissions](../../../AGENTS.md#permissions)) ·

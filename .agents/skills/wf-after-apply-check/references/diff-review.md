@@ -135,6 +135,28 @@ Load [`pp-backend`](../../pp-backend/SKILL.md) for `apps/**` and `packages/**`; 
 
 Load [`pp-infra`](../../pp-infra/SKILL.md). Walk its [`Never` list](../../pp-infra/SKILL.md#never) and its gate against the diff, and check every property in [Cost brake in code](../../pp-infra/SKILL.md#cost-brake-in-code) still has its `Template` assertion. A cost-brake property with no assertion is a [budget-alarm-class gap](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) (lens clause 6), not polish. Creating or deploying an AWS resource is Ask-first.
 
+### Correctness
+
+| Read for | The bug when it is absent |
+| --- | --- |
+| Every function built by the one shared function construct: `NodejsFunction`, local esbuild, ES modules, `nodejs24.x`, arm64, AWS SDK bundled ([bundling](../../pp-infra/references/cdk-app.md#bundling)) | One function on the default runtime, on x86, bundled in Docker or on the runtime's SDK, so a cost-brake property silently misses it |
+| Every [cost-brake property](../../pp-infra/SKILL.md#cost-brake-in-code) with its `Template` assertion, paired with a count, numbers from the stack's named constants | A property that drifts on the next change with nothing red, or an "all resources" assertion that passes on a template with none |
+| The visibility timeout derived from the worker timeout and batching window, never a literal (AWS-08); the worker mapping's batch size, `MaximumConcurrency` and `ReportBatchItemFailures` (ADR-008); DLQ retention above the source's (AWS-09) | A redelivery mid-run, a whole batch retried or deleted on one failure, or dead-lettered messages expiring first |
+| Every Postgres-touching schedule on the one hourly cron, window `OFF`, explicit retry policy ([Cadence](../../../../.ai/integrations.md#cadence-and-the-database)) | A tick that keeps Neon awake past the wake budget |
+| The guardrails stack importing nothing from the app stack, and holding the budget, trip topic, kill switch and its `Errors` alarm ([Budget alarms](../../../../.ai/aws.md#budget-alarms)) | A budget-alarm gap on the next app redeploy, or a kill switch that fails silently (lens clause 6) |
+| The deploy command's order: refuse while tripped, ensure the role, migrate, guardrails then app, restore a pause ([ADR-018](../../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)); each scripted step reads state first and a failed step exits non-zero | Code ahead of its schema, a redeploy that re-enables a paused source, or a re-run that double-applies |
+| Log groups explicit with retention and `DESTROY`; secrets `DESTROY`; no `logRetention` (AWS-38, AWS-40) | A teardown that leaves billable log groups or secrets |
+
+### Security
+
+| Read for | The hole when it is absent |
+| --- | --- |
+| No secret value in an env var, the template or `cdk.out/`: ARNs only, read by the function's own grant ([Secrets layout](../../../../.ai/integrations.md#secrets-layout), [CBL-01](../../../../.ai/check-before-launch.md#deploy-configuration)) | A signing secret or database URL readable by anyone with Lambda read access |
+| IAM by grant methods, per function, only what it uses; the kill switch scoped to stack-prefixed ARNs | One function able to read every secret, or a kill switch able to touch another stack |
+| No account id, ARN literal, `fromLookup` or deploy input in a tracked file ([CBL-10, CBL-19](../../../../.ai/check-before-launch.md#public-repo-hygiene)) | An account id or alert address in a public repo's history |
+| Scripts spawn the CDK CLI with an argument array, never a shell string; AWS calls only through `@ledger/aws` | Shell injection through a deploy input, or `@aws-sdk/*` outside `packages/aws` |
+| Every new AWS resource, deploy and AWS-facing run owner-approved | An Ask-first change made alone |
+
 ---
 
 ## Surfaces — SDK, CLI, MCP — `packages/sdk/**`, `apps/cli/**`, `apps/mcp/**`
@@ -171,7 +193,7 @@ Load [`pp-testing`](../../pp-testing/SKILL.md) for the tests and `sim/`: file an
 
 | Read for | The bug when it is absent |
 | --- | --- |
-| The **mandatory-tier test** for every mandatory surface the diff touched | Against real Postgres (`*.int.test.ts`): idempotency on `svix_id` and the outbox `dedupe_key`, order-independent projections, outbox delivery, reconcile and replay, DLQ redrive, migrations, auth boundaries (bearer-token scopes `read` / `operate`). Plus: a forged, stale or unsigned request never reaching the queue port ([ADR-001](../../../../.ai/architecture.md#adr-001--verify-then-enqueue)), and every MCP tool's actual output carrying masks only (slice 5). [`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) owns the tier; nothing else is negotiable |
+| The **mandatory-tier test** for every mandatory surface the diff touched | Against real Postgres (`*.int.test.ts`): idempotency on `svix_id` and the outbox `dedupe_key`, order-independent projections, outbox delivery, reconcile and replay, the Postgres side of DLQ redrive (one row under a new `messageId`; local mode's redrive), migrations, auth boundaries (bearer-token scopes `read` / `operate`). Plus: SQS redrive through the `packages/aws` adapter against its port contract and sim invariant 4; a forged, stale or unsigned request never reaching the queue port ([ADR-001](../../../../.ai/architecture.md#adr-001--verify-then-enqueue)), and every MCP tool's actual output carrying masks only (slice 5). [`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) owns the tier; nothing else is negotiable |
 | An idempotency test that would **fail** if the dedupe were dropped — it must assert one row and one effect after a duplicate delivery, not just that the insert runs | The test that passes against a table with no unique constraint |
 | A test per spec `#### Scenario:` — the WHEN/THEN is the test | A requirement with no failing test ships unbuilt and green |
 | Assertions on the **refusal**, not only the happy path | Half of these findings are a refusal that returns 200 |

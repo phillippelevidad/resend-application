@@ -92,6 +92,30 @@ Watch specifically for the **read-then-write** shape: a cap, a quota, or a uniqu
 | CLI exit codes `0` / `1` / `2` and `--json` on every failure path | A thrown read crashing the whole CLI with a stack trace |
 | Masks only, never raw PII, on every surface, MCP tool output included | A recipient address reaching a terminal or an agent's context |
 
+## Tests — `pp-testing`
+
+[`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) fixes the tier; [`pp-testing`](../../pp-testing/SKILL.md) fixes how each test is built. Both defects below are decided in `tasks.md`, before any code exists.
+
+| Read the design for | The defect when it is silent |
+| --- | --- |
+| Each `Ships` bullet's evidence as its own task, at its claim's tier, written as the bullet names it | A claim proved one tier too low, or "a duplicate insert and a crash between steps" built as one test |
+| Every Mandatory row the change touches, with its named test as a task | A mandatory surface that ships green with no test that would fail |
+| What each test fakes: a port, the `resend-client` client or the SDK client, everything else real ([fakes-and-doubles.md](../../pp-testing/references/fakes-and-doubles.md)) | "Mock the database" or "mock Resend" in the design, which the builder writes as `vi.mock` |
+| A shared contract suite as a task when the change lands a port's second implementation | Two implementations that drift, each green alone |
+| Each sim run citing invariant numbers that exist in [Simulator invariants](../../../../.ai/architecture.md#simulator-invariants), and each new knob tied to its Ships bullet | A run checking an unratified invariant, or a knob no slice owns |
+| Each owed `[Unverified]` row proved safe by a named test or an arbitrary generating both answers | A property that passes in one world only |
+
+## Infra — `pp-infra`
+
+| Read the design for | The defect when it is silent |
+| --- | --- |
+| Each new resource's idle cost: 0, a [Cost shape](../../../../.ai/aws.md#cost-shape) row, or an ADR with a measured reason | An always-on charge found on the bill |
+| Each new secret named in the [Secrets layout](../../../../.ai/integrations.md#secrets-layout), with its readers | A monthly secret charge and a wider trust boundary nobody approved |
+| Each new internal variable, the function that reads it, and its row in the [table](../../pp-infra/references/env-and-inputs.md#internal-environment-variables) | A variable set on every function, or a secret value passed through |
+| Each new [cost-brake property](../../pp-infra/SKILL.md#cost-brake-in-code) with its `Template` assertion as a task | A property no test holds |
+| Timeouts and memory from a measured run, or the measurement as a task | A guessed timeout feeding the derived visibility timeout (AWS-08) |
+| Each deploy, resource and AWS-facing run as an Ask-first `Ops` item; each recurring owner step scripted, with its root script and Commands line as tasks | An unapproved AWS change, or a manual step per deploy (lens clause 1) |
+
 ---
 
 ## Writing the finding

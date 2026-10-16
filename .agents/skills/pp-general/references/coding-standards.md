@@ -41,7 +41,7 @@ export are called.
 | Config schema for a composition root | `.config.ts` | `worker.config.ts` → `workerConfig` |
 | Error class ([errors.md](errors.md)) | `.error.ts` | `ledger.error.ts` → `LedgerError` |
 | CDK stack (`infra/` only; pp-infra owns the shape) | `.stack.ts` | `app.stack.ts` → `AppStack` |
-| CDK construct (`infra/` only; pp-infra owns the shape) | `.construct.ts` | `ledger-function.construct.ts` → `LedgerFunction` |
+| CDK construct (`infra/` only; pp-infra owns the shape) | `.construct.ts` | `ledger-function.construct.ts` → `LedgerFunctionConstruct` |
 
 **Tests** sit beside the code they test and add a tier suffix after the file's own name:
 `.test.ts` (unit), `.prop.test.ts` (fast-check), `.int.test.ts` (real Postgres):
@@ -52,7 +52,8 @@ mechanics.
 only) · `testing.ts` (a package's `"./testing"` surface) · `main.ts` (a composition root) · files a
 tool names, at a project root (`vitest.config.ts`, `drizzle.config.ts`, `biome.json`,
 `tsconfig*.json`, `cdk.json`); a role `.config.ts` lives under `src/`, so the suffix keeps one
-meaning per location · migrations as drizzle-kit names them · generated files
+meaning per location · migrations as drizzle-kit names them · Drizzle schema files at
+data-modeling's `_Schema:_` paths · `packages/db/src/executor.ts` · generated files
 (`packages/sdk/openapi.json` and the generated SDK types) · docs (`AGENTS.md`, `SKILL.md`,
 `README.md`).
 

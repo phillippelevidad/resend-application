@@ -22,33 +22,19 @@ skills ([Which skill answers a code question](#which-skill-answers-a-code-questi
 
 ## Read order
 
-[`.ai/AGENTS.md`](../../../.ai/AGENTS.md) → [about.md](../../../.ai/about.md) →
-[architecture.md → Build order](../../../.ai/architecture.md#build-order-vertical-slices) → the slice
-card in [build-checklist.md](../../../.ai/build-checklist.md#how-to-work-this-checklist) → its `Refs`
-→ the pre-proposal in `.ai/pre-proposals/`, if one exists → the OpenSpec change, once proposed.
-Load each `.ai/` doc the index marks Required for the task.
-
-The chain is a prefix: the task shape sets how far down it you read (a slice, a tweak via
-[`implement-plan`](../implement-plan/SKILL.md), an ADR via
-[`architecture-designer`](../architecture-designer/SKILL.md), a review via a `wf-*` gate). **Stop
-reading when the next doc cannot change the diff.** Entry points and stopping rules:
-[read-order.md](references/read-order.md).
+[`.ai/AGENTS.md`](../../../.ai/AGENTS.md) → about.md → Build order → the slice card → its `Refs` →
+the pre-proposal → the OpenSpec change. The task shape sets how far down to read; **stop when the
+next doc cannot change the diff** ([read-order.md](references/read-order.md)). Load each `.ai/` doc
+the index marks Required.
 
 ## Slice scoping
 
-- The card's `Ships` list is the done-list, every bullet names its evidence, and a reworded bullet
-  is a scope change ([How to work this checklist](../../../.ai/build-checklist.md#how-to-work-this-checklist)).
-- v0 per slice, smallest PR; right-size to the ceiling; the self-service test runs, in writing, at
-  scoping time ([decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized),
-  [Guiding principles](../../../.ai/about.md#guiding-principles)).
-- Tie-break: correctness of event handling (no loss, no duplicate effects, order-independent
-  state) > evidence > cost > scope > polish.
-- A candidate change is in scope only if the five-row in-scope test says so.
-- A card blocked by an owner decision or an unverified fact is marked `[!]` on its `Status` line
-  with a one-line reason ([Legend](../../../.ai/build-checklist.md#legend)); the question is parked,
-  not resolved.
-
-Procedure, the in-scope test and stall handling: [slice-scoping.md](references/slice-scoping.md).
+The card's `Ships` list is the done-list, every bullet names its evidence, and a reworded bullet is
+a scope change ([How to work this checklist](../../../.ai/build-checklist.md#how-to-work-this-checklist)).
+The self-service test, the five-row in-scope test and stall handling (`[!]` on the `Status` line
+with a one-line reason, [Legend](../../../.ai/build-checklist.md#legend)) are in
+[slice-scoping.md](references/slice-scoping.md); the rules they apply are the
+[decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized).
 
 ## Definition of done
 
@@ -69,6 +55,7 @@ duty below that the change triggers is discharged in the same diff. Until slice 
 | Ratifies or contradicts a decision | The `.ai/` doc corrected, or an ADR added or superseded, in the same change ([root AGENTS.md](../../../AGENTS.md#product--domain-context)) |
 | Leaves a question unresolved | An [about.md → Open questions](../../../.ai/about.md#open-questions) entry tagged `[Unverified]`, and the card marked `[!]` with a one-line reason |
 | Settles an `RS-UNN`, `AWS-UNN` or `PG-UNN` row | That row updated in [resend.md](../../../.ai/resend.md#unverified), [aws.md](../../../.ai/aws.md#unverified) or [integrations.md](../../../.ai/integrations.md#unverified) |
+| Settles a library-behavior bullet in [about.md → Open questions](../../../.ai/about.md#open-questions) | The bullet moved to Resolved with what was found, and the skill's `[Unverified]` replaced by the verified fact or its fallback |
 | Relies on a Resend behavior | The `RS-NN` fact it rests on, cited ([resend.md](../../../.ai/resend.md)) |
 | Introduces an environment variable | A public one ([Conventions](../../../.ai/api-contract.md#conventions)): its `.env.example` line (names only, never values). An internal, CDK-set one: `infra` only, never `.env.example` ([pp-infra](../pp-infra/SKILL.md)). Either: a boot-time assertion if it is required ([pp-general](../pp-general/SKILL.md)) |
 | Touches a mandatory-tier surface | An integration test against real Postgres, or the named test for the other Mandatory rows ([Test tiers](#test-tiers)) |
@@ -96,7 +83,9 @@ that proves it; a lower tier does not count. Harness, file naming, arbitraries a
 **Mandatory (MUST).** A change touching one of these is not done without its test:
 
 - **Integration against real Postgres:** idempotency on `svix_id` and the outbox `dedupe_key` (a
-  duplicate delivery leaves one row and one effect), order-independent projections, outbox
+  duplicate delivery leaves one row and one effect), order-independent projections as the worker
+  commits them (the recompute under the email and recipient locks, ADR-004; the pure function is
+  the `packages/core` row above), outbox
   delivery, reconcile and replay, the Postgres side of DLQ redrive (a redriven message under a new
   SQS `messageId` leaves one row, AWS-21; local mode's redrive, slice 2B), migrations, and auth
   boundaries (token scopes) (ADR-004, ADR-006, ADR-007, ADR-008, ADR-018 in
@@ -115,29 +104,25 @@ integration tier.
 
 ## Which skill answers a code question
 
-Load every row that matches, alongside this skill. Until a skill exists, use the `.ai/` doc it
-would link; never invent a convention.
+Load every row that matches, alongside this skill. Never invent a convention a skill or doc does
+not hold.
 
 | Question or path | Skill |
 | --- | --- |
 | Any TypeScript: naming, imports, tsconfig, boundaries, errors, logging, PII in code, config and env, versions, adding things | [pp-general](../pp-general/SKILL.md), always, plus the path's skill |
-| `packages/db/**`, a table, column, index, constraint, `jsonb`, migration or seed | [pp-database](../pp-database/SKILL.md) |
+| `packages/db/**`, a table, column, index, constraint, `jsonb`, grant, migration or seed | [pp-database](../pp-database/SKILL.md) |
 | `packages/sdk/**`, handlers, ports, projections, outbox, reconcile, redrive, the rest of `packages/**` and `apps/**` | [pp-backend](../pp-backend/SKILL.md) |
 | `apps/cli/**` | [pp-cli](../pp-cli/SKILL.md) |
 | `apps/mcp/**` | [pp-mcp](../pp-mcp/SKILL.md) |
-| `infra/**`, deploy, teardown, budget alarms | [pp-infra](../pp-infra/SKILL.md) |
-| `*.test.ts`, `sim/**`, a harness, an arbitrary, an invariant | [pp-testing](../pp-testing/SKILL.md) |
+| `infra/**`, a root script that calls it, a new Lambda, queue, secret, schedule, alarm or log group, deploy, teardown, budget alarms | [pp-infra](../pp-infra/SKILL.md) |
+| `*.test.ts`, `sim/**`, `vitest.config.ts`, a package's `testing.ts`, a harness, a fake, an arbitrary, an invariant | [pp-testing](../pp-testing/SKILL.md) |
 | Scope, done, which tier, Ask-first | This skill |
 
 ## Always
 
 - Follow the [read order](#read-order) before non-trivial work, and load the skills the
   [routing table](#which-skill-answers-a-code-question) names before writing code.
-- Verify Resend behavior against its docs and cite the page; what the docs don't settle goes to
-  Open questions as `[Unverified]` ([lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 - Run the gate and report its actual result before claiming done ([Definition of done](#definition-of-done)).
-- Commit and push each finished step, staged by path; helper agents run no git command
-  ([root AGENTS.md](../../../AGENTS.md#commit-and-push-as-you-go), [`wf-commit`](../wf-commit/SKILL.md)).
 - Edit `.ai/` docs in their house style: tight, RFC 2119, current state only
   ([`.ai/AGENTS.md` → Rules](../../../.ai/AGENTS.md#rules)).
 - Use the [domain vocabulary](../../../.ai/about.md#domain-vocabulary) in docs, specs and tasks.
@@ -162,9 +147,9 @@ would link; never invent a convention.
   documented ([in-scope test](references/slice-scoping.md#3--the-in-scope-test)).
 - **Resolving an open question inside a doc or in code** → park it in
   [Open questions](../../../.ai/about.md#open-questions), mark the card `[!]`; the owner ratifies.
-- **Re-litigating an accepted ADR** → write a superseding ADR ([architecture.md → Decisions](../../../.ai/architecture.md#decisions)).
-- **A categorical deferral built quietly** (SQS FIFO, a second database, multi-tenant) → a
-  superseding ADR ([Deferred (YAGNI)](../../../.ai/architecture.md#deferred-yagni)).
+- **Re-litigating an accepted ADR, or building a categorical deferral quietly** (SQS FIFO, a second
+  database, multi-tenant) → a superseding ADR ([Decisions](../../../.ai/architecture.md#decisions),
+  [Deferred (YAGNI)](../../../.ai/architecture.md#deferred-yagni)).
 - **Citing [docs/idea.md](../../../docs/idea.md) as the current rule** → cite the ratified `.ai/` doc
   that carries it; the RFC is frozen history.
 
@@ -175,7 +160,8 @@ lands it, the cheap checks for what was touched, each named in the report. Then 
 
 Each `Ships` bullet the change advances has its named evidence in the diff (the test, property,
 invariant run, measured number or command) · every duty row the diff triggers is discharged in the
-same diff · no Ask-first item lands unapproved (a new `package.json` dependency, an edited pushed
+same diff · no Ask-first item lands unapproved (a new third-party `package.json` dependency, not a
+`workspace:*` entry; an edited pushed
 migration, `.github/**`, a public-contract change, an AWS resource, a live Resend write) · every
 operation the diff names is in `.ai/api-contract.md` · every mandatory-tier surface touched has its
 [test](#test-tiers) · no reliability claim in a doc or the README lacks a pointer to its evidence · no

@@ -972,14 +972,18 @@ for (const t of tripwires) {
 
 // pp-workflow → Test tiers: these surfaces owe an integration test against real Postgres.
 // `packages/core` is pure (its projections are proven by `*.prop.test.ts`) and `sim/` is evidence,
-// not the path under test, so neither trips the Postgres tier.
+// not the path under test. Paths that never touch Postgres don't trip it either: ingest (ADR-001),
+// `packages/aws` (SQS redrive's evidence is its adapter test against the port contract,
+// pp-testing → Fakes at the port), and the SDK, CLI and MCP server (they reach the system only
+// through the read API, ADR-011).
 {
   const specs = readable.filter((p) => TEST_FILE.test(p));
   const integration = specs.filter((p) => /\.int\.test\.ts$/.test(p));
   const src = readable.filter(
     (p) =>
       /^(apps|packages)\//.test(p) &&
-      !/^packages\/core\//.test(p) &&
+      !/^packages\/(core|aws|ingest|sdk)\//.test(p) &&
+      !/^apps\/(cli|mcp|ingest)\//.test(p) &&
       !TEST_FILE.test(p),
   );
   const srcAdded = addedLines(src);
@@ -1009,15 +1013,7 @@ for (const t of tripwires) {
     triggers.push("a state transition");
   if (src.some((p) => /projec/i.test(p)))
     triggers.push("an order-independent projection");
-  // SQS redrive's evidence is the `packages/aws` adapter's `*.test.ts` against the port contract
-  // (pp-testing → Fakes at the port), not a Postgres test.
-  if (
-    src.some(
-      (p) =>
-        !/^packages\/aws\//.test(p) &&
-        /(outbox|dispatch|reconcil|redrive|replay|dlq)/i.test(p),
-    )
-  )
+  if (src.some((p) => /(outbox|dispatch|reconcil|redrive|replay|dlq)/i.test(p)))
     triggers.push("the correctness path (outbox, reconcile, redrive, replay)");
   if (triggers.length && !integration.length)
     record(

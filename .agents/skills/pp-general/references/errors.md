@@ -49,6 +49,9 @@ Fields are assigned in the body, never as parameter properties
   Otherwise throw the base class with the right code.
 - **`cause` carries the original error for the stack, never for output.** A Postgres or Zod error
   can quote a row or an input value, so `cause` is never logged beyond its name and never sent.
+- **`infra/`, `sim/` and root `scripts/` are not surfaces.** They throw `Error` with a constant
+  message and exit non-zero; no registry code is invented for them
+  ([pp-infra → scripts](../../pp-infra/references/scripts.md#shape)).
 
 ## Writing `message` and `hint`
 

@@ -86,7 +86,7 @@ the tree. `git grep -P` needs a PCRE-enabled git (Git for Windows ships one).
     ```
 13. The CLI and MCP server reach the system only through the SDK:
     ```sh
-    git grep -nE "@ledger/(db|aws|api|ingest|worker|reconciler|dispatcher|resend-client)['\"]" -- apps/cli apps/mcp
+    git grep -nE "@ledger/(core|db|aws|api|ingest|worker|reconciler|dispatcher|resend-client)" -- apps/cli apps/mcp
     ```
 14. `process.env` is read only in a composition root: a `main.ts`, and each
     `infra/scripts/*.ts` ([pp-infra → scripts](../../pp-infra/references/scripts.md)):
