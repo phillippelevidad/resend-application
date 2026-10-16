@@ -929,7 +929,7 @@ for (const t of tripwires) {
 
 // ---------------------------------------------------------------- app-role grants on every new table
 
-// pp-database's gate asks for the app role's grants on every new table. The role name is not
+// pp-database's gate asks for the runtime role's grants on every new table. The role name is not
 // fixed yet, so this accepts any `GRANT … ON <table> … TO` and leaves the role to the reader.
 {
   const migText = readable
@@ -957,7 +957,7 @@ for (const t of tripwires) {
       record(
         "grants",
         "READ",
-        `\`${t}\` is created with no \`GRANT … TO\` the app role in this change — works as the owner, fails as a narrower role. Confirm which role the deployed Lambdas connect as`,
+        `\`${t}\` is created with no \`GRANT … TO\` the runtime role in this change — works as the owner, fails as a narrower role. Confirm which role the deployed Lambdas connect as`,
       );
   }
   if (created.length)
@@ -971,11 +971,16 @@ for (const t of tripwires) {
 // ---------------------------------------------------------------- mandatory-tier tests
 
 // pp-workflow → Test tiers: these surfaces owe an integration test against real Postgres.
+// `packages/core` is pure (its projections are proven by `*.prop.test.ts`) and `sim/` is evidence,
+// not the path under test, so neither trips the Postgres tier.
 {
   const specs = readable.filter((p) => TEST_FILE.test(p));
-  const integration = specs.filter((p) => /integration/.test(p));
+  const integration = specs.filter((p) => /\.int\.test\.ts$/.test(p));
   const src = readable.filter(
-    (p) => /^(apps|packages|sim)\//.test(p) && !TEST_FILE.test(p),
+    (p) =>
+      /^(apps|packages)\//.test(p) &&
+      !/^packages\/core\//.test(p) &&
+      !TEST_FILE.test(p),
   );
   const srcAdded = addedLines(src);
   const triggers = [];
@@ -1004,13 +1009,21 @@ for (const t of tripwires) {
     triggers.push("a state transition");
   if (src.some((p) => /projec/i.test(p)))
     triggers.push("an order-independent projection");
-  if (src.some((p) => /(outbox|dispatch|reconcil|redrive|replay|dlq)/i.test(p)))
+  // SQS redrive's evidence is the `packages/aws` adapter's `*.test.ts` against the port contract
+  // (pp-testing → Fakes at the port), not a Postgres test.
+  if (
+    src.some(
+      (p) =>
+        !/^packages\/aws\//.test(p) &&
+        /(outbox|dispatch|reconcil|redrive|replay|dlq)/i.test(p),
+    )
+  )
     triggers.push("the correctness path (outbox, reconcile, redrive, replay)");
   if (triggers.length && !integration.length)
     record(
       "tests",
       "BLOCK",
-      `this change touches ${triggers.join(", ")} — the mandatory test tier — and adds no integration test (\`*.integration.{spec,test}.ts\`)`,
+      `this change touches ${triggers.join(", ")} — the mandatory test tier — and adds no integration test (\`*.int.test.ts\`, pp-testing → Test files and tiers)`,
     );
   else
     record(
