@@ -135,8 +135,9 @@ export const getEmailStatusTool = {
 - **Zod** is the repo's one Zod 4, imported as everywhere else; the v2 docs' `zod/v4` subpath is
   the same library ([ADR-019](../../../../.ai/architecture.md#adr-019--application-and-surface-stack):
   the SDK requires `zod ^4.2.0`).
-- **Inputs follow the operation's In line**, named as the wire names them (`email_id`, `address`,
-  `since`, `limit`, `dry_run`, `lookback`). JSON types only: no `.email()`, regex, `.min()` or
+- **Inputs follow the operation's Surfaces line** when it names any (it is then the full set),
+  otherwise its In line, named as the wire names them (`email_id`, `address`, `since`, `limit`,
+  `after`, `dry_run`). JSON types only: no `.email()`, regex, `.min()` or
   `.max()`; the API answers `validation_failed`.
 - **The description is a constant.** It names what the tool returns and that it is masked, and
   carries no instruction to the model and no example address but a Resend test address.

@@ -28,8 +28,9 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
     `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`,
     `AWS_PROFILE`, and any such variable added later.
   - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
-    mapping UUID, queue URLs). `infra` owns them, declared in the CDK construct of the function
-    that reads them; they are not a public contract.
+    mapping UUID, queue URLs). `infra` owns them: their names in one module, each set only on the function that
+    reads it ([pp-infra](../.agents/skills/pp-infra/references/env-and-inputs.md#internal-environment-variables));
+    they are not a public contract.
 - **Base URL.** The read API is served from the same HTTP API as ingest
   ([ADR-010](architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack)),
   and locally by the dev server running the same code (ADR-011). Paths are unversioned.
@@ -77,7 +78,9 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   stdout; without it, it prints `message` and `hint` to stderr. It exits `2` on a usage error,
   which never reaches the API. An MCP tool failure is a tool execution error, `isError: true`, with
   the error object as its text content. It is not a JSON-RPC protocol error
-  ([MCP spec → Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)).
+  ([MCP spec → Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)). The
+  one exception: a type-invalid MCP argument is rejected by the MCP SDK before the API, with the
+  SDK's own `isError` text; it carries no internals, and slice 5's redaction test covers it.
 - **Idempotency.** Reads are side-effect free, and the SDK retries them, and only them, on network
   errors, `429` and `5xx`, with backoff (slice 5). `recipient.get` is a read sent as a
   `POST`, so the SDK retries it too. Each operate command states its own idempotency. Ledger's API
@@ -91,7 +94,9 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   `ratelimit-remaining` runs low (RS-19, RS-20, [ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)).
 - **Long-running commands.** An HTTP API integration times out at 30 s and the limit cannot be
   raised (AWS-02). A command that can outlast it starts asynchronously, answers `202` with a handle,
-  and is polled. The CLI waits by default and takes `--no-wait`.
+  and is polled. The CLI waits by default and takes `--no-wait` where the operation's Surfaces line
+  names it (`reconcile.start`); `dlq.startRedrive` has nothing to poll and returns at once, its
+  progress shown by `health.get`.
 - **MCP least privilege (MUST).** The MCP server runs over stdio with one static credential. At
   startup it reads its own scope through [`token.getCurrent`](#tokengetcurrent). Operate tools are
   registered only when the token carries `operate` **and** the server was started with

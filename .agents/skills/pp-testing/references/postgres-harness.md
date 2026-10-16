@@ -23,8 +23,8 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
 3. **Migrate the template** as the owner, through the one migrate entry point the deploy command
    and the local setup command also call
    ([pp-database → Running migrations](../../pp-database/references/migrations-and-grants.md#running-migrations)).
-   Each table-creating migration grants its DML to the runtime role, so the template carries the
-   grants. This step is how "CI applies every migration to a fresh Postgres before the integration
+   Each table-creating change grants its DML to the runtime role in a custom migration, so the
+   template carries the grants. This step is how "CI applies every migration to a fresh Postgres before the integration
    tests" holds ([slice 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path)).
 4. **Close every connection to the template, then mark it a template:**
    `ALTER DATABASE <template> WITH is_template = true`. "No other sessions can be connected to the

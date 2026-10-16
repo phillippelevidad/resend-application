@@ -388,8 +388,8 @@ Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24
 
 **Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37)**; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): S-05).
 The deploy command first ensures the DML-only runtime role exists, then runs `drizzle-kit`
-migrations with the **direct** Postgres URL supplied by the deployer (each migration that creates a
-table grants its DML to that role), then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
+migrations with the **direct** Postgres URL supplied by the deployer (each change that creates a
+table grants its DML to that role, in a custom migration right after the generated one), then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
 never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). The deploy
 command refuses to run while the kill switch is tripped (the worker's reserved concurrency reads
 `0`) unless it runs as the re-arm, and restores an ADR-015 pause after `cdk deploy` if the worker's

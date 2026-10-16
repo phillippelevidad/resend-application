@@ -17,7 +17,7 @@ git-ignored.
 | 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | done — `pp-backend` and `pp-database` rewritten, four skills added; O-10 written as decided in all three surfaces | `stages/PHASE-3-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-3); the queue below |
 | 4 — consumer routing and cross-skill fixes | done — every consumer routes through pp-workflow's table; the queue applied; 0 broken links over 73 files | `stages/PHASE-4-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-4); the Phase 5 queue below |
 | 5 — adversarial review and fixes | done — five reviewers, 61 findings (2 BLOCK); every one triaged, all but the owner items applied; 0 broken links over 51 files | `stages/PHASE-5-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-5); the owner checkpoint below |
-| 5b — owner checkpoint | **next** — O-16 to O-21 below | Apply what the owner picks; then the run is closed |
+| 5b — owner checkpoint | done — O-16 to O-21 approved as recommended and applied; **the run is closed** | [decisions.md](decisions.md#owner-checkpoint-after-phase-5-2026-10-16) |
 
 ## Skill set (owner, 2026-10-16)
 
@@ -114,7 +114,8 @@ slice that settles it:
 
 ## Owner checkpoint after Phase 5
 
-The docs do not settle these. Each is held: nothing below is applied yet.
+**Outcome (2026-10-16): O-16 to O-21 approved as recommended and applied.** O-19 is recorded in
+Conventions now rather than at slice 5, so the contract and pp-mcp agree from today.
 
 | ID | Finding | Question | Recommended |
 | --- | --- | --- | --- |

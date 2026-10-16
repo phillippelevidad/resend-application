@@ -105,7 +105,7 @@ and mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#wa
 | Do this | Deciding test |
 | --- | --- |
 | Exit `2`, not `1` | Commander or the config loader rejected it, so no SDK call was made |
-| Attach an `argParser` | The SDK input type is not a string (`--limit` → integer). Never on an argument that can carry an address: commander quotes a rejected value in its message |
+| Attach an `argParser` | The SDK input type is not a string (`--limit` → integer). Never on an argument that can carry an address: commander quotes a rejected value in its message. Commander 15 also echoes excess arguments; that is the user's own argv on their own stderr, never logged, sent or printed under `--json`, so it is accepted (O-21) |
 | Check a value's range or format in the CLI | Never. The API answers `validation_failed` (exit `1`); one home for validation |
 | Add a helper module in `apps/cli/src/` | A third command uses it, or it is one of the single homes: the output writer, the exit mapping, the wait |
 

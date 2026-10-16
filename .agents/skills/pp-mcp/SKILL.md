@@ -90,8 +90,9 @@ Evidence: the tool-registration test per scope ([slice 5](../../../.ai/build-che
   reach the model. Every handler returns through the one mapper; an unexpected throw becomes
   `isError: true` with the `internal_error` object (O-12), never the exception's text.
 - **`inputSchema` holds JSON types only** (string, boolean, integer, with descriptions). The SDK
-  rejects arguments that fail it with its own `isError` text, outside the error shape
-  ([v2 → Tools](https://ts.sdk.modelcontextprotocol.io/v2/servers/tools.html)); domain checks stay
+  rejects arguments that fail it with its own `isError` text, the one exception to the error shape
+  ([Conventions](../../../.ai/api-contract.md#conventions),
+  [v2 → Tools](https://ts.sdk.modelcontextprotocol.io/v2/servers/tools.html)); domain checks stay
   with the API, which answers `validation_failed`. `[Unverified]`: whether that SDK text quotes the
   argument; slice 5's redaction test covers it.
 - **Masks only.** No secret, token, payload, free-text payload field or raw PII in any output, log
@@ -117,7 +118,7 @@ Evidence: the tool-registration test per scope ([slice 5](../../../.ai/build-che
 | Do this | Deciding test |
 | --- | --- |
 | Register an operate tool | `token.getCurrent` returned `operate` **and** `--enable-operate` was passed |
-| Add a field to `inputSchema` | The operation's In line names it (`dry_run` for `reconcile`) |
+| Add a field to `inputSchema` | The Surfaces line names it, or the In line when the Surfaces line names no input (`dry_run` alone for `reconcile`) |
 | Constrain an input beyond its JSON type | Never; the API validates |
 | Add a server flag | api-contract names it (today only `--enable-operate`); otherwise Ask-first |
 

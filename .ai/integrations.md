@@ -210,8 +210,9 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   retention job lands (slice 7), column-level `UPDATE` on the columns it rewrites; never `DELETE`.
   **Order (MUST)**, through the direct URL:
   1. The deploy command ensures the role exists (idempotent: created only if absent).
-  2. It runs the migrations. Each migration that creates a table grants that table's DML to the
-     role in the same migration.
+  2. It runs the migrations. Each change that creates a table grants that table's DML to the
+     role, in a custom migration right after the generated one; pending migrations apply in one
+     transaction, so the table never exists ungranted.
   3. It deploys the code ([ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)).
 
   The local setup command and the Testcontainers harness follow the same order, so the role and

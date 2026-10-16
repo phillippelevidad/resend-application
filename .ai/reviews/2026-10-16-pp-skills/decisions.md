@@ -94,6 +94,19 @@ Adversarial review: five reviewers, every finding checked against its cited text
 | V-07 | The SDK exports the client-side `api_unavailable` and `internal_error` objects; the CLI's `runOperation` and the MCP mapper emit `internal_error` for a defect (O-12) | pp-backend → sdk.md, pp-cli, pp-mcp |
 | V-08 | The MCP startup sequence is `startServer(…)`, testable without a spawned process | [pp-mcp → tool-anatomy](../../../.agents/skills/pp-mcp/references/tool-anatomy.md) |
 
+## Owner checkpoint after Phase 5 (2026-10-16)
+
+The owner approved the recommended option for each.
+
+| ID | Decision | Lives in |
+| --- | --- | --- |
+| O-16 | A new table's grant goes in a custom migration right after the generated one; pending migrations apply in one transaction | [integrations.md → Decision — Neon](../../integrations.md#decision--neon), ADR-018, pp-database, pp-testing's harness |
+| O-17 | Internal variable names live in one `infra` module, each set only on the function that reads it | [api-contract.md → Conventions](../../api-contract.md#conventions), pp-infra |
+| O-18 | `--no-wait` only where the Surfaces line names it; `dlq.startRedrive` returns at once | [api-contract.md → Conventions](../../api-contract.md#conventions), pp-cli |
+| O-19 | A type-invalid MCP argument rejected by the MCP SDK is the one exception to the error shape | [api-contract.md → Conventions](../../api-contract.md#conventions), pp-mcp |
+| O-20 | MCP tool inputs: the Surfaces line when it names any, otherwise the In line (`reconcile`: `dry_run` alone) | pp-mcp |
+| O-21 | Commander 15 echoing excess arguments on the user's own stderr is accepted | pp-cli |
+
 ## Owner checkpoint after Phase 3 (2026-10-16)
 
 The owner approved the recommended option for each.
