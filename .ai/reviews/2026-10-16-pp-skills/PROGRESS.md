@@ -14,8 +14,8 @@ git-ignored.
 | 1 — decision docs: ADR-019, ADR-013 amendment, doc tensions | done — ADR-019 added; ADR-011, ADR-013 and ADR-018 amended; S-01 to S-11 settled | `stages/PHASE-1-BRIEF.md`; edits to `.ai/` and root `AGENTS.md` |
 | 1b — owner checkpoint | done — O-01 to O-04 approved as recommended and applied | [decisions.md](decisions.md#open-for-the-owner-at-the-phase-1-checkpoint) |
 | 2 — `pp-general`, `pp-workflow` | done — `pp-general` added, `pp-workflow` rewritten; G-01 to G-14 settled | `stages/PHASE-2-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-2); the queue below |
-| 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | **in progress** — `stages/PHASE-3-BRIEF.md` written (B-, D-, T-, I-, C-, M- decisions; fixed anchors); five agents writing | Five agents in parallel, on disjoint folders |
-| 4 — consumer routing | pending | Skill-name lists in root `AGENTS.md`, `wf-*`, `implement-plan`, `openspec/config.yaml` and the `check.mjs` strings; anchor and link check |
+| 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | done — `pp-backend` and `pp-database` rewritten, four skills added; O-10 written as decided in all three surfaces | `stages/PHASE-3-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-3); the queue below |
+| 4 — consumer routing and cross-skill fixes | **next** — no brief yet; write `stages/PHASE-4-BRIEF.md` from [the queue below](#queue-for-phase-4) first | Skill-name lists in root `AGENTS.md`, `wf-*`, `implement-plan`, `openspec/config.yaml` and the `check.mjs` strings; the cross-skill edits; Open questions rows; anchor and link check over every skill |
 | 5 — adversarial review and fixes | pending | Reviewers check each skill against `.ai/` (the doc wins), then fixes |
 
 ## Skill set (owner, 2026-10-16)
@@ -31,59 +31,116 @@ git-ignored.
 | `pp-cli` | new | Commands, output, exit codes, `--json` |
 | `pp-mcp` | new | Tools, least privilege, masked output, operate gating |
 
-## Queue from Phase 2 (proposed edits outside the two skills)
+## Queue for Phase 4
 
-**Phase 3 (brief carries these):**
-- pp-testing settles test file names. Phase 2 fixed `.test.ts`, `.prop.test.ts`, `.int.test.ts`
-  (pp-general → role suffixes); pp-testing details them and says which tier proves DLQ redrive
-  (it runs through SQS, not Postgres: likely an integration test at the `packages/aws` adapter).
-- pp-backend: replace "JSON logs carrying `svix_id`, `email_id` and `type` only" with a link to
-  data-modeling → Log fields and pp-general; drop the naming and boundary content pp-general owns.
+Proposed by the Phase 2 and 3 agents, outside their own folders. Old/new text for each is in the
+agents' reports as summarized here; re-derive it against the files as they stand. Owner decisions
+O-05 to O-10 and the repository naming edit are already applied ([decisions.md](decisions.md)).
 
-**Phase 4 (consumer routing):**
-- `wf-after-apply-check/scripts/check.mjs` ~971: the integration-test filter `/integration/`
-  misses `*.int.test.ts`. New: `/\.(int|integration)\.(spec|test)\.[jt]sx?$/`, and the message's
-  `*.integration.{spec,test}.ts` → `*.int.test.ts`.
-- `wf-after-apply-check/references/diff-review.md`: `**/*.spec.ts` → `**/*.test.ts`; :166 and
-  `findings.md:78` mandatory-tier cell gains verify-before-enqueue (ADR-001) and masks-only MCP
-  output (slice 5).
-- `wf-after-apply-check/references/findings.md` B4 table: add the pp-workflow duty rows it lacks
-  (Commands line; What-this-project-must-demonstrate evidence; code-level convention → owning
-  pp-* skill; RS-NN cited; RS-UNN/AWS-UNN/PG-UNN row updated).
+**Review scripts** (`wf-after-apply-check/scripts/check.mjs`):
+- ~974 integration filter `/integration/` misses `*.int.test.ts` → `/\.int\.test\.ts$/` (one
+  suffix, per pp-general and pp-testing); its message `*.integration.{spec,test}.ts` →
+  `*.int.test.ts` (pp-testing → Test files and tiers).
+- ~1003 `/projec/i` also fires on `packages/core/**`, so slice 0 would BLOCK: exclude
+  `^packages/core/` (pure projections are proven by `*.prop.test.ts`).
+- ~1005 the redrive/DLQ trigger BLOCKs a `packages/aws` change: exclude `^packages/aws/` (its
+  evidence is the adapter's `*.test.ts`, T-06).
+- ~930 wording: "app role" → "runtime role".
+
+**Routing lists** (hard-coded names; `research-consumer-contract.md` §2):
+- Root `AGENTS.md` → Patterns and practices: a row per skill (8), the Mandatory sentence names
+  pp-general too; pp-workflow row gains "the Ask-first check, which pp-* skill answers a code
+  question".
+- `implement-plan/SKILL.md:30–31`, `wf-before-propose/SKILL.md:27`,
+  `wf-before-propose-check/SKILL.md:57`, `wf-after-apply-check/SKILL.md:75`: load pp-general
+  always, and the path skills by surface.
+- `wf-after-propose-check/references/tech-review.md`: routing table rows for all 8 (:18 pp-workflow
+  "…, naming, boundaries" → "…, skill routing"); :57 replace the copied pp-database Never list with
+  a link to `pp-database#never` (recommended) so it cannot drift.
+- `wf-after-apply-check/references/diff-review.md`: `**/*.spec.ts` → `**/*.test.ts`; :62
+  migrations path → `packages/db/drizzle/`; :98 `infra/` → pp-infra; :134–136 Surfaces → pp-cli and
+  pp-mcp (SDK stays pp-backend); tests and `sim/` → pp-testing; :166 and `findings.md:78`
+  mandatory-tier cell gains verify-before-enqueue (ADR-001) and masks-only MCP output (slice 5).
+- `wf-after-apply-check/references/findings.md` B4 table: add the duty rows it lacks (Commands
+  line; What-this-project-must-demonstrate evidence; code-level convention → owning pp-* skill;
+  RS-NN cited; RS-UNN/AWS-UNN/PG-UNN row updated).
 - `wf-after-propose-check/references/findings.md:122`: append the Commands line and the owning
-  pp-* skill to the duty list.
-- `wf-after-propose-check/references/tech-review.md:18`: pp-workflow row "…, naming, boundaries"
-  → "…, skill routing"; add the pp-general row.
-- Root `AGENTS.md` → Patterns and practices: pp-general row, add it to the Mandatory sentence;
-  pp-workflow row gains "the Ask-first check, which pp-* skill answers a code question".
-- Five `[Unverified]` items in pp-general (Node type stripping under `node_modules`; `tsc -b`
-  with `noEmit`; Biome `overrides` per folder and a "leaves the package" pattern; Lambda level
-  filter vs Winston's lowercase levels) each owe an about.md Open questions entry (slice 0 settles
-  the first three, slice 2 the last).
+  pp-* skill.
+- `wf-before-propose/references/template.md:74`: check the `../../.agents/skills/…` path depth.
 
-**Owner checkpoint — outcome (2026-10-16): O-05 to O-10 approved as recommended.** O-05 to O-09
-are applied (`package.json`, aws.md AWS-54, data-modeling → Log fields, build-checklist → Legend,
-pp-workflow's DoD env row, pp-general). O-10 is applied in pp-general; Phase 3 MUST mark B-06
-"approved (O-10)" in pp-backend, pp-cli and pp-mcp when their agents finish.
-- O-05 Root `package.json` `engines.node` `>=24 <25` → `>=24.12 <25` (type stripping is Stable
-  from v24.12, G-03). Recommended: approve, applied in slice 0.
-- O-06 data-modeling → Log fields: exact key names (`error_name`, `pg_code`, `<name>_count`,
-  `<name>_ms`, `function_name`, `timestamp`) and add `error_code` (a registry code), which the
-  list omits today. Recommended: approve.
-- O-07 build-checklist → Legend: `[!]` "blocked on an owner decision" → "…or an unverified fact",
-  as pp-workflow already applies it. Recommended: approve.
-- O-08 `.env.example` lists public variables only (api-contract → Conventions), never the
-  CDK-set internal ones; pp-workflow's DoD row says so. Recommended: approve.
-- O-09 A `workspace:*` entry is not a third-party dependency, so not Ask-first (pp-general says
-  so). Recommended: approve.
-- O-10 (from Phase 3) The public SDK returns `{ data, error }` like Resend's SDK (RS-23), never
-  throwing for an API error; the one named exception to pp-general's "no `Result` type". The CLI
-  and MCP unwrap it and map once. Recommended: approve. Rejected, the SDK throws the shared error.
+**Cross-skill edits:**
+- pp-workflow → Test tiers (T-06): split DLQ redrive. Postgres tier keeps "a redriven message under
+  a new SQS `messageId` leaves one row (AWS-21)" and the local-mode redrive (slice 2B); SQS redrive's
+  evidence is the `packages/aws` adapter against the port contract plus the slice 3 poison run (sim
+  invariant 4), linking `pp-testing/references/fakes-and-doubles.md#dlq-redrive`.
+- pp-general → logging-and-pii: stdout only, except `apps/mcp` (stdout is JSON-RPC: every level to
+  stderr, Winston `stderrLevels`); `apps/cli` logs nothing.
+- pp-general → coding-standards role suffixes: `email.cli.ts` → `email-get.cli.ts` (C-01); add
+  `.stack.ts` (`app.stack.ts` → `AppStack`) and `.construct.ts` rows (pp-infra).
+- pp-general → errors.md surface table: anchor the links (`pp-cli#output-and-exit-codes`,
+  `pp-mcp#output`).
+- pp-general → boundaries grep 14: allow `process.env` in `infra/src/main.ts` and
+  `infra/scripts/*.ts` (`':!infra/scripts/*.ts'`).
+- pp-testing → Fakes at the port: add "or the SDK client in CLI and MCP tests".
+- pp-backend → resend-client.md: construct `new Resend(key, { baseUrl, userAgent })` with `baseUrl`
+  from typed config, since unset the SDK reads `process.env.RESEND_BASE_URL` (resend@6.33.0); the
+  AWS adapters take their SDK client from `main.ts`.
+- `.gitignore`: add `cdk.out/` and `cdk.context.json` (CBL-19).
+
+**Open questions rows** (pp-workflow DoD duty for every `[Unverified]` a skill wrote), each with the
+slice that settles it:
+- pp-general (5): type stripping under `node_modules`; `tsc -b` with `noEmit`; Biome `overrides`
+  per folder; a "leaves the package" import pattern (slice 0); Lambda level filter vs lowercase
+  Winston levels (slice 2).
+- pp-backend (1): whether `@hono/zod-openapi`'s `415` passes through `defaultHook`/`onError`
+  (slice 1).
+- pp-database (7): drizzle-kit output layout; identity on `bigint`; the `Executor` type; pg's
+  code-less errors (slice 2, PG-U04); `generate` output for a changed `check()`; identity sequence
+  grant; migrations in one transaction (slice 1 unless noted).
+- pp-mcp (3): `serveStdio` vs `StdioServerTransport`; SDK argument-rejection text; the v2 client's
+  tool listing (slice 5).
+- pp-infra (5): `require()` inside an ES-module bundle; `pg-native` at bundle time; synth without
+  an account; spawning the CDK CLI without a shell; Cost Explorer read cost (an `AWS-U10` row in
+  aws.md) (slice 2).
+- pp-testing (1): the Postgres major (see O-14; a `PG-U06` row in integrations.md if not decided).
+
+**Then:** an anchor and link check over every `.agents/skills/pp-*` file (all eight now exist).
+
+## Queue for Phase 5 (adversarial review)
+
+- The dispatcher delivers while holding its claim transaction (ADR-017), against pp-backend B-02's
+  "no external call inside it": pp-backend writes it as the one named exception. Confirm, or amend.
+- pp-database places the contract-step marker on the generated migration, not a custom one (a
+  custom `DROP` would leave drizzle-kit's snapshot behind). Confirm with slice 2's DDL lint.
+- Widening a closed set drops and re-adds its `CHECK`, which trips the DDL lint: pp-database marks
+  every closed-set change. Confirm, or have the lint exempt a same-name drop and re-add.
+- pp-backend wrote slice owners different from the brief (resume event in slice 2, each tick's shape
+  with its target's slice): the build checklist wins; confirm.
+- pp-backend added a secret-reading port to the port table (ADR-013 puts Secrets Manager in
+  `packages/aws`).
+- Sizes: pp-workflow, pp-general, pp-backend, pp-database, pp-testing and pp-infra SKILL.md run
+  12.6 to 13.9 KB against the ~12 KB target.
+
+## Owner checkpoint after Phase 3 (open)
+
+| ID | Question | Recommended |
+| --- | --- | --- |
+| O-11 | The SDK has no code for "no answer" (`fetch` throws). Widen `api_unavailable`'s Meaning to cover it (Ask-first registry edit) | Approve |
+| O-12 | `internal_error` "Raised by" adds `apps/cli` and `apps/mcp` for an unexpected client-side failure, so a `--json` caller always gets an error object (Ask-first) | Approve |
+| O-13 | commander 15.0.0 is npm `latest` (2026-05-29, ES modules only); 14 gets security fixes only, until May 2027. Amend ADR-019 to 15 | Amend in the slice 1 pre-proposal |
+| O-14 | The Postgres major for Neon and the Testcontainers image (integrations.md names none; Neon supports 14–18) | 18, an exact minor tag pinned, recorded in integrations.md → Decision — Neon |
+| O-15 | pp-infra uses one shared function construct from the second function, not pp-general's third duplicate: a copy that misses a cost-brake property is a cost or teardown defect | Accept as the infra-path exception |
+
+Left to their slice pre-proposals, not the owner now: an error code for an unmatched read-API path
+(slice 1, Ask-first then); the kill-switch function's home (slice 2; pp-infra recommends
+`apps/kill-switch` plus a package shared with the re-arm script); the migration runner (slice 1,
+programmatic `migrate()` recommended); MCP `outputSchema` (slice 5); `ledger --version` (slice 8).
 
 ## Consumer contract: what Phase 4 MUST keep
 
 - These anchors survive: `pp-workflow#read-order`, `#definition-of-done`, `#test-tiers`;
-  `pp-database#new-table-recipe`, `#never`; `pp-backend#never`, `#surfaces--sdk-cli-mcp`.
+  `pp-database#new-table-recipe`, `#never`; `pp-backend#never`, `#surfaces--sdk-cli-mcp`; and the
+  Phase 2 and 3 fixed anchors in `stages/PHASE-2-BRIEF.md` and `stages/PHASE-3-BRIEF.md`.
 - Every skill has `## Always`, `## Never` (each entry names its alternative) and a
   `## Gate — then read the diff` section.
 - The rules the `check.mjs` scripts cite by owner skill stay in that skill's `Never` list, or the

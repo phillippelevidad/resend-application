@@ -52,6 +52,20 @@ Code-level conventions no doc owned, decided by the docs and the decision lens. 
 | G-13 | An address only in a request body; never in a URL, log, metric dimension, error text or MCP output |
 | G-14 | Comments give the why and cite ids; no `.ai/` prose in code |
 
+## Settled in Phase 3
+
+Cross-cutting patterns, decided by the docs and the decision lens; slice-specific choices were left
+to each slice's pre-proposal. Each lives in the skill named.
+
+| IDs | Settled | Lives in |
+| --- | --- | --- |
+| B-01 to B-07 | Factories over ports; `main.ts` builds once at module scope; commands own their transaction; the port set; a hand-rolled `resend-client` limiter that throws mapped errors; one `.route.ts` per operation with the middleware order; the SDK build path; the SDK's `{ data, error }` (O-10) | [pp-backend](../../../.agents/skills/pp-backend/SKILL.md) |
+| D-01 to D-07 | One table per schema file; repositories as one object of executor-first functions (owner-approved naming, 2026-10-16); `drizzle-kit generate` plus custom migrations; the contract-step marker; per-table grants in S-05 order; the connection-error classifier; `jsonb` governance; indexes that serve a named query | [pp-database](../../../.agents/skills/pp-database/SKILL.md) |
+| T-01 to T-06 | Test files beside the code; Vitest `unit` and `int` projects; one container per run, a template clone per file, tests as the runtime role; arbitraries in `@ledger/core/testing`; fakes at the port; Svix signing on `node:crypto`; DLQ redrive evidence at the `packages/aws` adapter | [pp-testing](../../../.agents/skills/pp-testing/SKILL.md) |
+| I-01 to I-04 | `NodejsFunction` with local esbuild, ES modules, `node24`, arm64, `@aws-sdk/*` bundled; stack layout; one `Template` assertion per cost-brake property; `.ts` scripts in `infra/scripts/`, never shadowing `pnpm deploy` | [pp-infra](../../../.agents/skills/pp-infra/SKILL.md) |
+| C-01 to C-04 | commander with one `<noun>-<verb>.cli.ts` per command; exit `0`/`1`/`2` via `exitOverride()`; `styleText` colour on a TTY only; `202` waits by default | [pp-cli](../../../.agents/skills/pp-cli/SKILL.md) |
+| M-01 to M-04 | MCP SDK v2 over stdio; `parseArgs`; operate tools only with an `operate` token and `--enable-operate`, failing closed; masks only, `isError` results, handlers never throw | [pp-mcp](../../../.agents/skills/pp-mcp/SKILL.md) |
+
 ## Owner checkpoint after Phase 2 (2026-10-16)
 
 The owner approved the recommended option for each.
