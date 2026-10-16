@@ -22,8 +22,15 @@ const MARKERS = ['@ledger/app-local', repoRoot.replaceAll('\\', '/').toLowerCase
 const isWindows = process.platform === 'win32';
 const say = (message) => console.log(`dev:stop: ${message}`);
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+// The process table with every command line can pass spawnSync's 1 MiB default buffer on a busy
+// machine, which kills the child and reads as "could not read the process table".
 const exec = (command, args) =>
-  spawnSync(command, args, { cwd: repoRoot, encoding: 'utf8', timeout: 30_000 });
+  spawnSync(command, args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 30_000,
+    maxBuffer: 64 * 1024 * 1024,
+  });
 
 const portInUse = (port) =>
   new Promise((done) => {
@@ -148,6 +155,7 @@ function stopTree(pid, table, why) {
   }
 }
 
+// Read only: main removes the file once the process table is read, so a failed read keeps it.
 function recordedPid() {
   if (!existsSync(DEV_PID_FILE)) return undefined;
   let pid;
@@ -156,7 +164,6 @@ function recordedPid() {
   } catch {
     pid = undefined;
   }
-  rmSync(DEV_PID_FILE, { force: true });
   return pid || undefined;
 }
 
@@ -175,6 +182,7 @@ async function main() {
   const recorded = recordedPid();
   const busy = await portInUse(API_PORT);
   if (!recorded && !busy) {
+    rmSync(DEV_PID_FILE, { force: true });
     say(`nothing listens on port ${API_PORT}.`);
     return;
   }
@@ -184,10 +192,13 @@ async function main() {
     console.error('dev:stop: could not read the process table; stop the dev server by hand.');
     process.exit(1);
   }
+  rmSync(DEV_PID_FILE, { force: true });
 
   const roots = new Map();
-  // The recorded pid counts only while its command line still names this repo: pids are reused.
-  if (recorded && table.has(recorded) && tiedToRepo(table.get(recorded).cmd)) {
+  // The recorded pid counts only while its command line still names the dev server: pids are
+  // reused, and a reused pid whose command line merely names the repo path (an editor opened on
+  // it) must never have its tree stopped.
+  if (recorded && table.has(recorded) && table.get(recorded).cmd.includes('@ledger/app-local')) {
     roots.set(recorded, 'started by dev:full');
   }
   let refused = false;

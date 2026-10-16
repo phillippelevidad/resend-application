@@ -46,7 +46,10 @@ function waitForListening(proc: ChildProcess): Promise<{ level: string; message:
     proc.stdout?.setEncoding('utf8');
     proc.stdout?.on('data', (chunk: string) => {
       buffered += chunk;
-      const line = buffered.split('\n').find((l) => l.includes('local server listening'));
+      // Complete lines only: a chunk can end mid-line, and a partial line does not parse.
+      const lines = buffered.split('\n');
+      lines.pop();
+      const line = lines.find((l) => l.includes('local server listening'));
       if (line !== undefined) {
         clearTimeout(timer);
         resolve(JSON.parse(line));

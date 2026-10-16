@@ -25,6 +25,7 @@ const POSTGRES_ADDRESS = 'localhost:55432';
 // dev:stop reads it to stop the tree this script spawned.
 const DEV_PID_FILE = join(repoRoot, 'node_modules', '.ledger-dev.json');
 const DOCKER_TIMEOUT_MS = 90_000;
+const DOCKER_PROBE_TIMEOUT_MS = 10_000;
 const SERVER_TIMEOUT_MS = 30_000;
 
 const isWindows = process.platform === 'win32';
@@ -53,13 +54,18 @@ const answers = (url) =>
   });
 
 async function ensureDocker() {
-  if (quiet('docker info')) return;
-  if (!isWindows || !quiet('docker desktop --help')) fail('Docker is not running');
+  // `docker info` can hang while the daemon starts, so each probe is capped and the wait is
+  // measured on the clock, not counted in iterations.
+  if (quiet('docker info', DOCKER_PROBE_TIMEOUT_MS)) return;
+  if (!isWindows || !quiet('docker desktop --help', DOCKER_PROBE_TIMEOUT_MS)) {
+    fail('Docker is not running');
+  }
 
   step('Docker is not running; starting Docker Desktop…');
+  const deadline = Date.now() + DOCKER_TIMEOUT_MS;
   spawnSync('docker desktop start', { shell: true, stdio: 'inherit', timeout: DOCKER_TIMEOUT_MS });
-  for (let waited = 0; waited < DOCKER_TIMEOUT_MS; waited += 3000) {
-    if (quiet('docker info')) return;
+  while (Date.now() < deadline) {
+    if (quiet('docker info', DOCKER_PROBE_TIMEOUT_MS)) return;
     await sleep(3000);
   }
   fail('Docker is not running');

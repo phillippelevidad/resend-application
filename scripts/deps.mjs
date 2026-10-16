@@ -43,6 +43,10 @@ function fingerprint() {
     'pnpm-workspace.yaml',
     'package.json',
     ...workspaceDirs().map((dir) => `${dir}/package.json`),
+    // pnpm's record of what node_modules holds, rewritten by every install. Without it, a plain
+    // `pnpm install` on another branch leaves the stored hash matching this branch's files while
+    // node_modules holds the other branch's dependencies.
+    'node_modules/.pnpm/lock.yaml',
   ];
   const hash = createHash('sha256');
   for (const file of files) {
