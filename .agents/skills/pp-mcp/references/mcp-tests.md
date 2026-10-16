@@ -81,6 +81,13 @@ as this evidence ([data-modeling.md → PII & retention](../../../../.ai/data-mo
   `@modelcontextprotocol/client/stdio` (v2 → Testing), pointed at `apps/local` running on the test
   database with the fixtures posted through local ingest, so no app imports another.
 
+## Stdout test
+
+The in-process harness never observes stdout, so a logger built without `stderrLevels` passes every
+test above ([SKILL.md → Output](../SKILL.md#output)). A unit test builds the logger through the same
+function `main.ts` calls, at its most verbose level, writes one line at every level, and finds
+`process.stdout.write` never called and every line on stderr.
+
 ## Never
 
 - **Asserting on `selectTools`' return instead of `tools/list`** → list through a real client.

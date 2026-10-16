@@ -66,6 +66,8 @@ export async function startServer({ ledger, enableOperate, serve, stderr, setExi
 - The scope read is awaited **before** the factory runs, so the factory is synchronous and closes
   over a tool list already decided. Whether `serveStdio`'s factory may be async is not documented;
   nothing depends on it.
+- `getCurrent` is a read the SDK retries before `error` comes back; `startServer` adds no retry of
+  its own ([SKILL.md → Tool registration](../SKILL.md#tool-registration-and-least-privilege)).
 - `createLedgerClient` stands for the SDK's factory (pp-backend, slice 1).
 - **The startup sequence is testable without a process.** The scope read, the fail-closed exit,
   the selection and the serve call are `startServer({ ledger, enableOperate, serve, stderr,

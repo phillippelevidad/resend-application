@@ -58,13 +58,19 @@ Exactly [api-contract.md → Conventions](../../../.ai/api-contract.md#conventio
 
 1. **At startup, before serving**, call `ledger.tokens.getCurrent()`
    ([token.getCurrent](../../../.ai/api-contract.md#tokengetcurrent)) and unwrap `{ data, error }`
-   (owner, O-10; [pp-backend → sdk.md](../pp-backend/references/sdk.md)). On `error`, write the error
-   shape to stderr and exit non-zero, serving nothing: without a known scope no tool set is provably
-   least-privilege.
+   (owner, O-10; [pp-backend → sdk.md](../pp-backend/references/sdk.md)). It is a read: the SDK
+   retries it on a network error, `429` or `5xx` ([Conventions](../../../.ai/api-contract.md#conventions),
+   Idempotency), so one transient `503 database_unavailable` does not end the session; the retry
+   budget stays short so startup still answers `initialize` promptly. On the `error` left after
+   those retries, write the error shape to stderr and exit non-zero, serving nothing: without a known
+   scope no tool set is provably least-privilege.
 2. **Each tool file declares its `scope`, copied from its operation's Scope line**, never from the
    section it sits in (S-03; [Read operations](../../../.ai/api-contract.md#read-operations)).
 3. **Register a `read` tool always; an `operate` tool only when `data.scope === 'operate'` and
    `--enable-operate` was passed.** An unregistered tool is absent from `tools/list`, not refused.
+   When `--enable-operate` was passed but the scope is `read`, log one line through the logger (so
+   stderr) with a constant message saying the operate tools were not registered, so the owner sees
+   why they are missing ([Log fields](../../../.ai/data-modeling.md#log-fields): no token value).
 4. **Annotations come from the scope, in one place:** `read` → `readOnlyHint: true`; `operate` →
    `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`. No other hint.
    Annotations are hints clients treat as untrusted; the read API enforces scope (`403 forbidden`).
@@ -102,6 +108,7 @@ Evidence: the tool-registration test per scope ([slice 5](../../../.ai/build-che
   to stderr (Winston Console `stderrLevels`), never `console.log`
   ([v2 → stdio](https://ts.sdk.modelcontextprotocol.io/v2/serving/stdio.html)). A log line carries
   allow-listed fields only, never a tool argument ([Log fields](../../../.ai/data-modeling.md#log-fields)).
+  Evidence: the [stdout test](references/mcp-tests.md#stdout-test).
 
 ## Always
 
@@ -161,5 +168,5 @@ no runtime toggling: `git grep -nE "\.(enable|disable|remove)\(|list_changed|Lis
 · stdio only: `git grep -nE "createMcpHandler|StreamableHTTP|@modelcontextprotocol/(node|express|hono|fastify)" -- apps/mcp/src ':!*.test.ts'`
 · no flag dependency: `git grep -nE "minimist|yargs|commander" -- apps/mcp` · `parseArgs` keeps
 `strict` · annotations set only by the scope-derived helper · the registration test covers all four
-scope × flag cases · every tool has a tool test and a redaction-test row · every new tool, input or
+scope × flag cases · the [stdout test](references/mcp-tests.md#stdout-test) passes · every tool has a tool test and a redaction-test row · every new tool, input or
 flag carries its api-contract entry and Ask-first approval.

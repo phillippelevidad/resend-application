@@ -104,7 +104,7 @@ export function emailGetCli(parent: Command, deps: CliDeps): void {
     .argument('<email_id>')
     .option('--json', 'print the result or the error object as JSON')
     .action(async (emailId, options) => {
-      await runOperation(deps, options, () => deps.client().emails.get({ email_id: emailId }), renderEmail);
+      await runOperation(deps, options, (client) => client.emails.get({ email_id: emailId }), renderEmail);
     });
 }
 ```
@@ -124,9 +124,11 @@ export function emailGetCli(parent: Command, deps: CliDeps): void {
 // apps/cli/src/run-operation.ts
 import { internalError } from '@ledger/sdk';
 
-export async function runOperation<T>(deps, options: { json?: true }, call: () => Promise<SdkResult<T>>, render: (data: T) => string) {
+export async function runOperation<T>(deps, options: { json?: true }, call: (client: LedgerClient) => Promise<SdkResult<T>>, render: (data: T) => string) {
+  // Outside the try: a config error propagates to main.ts's mapper (exit 2), never internal_error.
+  const client = deps.client();
   try {
-    const { data, error } = await call();
+    const { data, error } = await call(client);
     if (error) return fail(deps, options, error);
     if (options.json) deps.output.json(data);
     else deps.output.result(render(data));
@@ -169,8 +171,10 @@ calls `process.exit()`.
 - **Bounded.** A run with no `finished_at` past its time budget is crashed, never running
   ([reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)); how
   the CLI learns that budget and what it prints then is the slice 4 pre-proposal's.
-- **Ctrl-C stops the wait, not the run.** So before waiting, human mode prints the run id to stderr
-  and points at `ledger gaps`; no signal handler is needed.
+- **Ctrl-C stops the wait, not the run.** So before waiting, both modes print the run id to stderr
+  through `notice` and point at `ledger gaps` (stdout stays one document under `--json`), so a
+  script whose wait is interrupted or ends on a poll's error still holds the run id; no signal
+  handler is needed.
 
 ```ts
 // apps/cli/src/wait-for-run.ts
