@@ -15,8 +15,8 @@ git-ignored.
 | 1b — owner checkpoint | done — O-01 to O-04 approved as recommended and applied | [decisions.md](decisions.md#open-for-the-owner-at-the-phase-1-checkpoint) |
 | 2 — `pp-general`, `pp-workflow` | done — `pp-general` added, `pp-workflow` rewritten; G-01 to G-14 settled | `stages/PHASE-2-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-2); the queue below |
 | 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | done — `pp-backend` and `pp-database` rewritten, four skills added; O-10 written as decided in all three surfaces | `stages/PHASE-3-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-3); the queue below |
-| 4 — consumer routing and cross-skill fixes | **next** — no brief yet; write `stages/PHASE-4-BRIEF.md` from [the queue below](#queue-for-phase-4) first | Skill-name lists in root `AGENTS.md`, `wf-*`, `implement-plan`, `openspec/config.yaml` and the `check.mjs` strings; the cross-skill edits; Open questions rows; anchor and link check over every skill |
-| 5 — adversarial review and fixes | pending | Reviewers check each skill against `.ai/` (the doc wins), then fixes |
+| 4 — consumer routing and cross-skill fixes | done — every consumer routes through pp-workflow's table; the queue applied; 0 broken links over 73 files | `stages/PHASE-4-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-4); the Phase 5 queue below |
+| 5 — adversarial review and fixes | **next** — write `stages/PHASE-5-BRIEF.md` from [the queue below](#queue-for-phase-5-adversarial-review) first | Reviewers check each skill against `.ai/` (the doc wins), then fixes |
 
 ## Skill set (owner, 2026-10-16)
 
@@ -32,6 +32,11 @@ git-ignored.
 | `pp-mcp` | new | Tools, least privilege, masked output, operate gating |
 
 ## Queue for Phase 4
+
+**Done (2026-10-16).** Every item below is applied, except: `openspec/config.yaml` needed no edit
+(its two pp-* mentions are generic or still valid); `template.md:74`'s path depth was already right
+(its links resolve from `.ai/pre-proposals/`, where the document is written); pp-testing's Open
+questions row was dropped (O-14). Kept for the record.
 
 Proposed by the Phase 2 and 3 agents, outside their own folders. Old/new text for each is in the
 agents' reports as summarized here; re-derive it against the files as they stand. Owner decisions
@@ -119,7 +124,21 @@ slice that settles it:
 - pp-backend added a secret-reading port to the port table (ADR-013 puts Secrets Manager in
   `packages/aws`).
 - Sizes: pp-workflow, pp-general, pp-backend, pp-database, pp-testing and pp-infra SKILL.md run
-  12.6 to 13.9 KB against the ~12 KB target.
+  12.6 to 13.9 KB against the ~12 KB target. Phase 4 added lines to pp-workflow (Test tiers) and
+  pp-testing; re-measure.
+- From Phase 4: the after-apply `check.mjs` mandatory-tier triggers now skip `packages/core` and
+  `sim/` for **every** trigger (the queue named only the projection trigger): core is pure and the
+  simulator is evidence, not the path under test. Confirm against pp-workflow → Test tiers.
+- From Phase 4: diff-review's new `infra` bucket has a one-paragraph section (pp-infra's `Never`,
+  gate and Cost brake in code), not Correctness/Security tables like the other surfaces; and
+  tech-review has no design-level section for pp-testing or pp-infra. Decide whether either earns
+  a table.
+- From Phase 4: the Open questions row "what `generate` emits for a changed `check()`" carries a
+  tripwire (the first change that widens a closed set), not a slice, unlike the owed-by-slice rule.
+  Safe either way (the SQL is read), but confirm the exception or name a slice.
+- From Phase 4: the library-behavior Open questions rows (six bullets, about twenty facts) carry
+  no `XX-UNN` id, so they are
+  absent from architecture.md → Open questions owed by slice. Decide whether they need ids.
 
 ## Owner checkpoint after Phase 3
 

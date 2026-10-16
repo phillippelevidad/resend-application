@@ -66,6 +66,19 @@ to each slice's pre-proposal. Each lives in the skill named.
 | C-01 to C-04 | commander with one `<noun>-<verb>.cli.ts` per command; exit `0`/`1`/`2` via `exitOverride()`; `styleText` colour on a TTY only; `202` waits by default | [pp-cli](../../../.agents/skills/pp-cli/SKILL.md) |
 | M-01 to M-04 | MCP SDK v2 over stdio; `parseArgs`; operate tools only with an `operate` token and `--enable-operate`, failing closed; masks only, `isError` results, handlers never throw | [pp-mcp](../../../.agents/skills/pp-mcp/SKILL.md) |
 
+## Settled in Phase 4
+
+Consumer routing and cross-skill fixes, decided by the docs and the decision lens.
+
+| ID | Settled | Lives in |
+| --- | --- | --- |
+| R-01 | Every gate and `implement-plan` loads pp-workflow and pp-general, then the skills [pp-workflow's routing table](../../../.agents/skills/pp-workflow/SKILL.md#which-skill-answers-a-code-question) names; none re-lists the path skills. Root AGENTS.md keeps one row per skill as the human index | Root AGENTS.md → Patterns and practices; the `wf-*` skills; `implement-plan` |
+| R-02 | Drift-prone copies become links: tech-review links `pp-database#never` instead of restating it | `wf-after-propose-check/references/tech-review.md` |
+| R-03 | The after-apply `surfaces` worklist gains an `infra` bucket (pp-infra); `sim/` joins `tests-docs` (pp-testing) | `wf-after-apply-check` (`check.mjs`, SKILL.md, diff-review.md) |
+| R-04 | The Postgres-tier BLOCK reads `*.int.test.ts`, and skips `packages/core`, `sim/` and, for redrive, `packages/aws` | `wf-after-apply-check/scripts/check.mjs` |
+| R-05 | SQS redrive's evidence is the `packages/aws` adapter plus sim invariant 4; the Postgres tier keeps the redriven-duplicate row and local-mode redrive (T-06) | [pp-workflow → Test tiers](../../../.agents/skills/pp-workflow/SKILL.md#test-tiers) |
+| R-06 | The skills' library `[Unverified]` facts are Open questions bullets, grouped by skill, each with its slice; the Cost Explorer read cost is `AWS-U10` (slice 2) | [about.md → Open questions](../../about.md#open-questions), [aws.md → \[Unverified\]](../../aws.md#unverified) |
+
 ## Owner checkpoint after Phase 3 (2026-10-16)
 
 The owner approved the recommended option for each.
