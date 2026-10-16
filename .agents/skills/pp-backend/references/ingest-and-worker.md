@@ -15,7 +15,10 @@ it is not an operation, has no OpenAPI entry, and the error registry does not ap
 the bytes and the three `svix-*` headers to the function `packages/ingest` built. That function:
 
 1. **Gets the secret set**, cached per container for at most 5 minutes against the clock port
-   (ADR-009), so an added or retired secret takes effect without a redeploy.
+   (ADR-009), so an added or retired secret takes effect without a redeploy. A failed or empty
+   read throws, so the answer is a `5xx` Resend retries (RS-10), never a `401` and never
+   `ingest.rejected`: `401`s on an infra fault can auto-disable the webhook (RS-11). A failed
+   refresh never serves a set past its 5 minutes.
 2. **Verifies with `webhooks.verify`, one call per secret, first match wins** (RS-02). Resend
    secrets first, then the simulator secret when one is configured; the match sets `source` to
    `live` or `simulated` (ADR-016). Only ingest sets `source`. Never a hand-rolled HMAC compare
@@ -57,8 +60,10 @@ One `RecordEventCommand`-shaped transaction per message ([commands-and-readers.m
    ([Reliability core](../../../../.ai/architecture.md#reliability-core)).
 6. Evaluate the reaction rules and insert each outbox row with its `dedupe_key` (slice 6,
    [reactions-and-recovery.md](reactions-and-recovery.md#outbox)).
-7. Commit. After commit, when outbox rows were written, invoke the dispatcher asynchronously
-   (ADR-017). A lost invoke only delays delivery to the next sweep.
+7. Commit. When any message of the batch wrote outbox rows, the worker invokes the dispatcher
+   asynchronously at most once per batch, after its last commit (ADR-017; nothing else bounds the
+   fan-out, AWS-53). A lost invoke only delays delivery to the next sweep, so an invoke failure is
+   logged and never marks a committed message failed (AWS-05: that redelivers it).
 
 ## Worker, per batch
 

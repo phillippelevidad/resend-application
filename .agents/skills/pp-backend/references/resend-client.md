@@ -47,6 +47,8 @@ a fake clock.
    `ratelimit-reset` seconds before the next request.
 3. **`429`:** wait `retry-after`, then retry. Before any wait, compare it with the caller's deadline
    (the run's time budget): a wait that would pass it stops the call with `rate_limited` instead.
+   A `429` named `daily_quota_exceeded` or `monthly_quota_exceeded` (RS-22), or one without
+   `retry-after`, is never retried: it ends the call with `rate_limited`.
 4. **No limiter shared across functions** through a table or a service: single-flight callers make
    it unnecessary (ADR-012's rejected option).
 
@@ -65,7 +67,7 @@ exhaustive `switch` on the SDK's error-name union: it differs from the documente
 | Response | Outcome |
 | --- | --- |
 | `2xx` | Return `data` |
-| `429` | The limiter's step 3; past the deadline, `rate_limited` |
+| `429` | The limiter's step 3; past the deadline, a quota name or no `retry-after`: `rate_limited` |
 | `401`, `403` (any name) on a reconciler call | `resend_auth_failed` |
 | `401`, `403` on Send Email | Returned to the dispatcher by status and name for `last_error`: a `403 validation_error` there can be the `resend.dev` own-address rule (RS-34) |
 | `400` named `validation_error` with the message `API key is invalid` | `resend_auth_failed` (RS-U17, Constraint 14) |

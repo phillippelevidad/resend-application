@@ -16,6 +16,11 @@ here rides on at-least-once delivery, so each one is idempotent by a key the dat
 - **A rule is a pure `packages/core` `.rule.ts`** over the recomputed state. It fires only on a
   predicate that, once true, stays true for every larger event set (a recipient reaching
   `hard_bounced`), so it fires once in any arrival order; never on an intermediate state.
+- **It fires on the transition this event causes** (ADR-006: the predicate *becomes* true): false
+  on the event set without this event, true with it, both computed by the pure projections under
+  the locks, never by comparing with the stored row this transaction overwrites. A predicate
+  already true does not fire: `dedupe_key` carries the causing `svix_id`, so the constraint cannot
+  stop a second firing from another event.
 - **The row is a self-contained snapshot:** `payload` holds ids, `type`, hashes and masks, enough to
   render the effect without re-reading mutable state, and never raw PII or a third-party body. An
   alert's subject and body render from `payload` alone, so every retry sends identical bytes.
@@ -44,10 +49,19 @@ Lands in slice 6.
   horizon stays under the key's 24 h life; past it the row is `dead`
   ([resend.md → Constraint 8](../../../../.ai/resend.md#constraints-and-sharp-edges)).
 - **`last_error` holds a status and an error name**, never a response body.
-- **Fail loudly:** a failed delivery bumps `attempts` and `next_attempt_at`; nothing returns success
-  for an undelivered row.
-- The callback signing scheme, the dispatcher's time budget and the sweep's tick shape are the
-  slice 6 pre-proposal's.
+- **Fail loudly, per row:** a delivery's throw is caught and recorded as that row's outcome in the
+  batch transaction (`attempts` up, `next_attempt_at` backed off, `last_error`), never rethrown. A
+  rethrow rolls the whole batch back: rows already sent stay `pending`, never count an attempt,
+  never reach the cap that marks them `dead`, and re-send on every trigger. This catch translates a
+  throw into a recorded outcome ([catching](../../pp-general/references/errors.md#catching));
+  nothing returns success for an undelivered row.
+- **Before each send:** an alert row past the 24 h horizon, measured from its `created_at` (never
+  later than the key's first use), is marked `dead` with no send. When the remaining Lambda time
+  (a deadline the handler passes in) cannot fit one delivery's worst case, its HTTP timeout plus
+  the limiter's wait, the holder commits the batch so far and stops; the next invoke or sweep takes
+  the rest.
+- The callback signing scheme, the attempt cap, the time-budget values and the sweep's tick shape
+  are the slice 6 pre-proposal's.
 
 ## Reconciler
 

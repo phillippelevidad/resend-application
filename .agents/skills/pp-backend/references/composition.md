@@ -48,7 +48,11 @@ per-container cache (the ingest secret-set TTL, ADR-009). The pool is **size 1 p
 container** ([ADR-005](../../../../.ai/architecture.md#adr-005--postgres-only),
 [integrations.md → How it is used](../../../../.ai/integrations.md#decision--neon)); concurrency
 comes from more containers, capped by the ESM `MaximumConcurrency` (ADR-008), never from a bigger
-pool. A container therefore processes its messages one at a time.
+pool. A container therefore processes its messages one at a time. The pool sets
+`connectionTimeoutMillis` and `query_timeout` below the function timeout, so a hung database
+surfaces as a classified connection error (ADR-015), not a Lambda timeout that fails the batch
+(AWS-05) without pausing the ESM ([pp-database → Connection](../../pp-database/references/schema-and-repositories.md#connection));
+the values are the slice 2 pre-proposal's.
 
 `apps/<fn>/src/<fn>.handler.ts` exports `handler`, the CDK entry ([pp-infra](../../pp-infra/SKILL.md)).
 It adapts the event (decodes the body per AWS-01, maps SQS records, builds the
@@ -58,8 +62,10 @@ calls the function `main.ts` built. It holds no logic: a branch on domain data i
 in the package.
 
 `apps/local/src/main.ts` composes the same factories with local adapters (the in-process queue,
-`@hono/node-server`, from slice 2B the Postgres queue), so no app imports another (ADR-013). How it
-mounts `POST /webhooks/resend` beside the read API is the slice 1 pre-proposal's.
+`@hono/node-server`, from slice 2B the Postgres queue), so no app imports another (ADR-013). It
+gives each function it composes its own size-1 pool, so a dispatcher batch holding its connection
+across sends never blocks the worker or the read API. How it mounts `POST /webhooks/resend` beside
+the read API is the slice 1 pre-proposal's.
 
 ## Ports
 
@@ -75,7 +81,7 @@ implementation ([adding-things.md](../../pp-general/references/adding-things.md#
 | Metrics helper's interface (the fixed EMF set, [metrics](../../pp-general/references/logging-and-pii.md#metrics)) | the EMF line writer; locally, through the logger | 1 |
 | Event source control (read state, enable, disable the worker ESM; AWS-18) | `packages/aws`; local mode reports the state as a no-op ([worker.resumeEventSource](../../../../.ai/api-contract.md#workerresumeeventsource)) | 2 |
 | Queue attributes (depth, oldest age; AWS-22) | `packages/aws`; local mode counts `local_queue_messages` | 2 |
-| Function invoke (async: worker → dispatcher, API → reconciler; synchronous, awaiting the result: API → worker resume, whose answer is the resulting state or `database_unavailable`) | `packages/aws` | 2 |
+| Function invoke (async: worker → dispatcher, API → reconciler; synchronous, awaiting the result: API → worker resume, whose answer is the resulting state or `database_unavailable`) | `packages/aws`; locally `apps/local` calls the composed factory in process (async: not awaited, a rejection logged; synchronous: awaited) | 2 |
 | DLQ receive and redrive (AWS-50, AWS-21) | `packages/aws`; local mode reads and clears `dead_at` | 3 |
 | Secret reading (Secrets Manager, by the ARN in an internal variable; [secrets](../../pp-general/references/config-and-env.md#secrets)) | `packages/aws`; locally `apps/local`'s `main.ts` passes a static implementation over the values its config parsed from `.env.local`, so the factory always takes the port | 2 |
 

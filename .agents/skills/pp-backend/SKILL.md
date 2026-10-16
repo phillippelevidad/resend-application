@@ -34,8 +34,8 @@ migrations, grants → [pp-database](../pp-database/SKILL.md) · tests, fakes, `
 
 - Logic in a package factory `create<Thing>(deps)` over ports and typed config, returning a
   function over domain inputs; each `apps/*` is event adaptation plus a `main.ts` that builds
-  everything once at module scope, with one `pg` pool of size 1
-  ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode),
+  everything once at module scope, with one `pg` pool of size 1 per function (`apps/local` builds
+  one per function it composes) ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode),
   [ADR-005](../../../.ai/architecture.md#adr-005--postgres-only); [composition.md](references/composition.md)).
 - Writes in a command, reads in a reader: one public `execute(input)`, `type <Name>Input` beside it
   ([ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack)). A command opens

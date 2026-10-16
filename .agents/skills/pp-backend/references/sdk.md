@@ -55,6 +55,9 @@ surface that sits close to Resend's. Everything inside the server still throws.
 - **A network failure** (`fetch` throws; `openapi-fetch` surfaces it through its `onError`
   middleware, [API](https://openapi-ts.dev/openapi-fetch/api)) is caught and returned as `error` with the
   client-side `api_unavailable`, never thrown ([Error codes](../../../../.ai/api-contract.md#error-codes)).
+  No answer within the per-request timeout (`AbortSignal.timeout`, set just above the HTTP API's
+  30 s integration cap, AWS-02) is a network failure too; without it Node's `fetch` waits up to
+  undici's 300 s `headersTimeout` ([Client](https://github.com/nodejs/undici/blob/main/docs/docs/api/Client.md)).
 - **It exports the client-side error objects** `api_unavailable` and `internal_error`, with their
   registry `message`, `hint` and `docs`, so the CLI and the MCP server write no `code` literal for
   an unexpected client-side failure (O-12).
@@ -64,9 +67,11 @@ surface that sits close to Resend's. Everything inside the server still throws.
 
 ## Retries (slice 5)
 
-- **Reads only**, every operation whose entry says "the SDK retries it", `recipient.get` included
-  although it is a `POST`. So the flag is per operation, never inferred from the HTTP method.
-- **On network errors, `429` and `5xx`**, with backoff; never on another `4xx`.
+- **Every read, and only reads** ([Conventions → Idempotency](../../../../.ai/api-contract.md#conventions)):
+  every operation whose Kind is `read`, `recipient.get` included although it is a `POST`. So the
+  flag is per operation, never inferred from the HTTP method.
+- **On network errors, `429` and `5xx`**, with backoff; never on another `4xx`. The budget stays
+  short, so a startup read such as `token.getCurrent` answers promptly.
 - **Never a command.** `token.create` mints a new token per call and is never retried; the other
   commands state their own idempotency and the SDK retries none of them.
 - The count and the backoff curve are the slice 5 pre-proposal's. Evidence: SDK unit tests
