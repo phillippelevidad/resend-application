@@ -55,7 +55,7 @@ The budget, its notifications and the kill switch are designed in
 email, and ACTUAL 100 % to the trip topic. They live in the guardrails stack
 ([ADR-010](architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack)), and
 [slice 2](build-checklist.md#2--durable-ingest-on-aws) builds them and drills them. What
-`cdk destroy --all` leaves behind is canonical in [aws.md → Teardown](aws.md#teardown). The rows
+the teardown command leaves behind is canonical in [aws.md → Teardown](aws.md#teardown). The rows
 below are the recurring checks that keep that design true while the stack stays up
 ([lens clause 7](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 

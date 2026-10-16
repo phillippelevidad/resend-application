@@ -28,7 +28,8 @@ of them against AWS or a live Resend account is Ask-first ([Permissions](../../.
   path the Postgres harness also runs ([pp-testing → Postgres harness](../../pp-testing/SKILL.md#postgres-harness),
   [pp-database](../../pp-database/SKILL.md)), the token mint, and the trip and restore steps the
   kill switch and the re-arm share (home: slice 2).
-- **Fail closed.** A failed step exits non-zero and nothing after it runs. Every step that changes
+- **Fail closed.** A failed step exits non-zero and nothing after it runs, except
+  [deploy step 8](#deploy). Every step that changes
   state reads it first, so a re-run is safe.
 
 ## Root package.json scripts
@@ -77,7 +78,8 @@ The order is fixed by S-05, [ADR-018](../../../../.ai/architecture.md#adr-018--m
    this falls relative to step 5 is slice 2's; the value never passes through CDK (CBL-01).
 7. Insert the first `operate` token through the direct URL (`bootstrap`, `ON CONFLICT DO NOTHING`)
    and print it once, only when inserted; `--issue-operate-token <name>` mints a replacement.
-8. Restore a pause recorded in step 1 (AWS-U09).
+8. Restore a pause recorded in step 1 (AWS-U09). It runs whenever step 5 started, also when step 5
+   failed: a rolled-back update may re-apply `Enabled: true` too.
 
 Recommended for slice 2, because each recurs per deploy (lens clause 1): run
 [CBL-01](../../../../.ai/check-before-launch.md#deploy-configuration)'s grep over `cdk.out/` after
@@ -86,8 +88,10 @@ fail loudly ([CBL-16](../../../../.ai/check-before-launch.md#deploy-configuratio
 
 ## Teardown
 
-- **One command, owner-triggered:** `cdk destroy --all`, then the post-destroy listing of
-  stack-tagged resources and `/aws/lambda/*` log groups through `@ledger/aws`, exiting non-zero on
+- **One command, owner-triggered:** `cdk destroy` the app stack, then the guardrails stack only
+  when the app stack's destroy succeeded (the stacks declare no dependency, so `--all` does not
+  guarantee the order and could leave a `DELETE_FAILED` app stack without guardrails: a budget-alarm gap, [Budget alarms](../../../../.ai/aws.md#budget-alarms)
+  item 1), then the post-destroy listing of stack-tagged resources and `/aws/lambda/*` log groups through `@ledger/aws`, exiting non-zero on
   a billable leftover ([aws.md → Teardown](../../../../.ai/aws.md#teardown), which also lists what
   survives by design). It prints the steps outside AWS: delete the Resend webhook
   ([features.md → tear down](../../../../.ai/features.md#adopter-lifecycle)), and optionally the

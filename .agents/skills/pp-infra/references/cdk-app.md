@@ -109,8 +109,14 @@ under Node 24 and assert `handler` is a function):
   ([logger](../../pp-general/references/logging-and-pii.md#logger)).
 - **IAM by grant methods**, per function and only what it uses: `secret.grantRead(fn)` for the
   secrets the [Secrets layout](../../../../.ai/integrations.md#secrets-layout) gives it, the queue
-  grant its role needs. The kill switch's permissions are scoped to stack-prefixed ARNs built from
-  pseudo-parameters.
+  grant its role needs. The kill switch's function permissions are scoped to stack-prefixed
+  function ARNs built from pseudo-parameters. An event source mapping's ARN ends in a generated
+  UUID, so `lambda:UpdateEventSourceMapping` takes `event-source-mapping:*` narrowed by the
+  `lambda:FunctionArn` condition to the worker's ARN
+  ([Lambda → Resources and conditions](https://docs.aws.amazon.com/lambda/latest/dg/lambda-api-permissions-ref.html)).
+  An HTTP API's ARN carries its generated id, so the throttle update takes `/apis/*/stages/*` (and
+  `/routes/*` if the kill switch updates routes) in the stack's region: a wider grant the stack
+  comments. That ARN shape is `[Unverified]` ([AWS-U11](../../../../.ai/aws.md#unverified)).
 - **The worker's event source mapping** carries ADR-008's settings; `maxReceiveCount` is AWS-09's.
 
 ## The guardrails stack

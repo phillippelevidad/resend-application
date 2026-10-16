@@ -173,7 +173,7 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   - Resume in hundreds of milliseconds, against Aurora's ≈ 15–30 s.
 - **What the loser wins:** Aurora keeps everything inside one AWS account and one bill. It has
   IAM-authenticated access with no database password, CDK-managed teardown inside
-  `cdk destroy --all`, the AWS budget and kill switch covering the database too, and more visible
+  the teardown command, the AWS budget and kill switch covering the database too, and more visible
   AWS learning.
 - **Fallback + trigger.** Switch to Aurora, by an ADR, when any of these happens:
   - Neon's Free terms change so that a kept-up deploy is paused, deleted or billed (watch PG-U01);
@@ -228,7 +228,7 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
 - **Outside the AWS budget.** Neon spend is not covered by the AWS budget or kill switch. On Free,
   it cannot bill. Moving to a paid Neon plan is an owner decision, because that spend sits outside
   the hard cap ([Open decisions](#open-decisions)).
-- **Teardown.** `cdk destroy --all` remains the one command that stops all spend. Neon Free
+- **Teardown.** The teardown command ([aws.md → Teardown](aws.md#teardown)) remains the one command that stops all spend. Neon Free
   bills nothing either way. Deleting the Neon project (console or API) removes the data. It is
   optional, documented in the teardown guide, and recoverable for 7 days.
 

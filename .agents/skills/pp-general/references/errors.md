@@ -93,7 +93,7 @@ framework error reaching a client is a defect.
   failure ([Error codes](../../../../.ai/api-contract.md#error-codes)).
 - **No raw error escapes a Lambda handler.** The runtime logs an escaped error's message and stack
   outside the logger ([AWS → Node.js errors](https://docs.aws.amazon.com/lambda/latest/dg/nodejs-exceptions.html),
-  [Unverified]: the page now serves general troubleshooting text), and a `JSON.parse` or Postgres
+  [Unverified], [AWS-U12](../../../../.ai/aws.md#unverified)), and a `JSON.parse` or Postgres
   message can quote the payload ([Log fields](../../../../.ai/data-modeling.md#log-fields), Never).
   Whatever the `.handler.ts` does not already turn into a response (the worker's per-message
   failures stay `batchItemFailures` entries) it catches at its edge, logs by `error_name`,

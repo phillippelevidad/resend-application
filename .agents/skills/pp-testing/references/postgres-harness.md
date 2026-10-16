@@ -3,8 +3,13 @@
 The integration tier exists because the database enforces the rule: the unique key on `svix_id`,
 the row locks, the grants, the transaction that commits all or nothing. A mocked client proves none
 of it ([Test tiers](../../pp-workflow/SKILL.md#test-tiers)). The deployed driver is
-`drizzle-orm/node-postgres`, the one these tests use, so the tested path is the deployed path
-([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)). The harness is
+`drizzle-orm/node-postgres`, the one these tests use, so the driver path is the deployed one
+([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)); the topology
+is not: tests reach Postgres directly, Lambdas go through Neon's transaction-mode pooler. A
+session-level feature (`SET`, `pg_advisory_lock`, `LISTEN`, SQL `PREPARE`) passes here and breaks
+deployed, so pooler safety rests on [pp-database → Never](../../pp-database/SKILL.md#never), the
+[diff-review row](../../wf-after-apply-check/references/diff-review.md#security) and
+[PG-U02](../../../../.ai/integrations.md#unverified)'s deployed concurrency test. The harness is
 Postgres access, so it lives in `packages/db` and is exported through `@ledger/db/testing`
 ([module boundaries](../../../../AGENTS.md#module-boundaries)). Schema, grants and migrations are
 [pp-database](../../pp-database/SKILL.md)'s; this file owns how tests get a database.
@@ -80,6 +85,12 @@ afterAll(async () => { await t.drop(); });
   new row while leaving existing ones alone. Run the message: it throws, and **nothing** committed
   (no `webhook_events` row either). Drop the constraint, run the same message again: one row of
   everything. The fault lives in the file's own clone and dies with it.
+- **A concurrent duplicate** (two copies of one `svix_id` in flight at once, AWS-06): pre-seed the
+  email with one event, then lock its `email_state` row `FOR UPDATE` in an open transaction on
+  `t.owner`. Run the same envelope in two size-1 pools: A inserts into `webhook_events` and waits on
+  the lock; B waits on A's uncommitted `svix_id`. Poll `pg_stat_activity` until both wait, release,
+  and assert one `webhook_events` row, B committed as a duplicate, no second `outbox` row. Repeat
+  with A failing (`pg_terminate_backend` on A while both wait): B inserts and projects.
 - **Two concurrent containers** (the recipient lock order, ADR-017's two invokes): open one pool of
   size 1 per simulated Lambda container, as production does
   ([ADR-005](../../../../.ai/architecture.md#adr-005--postgres-only)). Interleave by observation, not

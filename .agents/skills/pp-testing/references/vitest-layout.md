@@ -79,7 +79,7 @@ through the Lambda adapter ([ADR-019](../../../../.ai/architecture.md#adr-019--a
 // packages/shared/src/testing/queue-port-contract.ts — exported through @ledger/shared/testing
 export function queuePortContract(name: string, make: () => Promise<QueuePortUnderTest>): void {
   describe(`QueuePort contract: ${name}`, () => {
-    it('an enqueued envelope is received once with its svix_id intact', async () => { /* … */ });
+    it('an enqueued envelope is received at least once, its svix_id and raw body byte-identical', async () => { /* … */ });
   });
 }
 ```
@@ -88,6 +88,11 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
   contract, and is written when the **second** implementation lands, not before
   ([Case-by-case](../SKILL.md#case-by-case)).
 - Each implementation's own test file calls it, plus that implementation's specifics.
+- The queue suite asserts at-least-once delivery, never exactly-once (AWS-06): exactly-once effects
+  are the worker's job, on `svix_id` ([ADR-004](../../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).
+  The SQS adapter only enqueues (the ESM receives), so it runs the enqueue cases only; the
+  receive-and-settle cases run against the in-process and Postgres-backed queues
+  ([pp-backend → Ports](../../pp-backend/references/composition.md#ports)).
 - Where the SDK ↔ API contract tests live is the slice 1 pre-proposal's. Constraint:
   `packages/sdk` never depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
   so they do not live in `packages/sdk`. They read real rows, so they are `*.int.test.ts`.
@@ -121,7 +126,7 @@ Run from the repo root. Expected: no output, unless the entry names what is allo
    git grep -nE "Math\.random|Date\.now\(|randomUUID\(" -- sim packages/core/src/testing
    ```
    Allowed: the `svix-timestamp` the signer reads from the wall clock ([simulator.md](simulator.md#signing)),
-   and `sim/src/main.ts` picking a seed when none is given ([seed](simulator.md#seed-and-determinism)).
+   and `sim/src/main.ts` picking a seed or a run namespace when none is given ([seed](simulator.md#seed-and-determinism)).
 7. A call assertion, each read by hand for a consequence beside it or an outbound vendor seam:
    ```sh
    git grep -nE "toHaveBeenCalled(With|Times)?\(" -- '*.test.ts'

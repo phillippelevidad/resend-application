@@ -167,7 +167,7 @@ random bytes held by the deployer:
 - It lives next to the database URL in `.env.local`, is generated once by the setup script, and is
   placed in the `ledger/database` secret by the deploy command
   ([integrations.md → Secrets layout](integrations.md#secrets-layout)).
-- It is deployer-held because the Neon database outlives `cdk destroy --all`
+- It is deployer-held because the Neon database outlives the teardown command
   ([integrations.md → Decision](integrations.md#decision--neon)). A key generated per deploy would
   orphan every stored hash.
 - The deploy command MUST refuse a key whose `key_id` differs from a stored hash's prefix.

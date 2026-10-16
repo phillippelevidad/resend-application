@@ -246,8 +246,10 @@ below was ratified by the owner on 2026-10-15.
 
 ## Teardown
 
-**One command, owner-triggered:** `cdk destroy --all` removes the app stack and the guardrails
-stack. `cdk destroy` of the app stack alone keeps the guardrails, by design. The kill switch never
+**One command, owner-triggered:** it destroys the app stack, then the guardrails stack only when
+the app stack's destroy succeeded, so a `DELETE_FAILED` app stack never loses its guardrails
+([Budget alarms](#budget-alarms) item 1; the stacks declare no dependency, so `cdk destroy --all`
+does not guarantee this order). `cdk destroy` of the app stack alone keeps the guardrails, by design. The kill switch never
 tears down ([features.md → tear down](features.md#adopter-lifecycle)). This list is canonical.
 [check-before-launch.md](check-before-launch.md) links here.
 
@@ -310,6 +312,8 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 | AWS-U08 | `SELECT … FOR UPDATE` locks taken in a Data API transaction hold across its later calls | AWS-46 says connections are pooled and `DISCARD ALL` runs between uses. No page says a transaction is pinned to one connection | A two-transaction lock test against a real fallback cluster | Not owed while Neon holds. The ADR that switches to the Aurora fallback MUST settle it ([integrations.md](integrations.md#decision--neon)) |
 | AWS-U09 | A CloudFormation update of the worker's event source mapping re-applies the template's `Enabled: true` over an out-of-band disable (kill switch, ADR-015) | The CFN `AWS::Lambda::EventSourceMapping` page gives `Enabled` "Default: True" and "Update requires: No interruption", and does not say whether an update re-applies it | The slice 2 trip drill: deploy once while tripped with an ESM property change, then read the ESM state | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way once the deploy command refuses while tripped and restores a pause |
 | AWS-U10 | Where the re-arm script reads month-to-date spend, and what each read costs | No `AWS-NN` fact covers the Cost Explorer API's request charge; the budget's own spend figure may be the free source | Read the Cost Explorer and Budgets pricing pages before the re-arm script lands | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way: one read per re-arm, and reading the budget avoids any charge |
+| AWS-U11 | The kill switch's HTTP API throttle update is authorized on `arn:aws:apigateway:<region>::/apis/*/stages/*` (and `…/routes/*` if it updates routes), the narrowest grant possible before the API's generated id exists | No API Gateway page was read for the IAM resource shape of a stage or route update; the API's id is generated at deploy, so no stack-prefixed ARN names it | Read the Service Authorization Reference for API Gateway, then the first deploy's trip drill: the throttle update succeeds under that grant | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled: a wrong shape denies the kill switch's throttle step, which its `Errors` alarm and the trip drill surface ([Budget alarms](#budget-alarms) items 4 and 8) |
+| AWS-U12 | An error thrown out of a Node.js handler is logged by the runtime itself (type, message, stack) to the function's log group, outside the app's logger | The Node.js errors page once cited for it now serves general troubleshooting text, which does not say | The first deploy: invoke a function whose handler throws a known constant, then read its log group | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way: every handler catches at its edge and rethrows a constant with no `cause` ([pp-general → errors](../.agents/skills/pp-general/references/errors.md)) |
 
 ## Sources
 

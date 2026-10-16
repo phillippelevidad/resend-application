@@ -245,7 +245,8 @@ The read API is a Lambda behind the same HTTP API. Every function logs to an exp
 its notifications and the kill switch live in a separate **guardrails stack**, deployed with the
 first app deploy, so no redeploy or failed deploy opens a budget-alarm gap; design in
 [aws.md → Budget alarms](aws.md#budget-alarms) (cap USD 50, kill switch off by default, on in the
-owner's deployment). `cdk destroy --all` removes both ([aws.md → Teardown](aws.md#teardown)).
+owner's deployment). The teardown command removes both, the guardrails stack only after the app
+stack's destroy succeeds ([aws.md → Teardown](aws.md#teardown)).
 **Conditional:** the cap holds only if the budget deploys from us-east-2 (AWS-U01) and a route
 throttle of `0` stops billing (AWS-U02); both MUST be settled in slice 2.
 Rejected: containers on any path; NAT gateways; provisioned RDS; RDS Proxy (AWS-48); Budget Actions as the stop (they cannot stop Lambda, AWS-36).
@@ -524,7 +525,7 @@ account are Ask-first.
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19, the slice's library bullets |
 | 1 | RS-U21, RS-U22 | RS-U15, RS-U18, the slice's library bullets |
-| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, PG-U04, the slice's library bullets |
+| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
 | 3 | — | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 5 | — | The slice's library bullets |

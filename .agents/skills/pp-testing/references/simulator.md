@@ -56,15 +56,22 @@ export function signWebhook(input: { id: string; timestamp: number; body: string
 
 ## Seed and determinism
 
-- **Every run prints its seed as its first line**, so any run can be replayed. With no seed given,
-  `main.ts` picks one and prints it; that choice is the run's only unseeded value.
-- **Everything generated derives from the seed:** the history, its ids, the duplicates and the
-  shuffle, drawn from the shared arbitraries with `fc.sample(arbitrary, { seed, numRuns })`
+- **Every run prints its seed and its run namespace as its first line**, so any run can be
+  replayed. With either not given, `main.ts` picks one and prints it; those choices are the run's
+  only unseeded values.
+- **Ids derive from the seed and the namespace together** (`svix_id`, `email_id`, `+label`
+  addresses), so each run's `svix_id`s are fresh (ADR-016) on a persistent store. Seed alone would
+  resend a past run's ids: an event this run lost reads green on invariant 1 because a past run stored
+its `svix_id`, and `+label`
+  addresses fold runs into one `recipient_state` row, breaking invariant 2. Replaying a seed with its
+  namespace is for a fresh database only, and every checker reads only the run's namespace.
+- **Everything generated derives from the seed** (ids also from the namespace): the history, its
+  ids, the duplicates and the shuffle, drawn from the shared arbitraries with `fc.sample(arbitrary, { seed, numRuns })`
   (`sample` takes fast-check's `Parameters`,
   [fast-check → Runners](https://fast-check.dev/docs/core-blocks/runners/)). Never `Math.random`,
   `Date.now` or `randomUUID` in generated data.
 - **The slice 0 evidence is determinism itself:** `pnpm sim` prints the projection of a generated,
-  shuffled history, identical for a fixed seed
+  shuffled history, identical for a fixed seed and namespace
   ([slice 0](../../../../.ai/build-checklist.md#0--foundations)).
 - A failing seed becomes a named regression at the cheapest tier that reproduces it: a property or
   integration test before another simulator run

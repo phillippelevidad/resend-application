@@ -34,6 +34,9 @@ failure is locked.
   ([slice 0](../../../../.ai/build-checklist.md#0--foundations)). The test cites the row it covers.
 - **Several recipients per email**, each `data.to` naming a subset, for the two-recipient property
   (ADR-003, RS-27).
+- **Sort-key ties.** `created_at` is drawn from a small pool of instants, so most sets hold ties and
+  some tie on type as well, exercising ADR-003's `rank` and `svix_id` tie-breaks: with continuous
+  timestamps, a projection sorting on `created_at` alone passes permutation invariance.
 - **Ids** fresh and unique per event (`svix_id`, `email_id`); duplicates are made by repeating an
   event, never by colliding ids by chance.
 - **Addresses** from Resend's test domain only: `delivered@resend.dev`, `bounced@resend.dev` and
