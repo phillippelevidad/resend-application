@@ -94,14 +94,14 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 8. Secret-scan stage (Ships 3; Ask-first image and CI stage, owner-approved 2026-10-16 in PP §7; D18)
 
-- [ ] 8.1 Write `.gitleaks.toml` exactly as D18 gives it (the syntax was checked against v8.30.1 on 2026-10-16), each rule with a `description`. Verify: a scan of this repo with the pinned image reports no finding.
-- [ ] 8.2 Write `scripts/secret-scan.mjs` (Node built-ins only) per D18. Image: `ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`. Steps: a canary repo with three runtime-assembled fake values, scanned with the repo scan's arguments plus a JSON report on stdout; a `git clone --mirror`; the repo scan with `--log-opts=--all --redact --no-banner --exit-code 1` and `safe.directory` passed through `GIT_CONFIG_*`; `<k>` from `git rev-list --all --count` in the mirror; temp dirs removed in `finally`. Verify: `node scripts/secret-scan.mjs` exits 0 and prints `secrets: canary caught 3/3 rules` and `secrets: repo clean (<k> commits scanned)`, run from this worktree and from a fresh non-worktree clone under `os.tmpdir()` (never the owner's main checkout). Breaking one custom rule's regex makes it print `secrets: canary missed rule <id>` and exit 1 (revert after).
-- [ ] 8.3 Add the stage `{ name: 'secrets', command: 'node scripts/secret-scan.mjs' }` to `scripts/verify.mjs`, right after `docker`. No `.github/workflows/ci.yml` edit. Verify: `pnpm verify --from secrets` runs it first and it passes (a partial run, not the gate).
-- [ ] 8.4 Docs. Verify: the Commands stage list matches `STAGES` in `scripts/verify.mjs`, and the card's third `Ships` box reads `[x]`.
+- [x] 8.1 Write `.gitleaks.toml` exactly as D18 gives it (the syntax was checked against v8.30.1 on 2026-10-16), each rule with a `description`. Verify: a scan of this repo with the pinned image reports no finding.
+- [x] 8.2 Write `scripts/secret-scan.mjs` (Node built-ins only) per D18. Image: `ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`. Steps: a canary repo with three runtime-assembled fake values, scanned with the repo scan's arguments plus a JSON report on stdout; a `git clone --mirror`; the repo scan with `--log-opts=--all --redact --no-banner --exit-code 1` and `safe.directory` passed through `GIT_CONFIG_*`; `<k>` from `git rev-list --all --count` in the mirror; temp dirs removed in `finally`. Verify: `node scripts/secret-scan.mjs` exits 0 and prints `secrets: canary caught 3/3 rules` and `secrets: repo clean (<k> commits scanned)`, run from this worktree and from a fresh non-worktree clone under `os.tmpdir()` (never the owner's main checkout). Breaking one custom rule's regex makes it print `secrets: canary missed rule <id>` and exit 1 (revert after).
+- [x] 8.3 Add the stage `{ name: 'secrets', command: 'node scripts/secret-scan.mjs' }` to `scripts/verify.mjs`, right after `docker`. No `.github/workflows/ci.yml` edit. Verify: `pnpm verify --from secrets` runs it first and it passes (a partial run, not the gate).
+- [x] 8.4 Docs. Verify: the Commands stage list matches `STAGES` in `scripts/verify.mjs`, and the card's third `Ships` box reads `[x]`.
   - Root AGENTS.md Commands: the `pnpm verify` stage list, and a line for `node scripts/secret-scan.mjs`.
   - rsa-manual-test environment.md: `node scripts/secret-scan.mjs` is listed as walkable.
   - Card: tick `Ships` 3.
-- [ ] 8.5 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 8.5 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 9. Link-check stage (Ships 9; CI stage, owner-approved 2026-10-16 in PP §7; D19)
 

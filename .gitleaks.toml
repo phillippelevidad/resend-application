@@ -1,0 +1,24 @@
+# gitleaks configuration for the `secrets` stage of `pnpm verify` (scripts/secret-scan.mjs).
+# The default ruleset plus one rule per secret this project handles. Valid in gitleaks v8.30.1.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "resend-api-key"
+description = "Resend API key (re_ prefix)"
+regex = '''\bre_[A-Za-z0-9_]{20,}'''
+
+[[rules]]
+id = "resend-webhook-secret"
+description = "Resend webhook signing secret (whsec_ prefix)"
+regex = '''\bwhsec_[A-Za-z0-9+/]{20,}={0,2}'''
+
+[[rules]]
+id = "postgres-url"
+description = "Postgres connection URL that carries a password"
+regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#]+'''
+# The compose and Testcontainers throwaway credentials only ever point at the local host.
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = ['''@(?:localhost|127\.0\.0\.1)''']

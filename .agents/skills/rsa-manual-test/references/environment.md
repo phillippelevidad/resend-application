@@ -14,7 +14,9 @@ updates [Surfaces by slice](#surfaces-by-slice) in the same change.
    every path `404` until slice 1); `pnpm db:up` (compose Postgres on
    `127.0.0.1:55432`); `pnpm --filter @ledger/app-cli start --help` (no commands yet; never
    `start -- --help`, pnpm 10.11 forwards the literal `--`); `pnpm --filter @ledger/app-mcp start`
-   (stdio, no tools yet). `pnpm check` and `pnpm verify` are gates, never walked. Every other
+   (stdio, no tools yet); `node scripts/secret-scan.mjs` (needs Docker; prints
+   `secrets: canary caught 3/3 rules` then `secrets: repo clean (<k> commits scanned)`).
+   `pnpm check` and `pnpm verify` are gates, never walked. Every other
    command lands with its slice and its Commands line.
 2. **Setup commands come from the walkthrough's `## Before you start`** until the table below names
    the surface's start command. Never invent one.
@@ -37,7 +39,7 @@ names the command yet, the slice's card is the source.
 | Surface | Lands in | How it is reached | Live? |
 | --- | --- | --- | --- |
 | `pnpm check` · `pnpm verify` | 0 | Root scripts. Gates, never walked by this skill ([hard rule 7](../SKILL.md#hard-rules-must)) | No |
-| `pnpm dev:full` · `pnpm dev:stop` | 0 | Root scripts. `dev:full` brings up compose Postgres and `apps/local` on `127.0.0.1:3200`, adopting this repo's running server and failing on any other holder of the port, and prints `LEDGER READY` or `LEDGER START FAILED: <reason>`; `dev:stop` stops compose, and the dev server only if it belongs to this repo | No |
+| `node scripts/secret-scan.mjs` | 0 | The `secrets` stage, run alone; needs Docker. Canary first, then the full history of every ref | No || `pnpm dev:full` · `pnpm dev:stop` | 0 | Root scripts. `dev:full` brings up compose Postgres and `apps/local` on `127.0.0.1:3200`, adopting this repo's running server and failing on any other holder of the port, and prints `LEDGER READY` or `LEDGER START FAILED: <reason>`; `dev:stop` stops compose, and the dev server only if it belongs to this repo | No |
 | Compose Postgres | 0 | `pnpm db:up` / `pnpm db:down`; `127.0.0.1:55432`, throwaway `ledger` credentials. Tests never use it (Testcontainers) | No |
 | `apps/local`, routeless | 0 | `pnpm --filter @ledger/app-local start` (or `pnpm dev`, watch mode); `--port` (default `3200`, clear of the other local stacks on this machine), `--host` (default `127.0.0.1`, loopback only: a non-loopback host exits `1`). Stdout: `{"level":"info","message":"local server listening"}`; every path `404` until slice 1 | No |
 | `ledger` CLI, no commands · MCP server, no tools | 0 | `pnpm --filter @ledger/app-cli start --help` (no `bin` until slice 1) · `pnpm --filter @ledger/app-mcp start` (stdio; an unknown flag exits non-zero) | No |
