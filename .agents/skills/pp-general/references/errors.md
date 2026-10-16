@@ -43,6 +43,9 @@ Fields are assigned in the body, never as parameter properties
   `packages/core`. A throw site passes `hint` only when it is more specific than the default (for
   `validation_failed`, the field name). `docs` is a Resend page or the runbook URL built from one
   base-URL constant ([Error codes](../../../../.ai/api-contract.md#error-codes)).
+- **A code with no registry status** (a run outcome, or a client-side code) reaching the read API's
+  `onError` is a defect: it answers `500` `internal_error`, logged by `error_code`, never a guessed
+  status. A run outcome code is never an HTTP status of its own ([Error codes](../../../../.ai/api-contract.md#error-codes)).
 - **A subclass exists only when a caller branches on it.** The ADR-015 connection-class error is
   one: the worker branches on it to retry once on a fresh connection, then pause its event source
   ([ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
@@ -88,3 +91,11 @@ framework error reaching a client is a defect.
   otherwise redrive ([ADR-008](../../../../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq)).
 - `database_unavailable` is raised by `packages/db`, the one place that classifies a connection
   failure ([Error codes](../../../../.ai/api-contract.md#error-codes)).
+- **No raw error escapes a Lambda handler.** The runtime logs an escaped error's message and stack
+  outside the logger ([AWS → Node.js errors](https://docs.aws.amazon.com/lambda/latest/dg/nodejs-exceptions.html),
+  [Unverified]: the page now serves general troubleshooting text), and a `JSON.parse` or Postgres
+  message can quote the payload ([Log fields](../../../../.ai/data-modeling.md#log-fields), Never).
+  Whatever the `.handler.ts` does not already turn into a response (the worker's per-message
+  failures stay `batchItemFailures` entries) it catches at its edge, logs by `error_name`,
+  `error_code` and `pg_code`, and rethrows a constant `LedgerError('internal_error', …)` with no
+  `cause`, so the retry, the `Errors` metric and the DLQ path are unchanged.

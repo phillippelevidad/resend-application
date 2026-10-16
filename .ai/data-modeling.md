@@ -203,8 +203,9 @@ redaction replace a raw value with its mask without changing any projection.
 
 - Fixtures, tests and docs use Resend test addresses only (`delivered@resend.dev`,
   `bounced@resend.dev`).
-- The read API, CLI and MCP surface masks and never the raw payload. The redaction tests on MCP tool
-  output in slice 5 check this.
+- The read API, CLI and MCP surface masks and never the raw payload. A route-level redaction test
+  in `packages/api`, landing with each route whose mapper reads `webhook_events` or a queue
+  envelope (from slice 1), and the redaction tests on MCP tool output in slice 5 check this.
 - The retention period N is configurable and owed by slice 7. Resend keeps email data for 30 days
   (RS-31).
 

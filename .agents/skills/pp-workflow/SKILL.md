@@ -70,8 +70,10 @@ Mechanics: [definition-of-done.md](references/definition-of-done.md).
 ## Test tiers
 
 **The tier is the deciding test, not the author's judgement.** A claim's kind fixes the evidence
-that proves it; a lower tier does not count. Harness, file naming, arbitraries and invariant code:
-[pp-testing](../pp-testing/SKILL.md).
+that proves it; a lower tier does not count. A claim matching several rows owes each (a duplicate
+delivery: the Postgres test for the row, sim invariant 1 for the run;
+[ADR-004](../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).
+Harness, file naming, arbitraries and invariant code: [pp-testing](../pp-testing/SKILL.md).
 
 | Claim | Proven by |
 | --- | --- |
@@ -79,6 +81,7 @@ that proves it; a lower tier does not count. Harness, file naming, arbitraries a
 | What the database enforces, and paths that commit through it | Integration tests against real Postgres (Testcontainers) |
 | Behavior under duplicates, reordering, bursts, outages | A [simulator invariant](../../../.ai/architecture.md#simulator-invariants), by number |
 | A latency, throughput or cost number | A measured run and the command behind it |
+| What the synthesized stack holds: a cost-brake property, the budget, its notifications, the kill-switch wiring | One CDK `Template` assertion per property, citing its id ([pp-infra → Cost brake in code](../pp-infra/SKILL.md#cost-brake-in-code), [ADR-010](../../../.ai/architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack)) |
 
 **Mandatory (MUST).** A change touching one of these is not done without its test:
 
@@ -95,8 +98,24 @@ that proves it; a lower tier does not count. Harness, file naming, arbitraries a
   ([pp-testing → DLQ redrive](../pp-testing/references/fakes-and-doubles.md#dlq-redrive)).
 - **Verify before enqueue:** a forged, stale or unsigned request never reaches the queue port, and
   `200` follows only a successful enqueue ([ADR-001](../../../.ai/architecture.md#adr-001--verify-then-enqueue)).
-- **PII masking in MCP output:** every tool's actual output carries masks only
+- **Worker failure path:** the batch response lists exactly the failed messages, because an empty
+  one deletes the whole batch (AWS-05, [ADR-008](../../../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq);
+  batch-failure unit test); a database outage pauses the event source and no message reaches the
+  DLQ ([ADR-015](../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage);
+  Testcontainers test with the database stopped). Both are the No-loss design test
+  ([Reliability core](../../../.ai/architecture.md#reliability-core)).
+- **Budget alarm and cost brake:** an `infra/` change keeps one passing `Template` assertion per
+  cost-brake property, the budget and kill-switch wiring included
+  ([pp-infra → Cost brake in code](../pp-infra/SKILL.md#cost-brake-in-code)).
+- **PII masking on every surface:** each read-API route whose mapper reads `webhook_events` or a
+  queue envelope (`email.get`'s timeline, slice 1; `dlq.listMessages`, slice 3) carries a
+  route-level redaction test in `packages/api`, landing with the route: fed a payload with a
+  `delivered@resend.dev` recipient and a subject, the response holds no raw address or subject.
+  Every MCP tool's actual output carries masks only
   ([slice 5](../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening)).
+- **Local auth skip:** the local server that skips the token check refuses to start on a
+  non-loopback host (unit test; [api-contract.md → Conventions](../../../.ai/api-contract.md#conventions),
+  Auth in slice 1).
 
 Coverage is never a goal. A regression test names the bug it locks down. Assert the consequence
 (the row, the effect, the response), not the call. A mocked database client never counts as the

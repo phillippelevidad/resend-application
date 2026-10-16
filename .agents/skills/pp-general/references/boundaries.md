@@ -35,6 +35,12 @@ unless the entry names what is allowed. Lint enforces most of them
 lint does not express, and a reviewer can run them without a build. Each is a read; none changes
 the tree. `git grep -P` needs a PCRE-enabled git (Git for Windows ships one).
 
+A ban only a reviewer's memory enforces drifts, and the walk recurs per review (lens clause 1). So
+the greps Biome cannot express (8, 9, 14, 15, and any ban slice 0 finds Biome `overrides` cannot
+scope) run as one script in a `pnpm verify` stage, proven the way build-checklist slice 0 proves
+the lint stage: a deliberate-violation fixture fails it
+([imports-and-tsconfig.md](imports-and-tsconfig.md#lint-enforcement-biome)).
+
 1. `core` and `shared` import no AWS, Postgres or Resend:
    ```sh
    git grep -nE "from ['\"](@aws-sdk/|pg['\"]|drizzle-orm|resend['\"])" -- packages/core packages/shared

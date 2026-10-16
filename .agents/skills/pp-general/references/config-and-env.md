@@ -35,6 +35,13 @@ A Lambda receives a secret's ARN in an internal variable, never its value, and r
 through `packages/aws` at runtime ([integrations.md → Secrets layout](../../../../.ai/integrations.md#secrets-layout)).
 A config schema never declares a secret value for a Lambda.
 
+The value read at runtime is parsed before first use with its own Zod schema, through the same
+loader: `ledger/database` requires the pooled connection string, the address-hash key and the
+token-tag key, each non-empty. A failure names the path, never the value. Why: an absent hash key
+fails every message into the DLQ (not a connection-class error, so
+[ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)
+does not pause), and an empty one hashes under the wrong key silently.
+
 ## Local env file
 
 Local entry points load `.env.local` with Node's own flag, no `dotenv`:

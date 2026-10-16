@@ -32,7 +32,10 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
   name.
 - **An allow-list, never a deny-list.** The logger keeps only the keys
   [Log fields](../../../../.ai/data-modeling.md#log-fields) allows and drops every other key, masks
-  included. The allow-list is one constant in `packages/shared` that mirrors the doc. To log a new
+  included. Under an allowed key it keeps only a string, number or boolean and drops an object or
+  array: pg's `DatabaseError` carries `detail` ("Failing row contains …") as an own enumerable
+  property, so `{ error_name: err }` would serialize the row. The allow-list is one constant in
+  `packages/shared` that mirrors the doc. To log a new
   field, change the doc first, then the constant, in the same change. The slice 1 logger unit test
   is the evidence ([build-checklist → slice 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path)).
 - **Messages are constants, never interpolated.** `logger.info('event.duplicate', { svix_id })`,
