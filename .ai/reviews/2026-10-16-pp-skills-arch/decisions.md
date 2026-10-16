@@ -59,6 +59,23 @@ Resolved without a change: **A1-13** (slice 1 must name the address-hash key and
 signing-secret variables, an Ask-first contract addition): the slice 1 pre-proposal is the gate
 built for it, so the plan already carries it.
 
-## Owner decisions
+## Owner decisions (approved 2026-10-16, all as recommended)
 
-See [PROGRESS.md → Owner checkpoint](PROGRESS.md#owner-checkpoint).
+The questions and options are in [PROGRESS.md → Owner checkpoint](PROGRESS.md#owner-checkpoint).
+
+| ID | Decision | Where it lives |
+| --- | --- | --- |
+| AO-01 | An itemized one-round approval, recorded in the pre-proposal, approves the Ask-first items it lists; anything off the list still stops | pp-workflow → definition-of-done, implement-plan, the pre-proposal template |
+| AO-02 | Internal variable names live in `packages/shared/src/function-env.ts`, imported by `infra` and each `.config.ts`; one `Template` assertion per function's keys (replaces O-17's `infra` module) | api-contract.md → Conventions, pp-general, pp-infra |
+| AO-03 | The reconciler claims its run (`reconcile_runs.claimed_at`) before any Resend call; its async invoke takes no retries | ADR-007, data-modeling.md, aws.md AWS-53, pp-backend, pp-infra |
+| AO-04 | The runtime role carries `idle_in_transaction_session_timeout` and `lock_timeout` (role-ensure step), with an int test; PG-U06 | integrations.md, pp-database, pp-infra, pp-testing |
+| AO-05 | Out of storage pauses the worker like an outage (ADR-015, PG-U07); a measured storage budget; storage used in `health.get`; the resume probe fails while storage is at the limit (added by the orchestrator: a read-only probe would loop) | ADR-015, api-contract.md, integrations.md → Cadence, pp-backend, pp-database |
+| AO-06 | A payload Postgres cannot store is stored with U+FFFD replacements; never dead-lettered. **Mechanism changed by the orchestrator** (same outcome): the worker sanitizes before the insert and the event is projected normally, counted by `worker.payload_sanitized`. A retry after `22P05` needed a savepoint on every insert, and the stored-raw path would have skipped projections | ADR-004, data-modeling.md, pp-database, pp-testing |
+| AO-07 | `-- contract-step: <commit SHA>`; the deploy command refuses a contract step whose SHA is not an ancestor of `DeployedCommit`, and skips the check when no app stack exists (added by the orchestrator: no old Lambdas to break) | ADR-018, pp-database, pp-infra |
+| AO-08 | A migration is frozen once merged to `main` or applied to a kept database | root AGENTS.md → Permissions, data-modeling.md, pp-database, pp-workflow, wf-after-apply-check |
+| AO-09 | The burst refuses while tripped and restores the throttle only if unchanged; slice 2 sizes the usage trip to admit one burst | aws.md → Budget alarms item 7, pp-testing, pp-infra |
+| AO-10 | Teardown refuses non-empty queues unless `--discard-queued` | aws.md → Teardown, pp-infra |
+| AO-11 | Secrets take no physical name; ARNs come from stack outputs | integrations.md → Secrets layout, aws.md, pp-infra |
+| AO-12 | `run_abandoned` (run outcome, derived on read by `packages/api`); `ledger reconcile` polls until finished or abandoned | api-contract.md, ADR-007, data-modeling.md, pp-backend, pp-cli |
+| AO-13 | The mask maps every control character to `*`, with a property | data-modeling.md, pp-testing |
+| AO-14 | `rate_limited` also covers a `429` that cannot be waited out | api-contract.md → Error codes, pp-backend |

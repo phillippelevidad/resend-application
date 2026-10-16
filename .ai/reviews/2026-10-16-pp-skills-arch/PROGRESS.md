@@ -15,7 +15,12 @@ slice 0. The consistency review is the previous run's Phase 5
 | 2 — triage | done — 38 applied as low stakes, 3 under the decision lens, 1 resolved without a change, 14 to the owner as 13 decisions ([decisions.md](decisions.md)) |
 | 3 — fix: five fixer agents, disjoint files, each verifying before applying; one commit per group | done — all 41 applied, none skipped; doc-side alignments applied (ADR-010 teardown order, "the teardown command", slice 0's seed line); AWS-U11 and AWS-U12 filed |
 | 4 — link and anchor check over every touched file | done — 0 broken over 35 files |
-| 5 — owner checkpoint: the OWNER items, one recommended pick each | **open** — AO-01 to AO-14 below |
+| 5 — owner checkpoint: the OWNER items, one recommended pick each | done — AO-01 to AO-14 approved as recommended (2026-10-16) and applied by five groups under one name spec; three orchestrator additions under the decision lens: AO-05's resume probe checks storage, AO-07 skips the check with no app stack, AO-06 sanitizes before the insert ([decisions.md](decisions.md#owner-decisions-approved-2026-10-16-all-as-recommended)). **The review is closed** |
+
+**Left to slice pre-proposals:** whether the deploy refuses a dirty working tree (AO-07's
+`DeployedCommit` is HEAD; slice 2); the deployed order of the two role timeouts (AO-04; slice 2);
+`check.mjs` triggers for the new Mandatory items (slice 0). Size: pp-workflow SKILL.md 16.0 KB,
+pp-database 13.5 KB, pp-mcp 13.2 KB, pp-infra and pp-backend 12.9 KB, against the ~12 KB target.
 
 **Left as notes, not applied:** `wf-after-apply-check/scripts/check.mjs` detects none of the new
 Mandatory items (an `infra/**` change without an `infra/` test, a `packages/api` mapper without a
