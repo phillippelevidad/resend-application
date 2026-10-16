@@ -28,9 +28,12 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
     `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`,
     `AWS_PROFILE`, and any such variable added later.
   - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
-    mapping UUID, queue URLs). `infra` owns them: their names in one module, each set only on the function that
-    reads it ([pp-infra](../.agents/skills/pp-infra/references/env-and-inputs.md#internal-environment-variables));
-    they are not a public contract.
+    mapping UUID, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
+    `as const` object per function, imported by `infra/src/function-env.ts`, which sets each value
+    only on its reader, and by each `apps/*` `.config.ts` for its schema keys; one `Template`
+    assertion per function checks it carries exactly its keys
+    ([pp-infra](../.agents/skills/pp-infra/references/env-and-inputs.md#internal-environment-variables)).
+    They are not a public contract.
 - **Base URL.** The read API is served from the same HTTP API as ingest
   ([ADR-010](architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack)),
   and locally by the dev server running the same code (ADR-011). Paths are unversioned.
@@ -132,17 +135,20 @@ entries are owed by slice 3 and completed in slice 7.
 | `redrive_in_progress` | 409 | A DLQ redrive task is already running; SQS allows one per queue (AWS-21) | Wait for the DLQ depth in `ledger health` to fall | [Redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) | `dlq.startRedrive` |
 | `last_operate_token` | 409 | Revoking this token would leave no active `operate` token | Create another `operate` token first | runbook | `token.revoke` |
 | `webhook_disabled` | — (run outcome) | The Resend webhook is disabled, so replays will not be delivered (RS-11, ADR-007) | Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile` | [Retries and replays](https://resend.com/docs/webhooks/retries-and-replays) | packages/reconciler → `reconcile_runs.error_code` |
-| `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, so the run stopped before its horizon (RS-19) | The next hourly run re-diffs from newest. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | packages/reconciler via packages/resend-client |
+| `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, or Resend answered a `429` that cannot be waited out (a daily or monthly quota, or no `retry-after`), so the run stopped before its horizon (RS-19, RS-22) | The next hourly run re-diffs from newest. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | packages/reconciler via packages/resend-client |
 | `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, invalid or deleted, restricted, or suspended (RS-22, RS-U17) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | packages/reconciler via packages/resend-client |
 | `resend_unavailable` | — (run outcome) | Resend's API answered `5xx` past the client's retries (RS-22) | The next scheduled run retries | [Errors](https://resend.com/docs/api-reference/errors) | packages/reconciler via packages/resend-client |
-| `database_unavailable` | 503 | Postgres is unreachable | The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume` | runbook | packages/db through any database-reading operation; `worker.resumeEventSource` probe |
+| `run_abandoned` | — (run outcome) | The run has no `finished_at` past its time budget (it crashed or its invoke was lost), so it will not finish (ADR-007) | Run `ledger reconcile` again; the next hourly run covers the horizon | runbook | packages/api, derived on read in `reconcile.getRun` and `gaps.list`; never written to the row |
+| `database_unavailable` | 503 | Postgres is unreachable, or out of storage (ADR-015) | The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume`. `ledger health` shows storage used | runbook | packages/db through any database-reading operation; `worker.resumeEventSource` probe |
 | `internal_error` | 500 | An unexpected failure, in the API or client-side in the CLI or MCP server. `message` carries no internals | Retry; if it persists, read the API logs by request id | runbook | packages/api error handler; apps/cli and apps/mcp for an unexpected client-side failure, so a `--json` caller always gets an error object |
 | `api_unavailable` | — (client-side) | The API answered without the error shape (an HTTP API throttle or a stopped function), or did not answer at all (the request failed on the network) | Check `LEDGER_URL`. The kill switch may be tripped: check the budget alerts, then run the re-arm script | runbook | packages/sdk |
 
 A **run outcome** code is never an HTTP status of its own. It is stored in
 [`reconcile_runs.error_code`](data-modeling.md#reconcile_runs--one-row-per-recovery-run) and comes
 back as the run's `error` object, in the same shape, through `reconcile.getRun` and `gaps.list`.
-`ledger reconcile` exits `1` with it.
+`run_abandoned` alone is never stored: `packages/api` derives it on read from the time-budget
+constant the start check shares ([ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)).
+`ledger reconcile` exits `1` with any of them.
 
 ## Operation template
 
@@ -203,9 +209,9 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 
 - **Operation:** `health.get` → `GET /health` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.health.get` · CLI `ledger health` · MCP none
-- **Kind:** read `[view-shaped]`. It reports queue depth and oldest-message age, DLQ depth (AWS-22), whether the worker's event source is enabled or paused (AWS-18, [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)), database reachability, the last reconcile run once one exists, and, from slice 6, the outbox's pending and dead counts and its oldest pending age. In local mode the counts come from [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
+- **Kind:** read `[view-shaped]`. It reports queue depth and oldest-message age, DLQ depth (AWS-22), whether the worker's event source is enabled or paused (AWS-18, [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)), database reachability and, when reachable, storage used (`pg_database_size`, against the budget in [integrations.md → Cadence](integrations.md#cadence-and-the-database)), the last reconcile run once one exists, and, from slice 6, the outbox's pending and dead counts and its oldest pending age. In local mode the counts come from [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
-- **In / Out:** none → health summary. It has no table of its own: the queue and event-source fields come from SQS and Lambda, and only the last-run and outbox fields read Postgres ([reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run), [outbox](data-modeling.md#outbox--reactions-awaiting-delivery))
+- **In / Out:** none → health summary. It has no table of its own: the queue and event-source fields come from SQS and Lambda, and only the storage, last-run and outbox fields read Postgres ([reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run), [outbox](data-modeling.md#outbox--reactions-awaiting-delivery))
 - **Errors:** none of its own. It MUST answer during a database outage, reporting the database as unreachable rather than failing, because an outage is when the operator needs it. Auth then rests on the token's tag alone ([Conventions → Auth](#conventions))
 - **Idempotency / rate limit:** idempotent. No Resend call. One SQS attribute read and one Lambda read per call, inside the free tier (AWS-24)
 - **Slices:** 2 — Durable ingest on AWS; 4 — Recovery; 2B — Local-mode queue and docker compose; 6 — Reactions
@@ -214,7 +220,7 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 
 - **Operation:** `gaps.list` → `GET /gaps` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.gaps.list` · CLI `ledger gaps [--since <duration>]` (default `24h`) · MCP `list_gaps`
-- **Kind:** read `[view-shaped]`: reconcile runs in the window, newest first, each with its checked, missing, replayed and failed counts and its outcome `error`
+- **Kind:** read `[view-shaped]`: reconcile runs in the window, newest first, each with its checked, missing, replayed and failed counts and its outcome `error` (`run_abandoned` derived on read, [Error codes](#error-codes))
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
 - **In / Out:** `since`, `limit`, `after` → a list of [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run)
 - **Errors:** `validation_failed`, `database_unavailable`
@@ -225,7 +231,7 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 
 - **Operation:** `reconcile.getRun` → `GET /reconcile/runs/{run_id}` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.reconcile.getRun` · CLI used by `ledger reconcile` to wait · MCP none (`list_gaps` covers agents)
-- **Kind:** read `[resource]`: one run, running or finished, with its outcome `error`
+- **Kind:** read `[resource]`: one run, running, finished or abandoned, with its outcome `error`. A run with no `finished_at` past its time budget comes back abandoned, with `error` `run_abandoned` derived on read ([Error codes](#error-codes))
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
 - **In / Out:** run id → one [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) row
 - **Errors:** `validation_failed`, `run_not_found`, `database_unavailable`
@@ -271,11 +277,11 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 
 - **Operation:** `reconcile.start` → `POST /reconcile` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.reconcile.start` · CLI `ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait]` · MCP `reconcile`, with `dry_run` (registered only under [MCP least privilege](#conventions))
-- **Kind:** **command**. It starts one manual run of [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) asynchronously and answers `202` with the run. `dry_run` reports missing ids without replaying any. The CLI then polls `reconcile.getRun` until the run finishes, and exits `1` with the run's `error` if it stopped on one
+- **Kind:** **command**. It starts one manual run of [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) asynchronously and answers `202` with the run. `dry_run` reports missing ids without replaying any. The CLI then polls `reconcile.getRun` until the run is finished or abandoned (its own wait bound is only a backstop), and exits `1` with the run's `error` if it stopped on one
 - **Scope:** `operate` · **Public contract:** yes (Ask-first)
 - **In / Out:** `dry_run` and `lookback` (default per ADR-007: 72 h, extended back to the last good run's `horizon_end`; at most 30 days, a validation bound: Resend keeps email data 30 days (RS-31), and how far List Events reaches is [RS-U03](resend.md#unverified)) → a [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) row with `trigger = manual`
-- **Errors:** `forbidden`, `validation_failed`, `reconcile_in_progress`, `database_unavailable`. The run itself can end in `webhook_disabled`, `rate_limited`, `resend_auth_failed` or `resend_unavailable`
-- **Idempotency / rate limit:** repeating is safe in effect, because replays re-enter through ingest and dedupe on `svix_id`. That holds only if a replay keeps the original `svix-id` ([RS-U01](resend.md#unverified)), which slice 4 MUST settle. Runs never overlap (`reconcile_in_progress`). **It consumes the shared Resend team budget** (List Events, Retrieve Webhook, Replay Event) through `packages/resend-client` at 2 req/s (RS-19, RS-20, ADR-012). It runs asynchronously because the HTTP API's 30 s timeout is shorter than a run (AWS-02, AWS-03)
+- **Errors:** `forbidden`, `validation_failed`, `reconcile_in_progress`, `database_unavailable`. The run itself can end in `webhook_disabled`, `rate_limited`, `resend_auth_failed`, `resend_unavailable` or `run_abandoned`
+- **Idempotency / rate limit:** repeating is safe in effect, because replays re-enter through ingest and dedupe on `svix_id`. That holds only if a replay keeps the original `svix-id` ([RS-U01](resend.md#unverified)), which slice 4 MUST settle. Runs never overlap (`reconcile_in_progress`), and a duplicate invoke of one run exits at its claim (ADR-007). **It consumes the shared Resend team budget** (List Events, Retrieve Webhook, Replay Event) through `packages/resend-client` at 2 req/s (RS-19, RS-20, ADR-012). It runs asynchronously because the HTTP API's 30 s timeout is shorter than a run (AWS-02, AWS-03)
 - **Slices:** 4 — Recovery; 5 — MCP server and contract hardening
 
 #### dlq.startRedrive

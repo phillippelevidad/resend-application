@@ -206,7 +206,7 @@ whose exit 0 means every stage ran and passed. Document every command here when 
 | Tier | Examples |
 | --- | --- |
 | **Always** | Run tests and lint before committing; follow module boundaries; verify Resend behavior against docs; [commit and push each finished step](#commit-and-push-as-you-go) |
-| **Ask first** | Add a dependency; change a migration that's already pushed; change CI; alter or extend a public contract (read API routes, error codes, CLI commands or flags, environment variables, MCP tools; [api-contract.md → Conventions](.ai/api-contract.md#conventions)); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
+| **Ask first** | Add a dependency; change a migration that is merged to `main` or applied to a kept database; change CI; alter or extend a public contract (read API routes, error codes, CLI commands or flags, environment variables, MCP tools; [api-contract.md → Conventions](.ai/api-contract.md#conventions)); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
 | **Never** | Commit secrets, API keys, webhook signing secrets, `.env*` files (except `.env.example`, which lists names only, never values) or real recipient addresses (use Resend's test addresses, such as `delivered@resend.dev`); disable a failing gate to make CI green; edit generated files by hand |
 
 ## Editing files on this machine

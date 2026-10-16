@@ -65,7 +65,7 @@ design:
 | AWS-18 | ESM `Enabled`: "When false, Lambda pauses polling and invocation", which lets you "pause invocation and resume later from the same location". | The kill switch disables the worker ESM. Messages wait in the queue under its retention (AWS-07). | lambda/API_UpdateEventSourceMapping | 2026-10-15 |
 | AWS-19 | "By default, CloudWatch automatically creates a log group named `/aws/lambda/<function name>` … when it's first invoked", and "log data is stored … indefinitely". `LoggingConfig.LogGroup` points a function at an existing log group, whose name must not start with `aws/`. | Every function logs to a CDK-owned log group with explicit retention and removal (AWS-40), so nothing is created outside the stack. | lambda/cwlogs-loggroups; lambda/API_LoggingConfig; logs/log-groups | 2026-10-15 |
 | AWS-20 | us-east-2: $0.20 per 1M requests (x86 and arm64). Compute is $0.0000166667/GB-s on x86 and $0.0000133334/GB-s on arm64. "The free tier includes one million requests and 400,000 GB-seconds per month." | Functions run on **arm64**, which is 20 % cheaper per GB-s. Scheduled ticks and demo traffic fit the free tier (AWS-U07). | PL:AWSLambda; lambda/pricing | 2026-10-15 |
-| AWS-53 | Asynchronous invocation: "If the function returns an error, by default Lambda attempts to run it two more times". "When an event expires or fails all processing attempts, Lambda discards it." Throttled async events are retried "for up to 6 hours by default". | The SNS-triggered kill switch can fail silently after three attempts, so its `Errors` metric is alarmed ([Budget alarms](#budget-alarms) item 4). Nothing but concurrency limits an async fan-out, such as the worker's dispatcher invokes (ADR-017). | lambda/async-errors | 2026-10-15 |
+| AWS-53 | Asynchronous invocation: "If the function returns an error, by default Lambda attempts to run it two more times". "When an event expires or fails all processing attempts, Lambda discards it." Throttled async events are retried "for up to 6 hours by default". "Even if your Event Function doesn't return an error, it's possible for it to receive the same event from Lambda multiple times because the queue itself is eventually consistent." "If the function can't keep up with incoming events, events might also be deleted from the queue without being sent to the function." | The SNS-triggered kill switch can fail silently after three attempts, so its `Errors` metric is alarmed ([Budget alarms](#budget-alarms) item 4). Nothing but concurrency limits an async fan-out, such as the worker's dispatcher invokes (ADR-017). One reconcile run can be invoked twice at once, so the reconciler claims its run before any Resend call, and its invoke sets `MaximumRetryAttempts: 0`; a lost invoke reads `run_abandoned` ([data-modeling.md → `reconcile_runs`](data-modeling.md#reconcile_runs--one-row-per-recovery-run)). | lambda/async-errors | 2026-10-16 |
 | AWS-54 | Supported runtimes: "Node.js 24 \| `nodejs24.x` \| Amazon Linux 2023 \| Apr 30, 2028 \| Jun 1, 2028 \| Jul 1, 2028" (deprecation, block function create, block function update). "All supported Lambda runtimes support both x86\_64 and arm64 architectures." Node.js 26 (`nodejs26.x`) is in "public preview" and "should not be used for production workloads"; its target launch is "November 2026". Lambda deprecates a runtime "when any major component of the runtime reaches the end of community long-term support", and notifies "at least 180 days before". | Every function runs `nodejs24.x` on arm64, matching `engines` `>=24.12 <25` in the root `package.json`. No preview runtime. Moving to a newer LTS is a runtime-identifier change plus an `engines` bump, due before the 2028-04-30 deprecation. | lambda/runtimes | 2026-10-16 |
 | AWS-56 | Reserved environment variable keys (`AWS_REGION`, `AWS_LAMBDA_FUNCTION_NAME`, …) cannot be set in a function's configuration; the total size of all environment variables does not exceed 4 KB. | An internal variable never uses a reserved key; a function reads `AWS_REGION` from the runtime. Variables hold names and ARNs, never bulky values. | lambda/configuration-envvars | 2026-10-16 |
 
@@ -232,12 +232,15 @@ below was ratified by the owner on 2026-10-15.
    the cap.
 7. **Overshoot is bounded, not zero.** Budget data lags usage and refreshes every 8–12 h (AWS-34), so
    spend can pass the cap by the billing lag plus up to 12 h at the maximum spend rate. That rate is
-   bounded by the steady default-route throttle (AWS-14), kept low (order of 100 rps) and raised by
-   the burst script only for its run. A **usage trip** cuts the window to minutes: one CloudWatch
+   bounded by the steady default-route throttle (AWS-14), kept low (order of 100 rps). The burst
+   step refuses while the kill switch is tripped, raises the throttle, and in `finally` restores it
+   only if the current value is still the one it set, so a trip mid-burst is never reopened. A
+   **usage trip** cuts the window to minutes: one CloudWatch
    alarm on the HTTP API's vended `Count` metric (AWS-30), summed over 15 minutes with a threshold
    derived from the cap, publishes to the trip topic, and returns to OK after a re-arm, so it can
-   trip again (one of the ≤ 10 free alarms, AWS-28). The budget trip stays as the backstop. The
-   slice sets both values and states the computed worst-case overshoot.
+   trip again (one of the ≤ 10 free alarms, AWS-28). The threshold MUST admit one burst
+   (≈ 12k requests). The budget trip stays as the backstop. Slice 2 sets the throttle and the
+   threshold, and states them here with the computed worst-case overshoot.
 8. **Evidence.** A CDK assertion test proves the budget (with `IncludeCredit: false`), the notifications and the kill-switch wiring exist.
    A recorded **trip drill** (publish to the trip topic, observe each throttle, force one
    kill-switch failure and observe its alarm, re-arm, reconcile) proves they work ([features.md → Operations](features.md#operations)). Re-checked after every owner
@@ -246,7 +249,10 @@ below was ratified by the owner on 2026-10-15.
 
 ## Teardown
 
-**One command, owner-triggered:** it destroys the app stack, then the guardrails stack only when
+**One command, owner-triggered.** It first reads source-queue and DLQ depth (visible + in flight)
+through `@ledger/aws` and refuses when either is non-zero unless `--discard-queued` is passed:
+queued events have not reached Postgres, and the queues are deleted with the stack. It then
+destroys the app stack, then the guardrails stack only when
 the app stack's destroy succeeded, so a `DELETE_FAILED` app stack never loses its guardrails
 ([Budget alarms](#budget-alarms) item 1; the stacks declare no dependency, so `cdk destroy --all`
 does not guarantee this order). `cdk destroy` of the app stack alone keeps the guardrails, by design. The kill switch never
@@ -256,15 +262,16 @@ tears down ([features.md → tear down](features.md#adopter-lifecycle)). This li
 | Leftover | Why it survives | How to remove it |
 | --- | --- | --- |
 | Lambda log groups | Default `RETAIN` (AWS-38), and implicit `/aws/lambda/*` groups (AWS-19) | Prevented: explicit `logGroup` with `DESTROY` (AWS-40). The post-destroy check finds none |
-| Secrets in their recovery window | Deletion waits 7–30 days (AWS-11) | Cost-free while pending (AWS-11). If a redeploy needs the same name before the window ends, `ForceDeleteWithoutRecovery` (AWS-U06) |
-| Messages in the queue and DLQ | Queues default to `DESTROY` (AWS-38) | Deleted with the stack. Teardown is deliberate, and the events live in Postgres |
+| Secrets in their recovery window | Deletion waits 7–30 days (AWS-11) | Cost-free while pending (AWS-11). Secrets take no physical name, so a redeploy creates new ones and never collides with a pending one (AWS-U06, [integrations.md → Secrets layout](integrations.md#secrets-layout)) |
+| Messages in the queue and DLQ | Queues default to `DESTROY` (AWS-38) | Deleted with the stack. Queued events have not reached Postgres, so teardown refuses a non-empty queue or DLQ unless `--discard-queued` is passed (above) |
 | CDKToolkit bootstrap stack, staging bucket, ECR repo, roles | `DeletionPolicy: Retain` (AWS-39) | Normally kept; AWS advises not to delete and recreate it. To remove it fully: empty the versioned bucket, then delete the `CDKToolkit` stack |
 | Postgres database (Neon) | External to AWS stacks | Bills nothing on Free. Deleting the Neon project removes the data. It is optional and recoverable for 7 days ([integrations.md](integrations.md#decision--neon)) |
 | Resend webhook | Lives in Resend | The adopter deletes it, or Resend retries a dead endpoint and then auto-disables it ([RS-09, RS-11](resend.md#facts)) |
 | SNS email subscription | Deleted with its topic | Nothing to do |
 
 **Evidence:** a post-destroy listing of stack-tagged resources and of `/aws/lambda/*` log groups
-finds nothing billable ([features.md → tear down](features.md#adopter-lifecycle)) · [slice 2](build-checklist.md#2--durable-ingest-on-aws).
+finds nothing billable ([features.md → tear down](features.md#adopter-lifecycle)); a teardown test
+refuses a non-empty queue or DLQ without `--discard-queued` · [slice 2](build-checklist.md#2--durable-ingest-on-aws).
 
 ## Constraints and sharp edges
 
@@ -307,7 +314,7 @@ finds nothing billable ([features.md → tear down](features.md#adopter-lifecycl
 | AWS-U03 | ESM polling of an idle queue stays inside the SQS free tier (est. 0.13–0.65M requests/month) | No page states the poll rate (AWS-04, AWS-24). The estimate assumes back-to-back 20 s long polls by 1–5 pollers | 30 idle days: SQS request usage in Cost Explorer | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.26/month at 5 pollers) |
 | AWS-U04 | When an HTTP API base64-encodes the request body | Only the function URL page states a rule (AWS-01) | Read `isBase64Encoded` on the first real Resend delivery | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (decode when `true`; unit test both) |
 | AWS-U05 | The owner's account concurrency quota | New-account quotas are reduced and unpublished (AWS-16) | `aws lambda get-account-settings` before the first deploy (read-only) | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe for the deploy (no reserved concurrency except the kill switch's `0`; `MaximumConcurrency` ≤ quota). Not safe for the burst: before `--burst`, [slice 3](build-checklist.md#3--operations-and-evidence-on-aws) MUST confirm the quota ≥ peak ingest concurrency (≈ rps × ingest duration) + `MaximumConcurrency` + headroom, and request a Service Quotas increase if it falls short |
-| AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe on cost (no charge while pending, AWS-11) |
+| AWS-U06 | What a CDK `Secret` with `DESTROY` does on stack deletion: immediate delete or a recovery window | CDK's default is "Not set" (AWS-38). The CloudFormation deletion behavior was not read | The first teardown drill: list the secrets afterwards | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe on cost (no charge while pending, AWS-11) and on redeploy (secrets take no physical name, so a pending one never collides, [integrations.md → Secrets layout](integrations.md#secrets-layout)) |
 | AWS-U07 | The owner's account gets the always-free tiers (Lambda 1M requests/400k GB-s, SQS 1M, CloudWatch 10 metrics/10 alarms/5 GB, Scheduler 14M, SNS) on arm64 too | The pricing pages don't say whether they are always-free, cover arm64, or apply after the July 2025 Free Tier change. Separately, a Free-plan account is suspended at 6 months at the latest (AWS-51), so a kept deploy needs the Paid plan | The first month's bill | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (≤ USD 0.30/month at idle) |
 | AWS-U08 | `SELECT … FOR UPDATE` locks taken in a Data API transaction hold across its later calls | AWS-46 says connections are pooled and `DISCARD ALL` runs between uses. No page says a transaction is pinned to one connection | A two-transaction lock test against a real fallback cluster | Not owed while Neon holds. The ADR that switches to the Aurora fallback MUST settle it ([integrations.md](integrations.md#decision--neon)) |
 | AWS-U09 | A CloudFormation update of the worker's event source mapping re-applies the template's `Enabled: true` over an out-of-band disable (kill switch, ADR-015) | The CFN `AWS::Lambda::EventSourceMapping` page gives `Enabled` "Default: True" and "Update requires: No interruption", and does not say whether an update re-applies it | The slice 2 trip drill: deploy once while tripped with an ESM property change, then read the ESM state | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way once the deploy command refuses while tripped and restores a pause |
@@ -342,7 +349,7 @@ Price List offer file
 | lambda/API_LoggingConfig | [lambda/latest/api/API_LoggingConfig.html](https://docs.aws.amazon.com/lambda/latest/api/API_LoggingConfig.html) | AWS-19 | 2026-10-15 |
 | lambda/pricing | [aws.amazon.com/lambda/pricing](https://aws.amazon.com/lambda/pricing/) | AWS-20, AWS-U07 | 2026-10-15 |
 | lambda/runtimes | [lambda/…/lambda-runtimes.html](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html) | AWS-54 | 2026-10-16 |
-| lambda/async-errors | [lambda/…/invocation-async-error-handling.html](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html) | AWS-53 | 2026-10-15 |
+| lambda/async-errors | [lambda/…/invocation-async-error-handling.html](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html) | AWS-53 | 2026-10-16 |
 | lambda/vpc-internet | [lambda/…/configuration-vpc-internet.html](https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc-internet.html) | AWS-13 | 2026-10-15 |
 | sqs/standard-queues | [AWSSimpleQueueService/…/standard-queues.html](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues.html) | AWS-06 | 2026-10-15 |
 | sqs/quotas-messages | [AWSSimpleQueueService/…/quotas-messages.html](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-messages.html) | AWS-07, AWS-08, AWS-23 | 2026-10-15 |

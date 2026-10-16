@@ -22,7 +22,7 @@ rules:
   proposal:
     - Scope is the slice card's Ships list; quote each bullet verbatim. A reworded bullet is a scope change, so edit the card first (.ai/build-checklist.md#how-to-work-this-checklist).
     - When a pre-proposal exists, carry forward every decision it settles; never re-open one.
-    - Name every Ask-first item the slice needs (dependency, pushed migration, CI, public contract, AWS resource or deploy, live Resend write) from root AGENTS.md -> Permissions.
+    - Name every Ask-first item the slice needs (dependency, a migration merged to main or applied to a kept database, CI, public contract, AWS resource or deploy, live Resend write) from root AGENTS.md -> Permissions, and cite the pre-proposal's itemized approval for each one it covers.
   specs:
     - Every operation a spec names exists in .ai/api-contract.md with its surfaces, scopes and error codes; a new or changed one is an Ask-first contract change.
     - Every scenario about Resend behavior cites the RS-NN fact in .ai/resend.md it rests on; an unsettled one names its RS-UNN row.

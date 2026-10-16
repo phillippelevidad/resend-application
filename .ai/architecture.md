@@ -131,7 +131,7 @@ Rejected: incremental `UPDATE status = new` (correctness depends on arrival orde
 
 ### ADR-004 — Immutable ledger keyed on `svix_id`, one transaction per message
 
-**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-26).
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-26)**; amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-06).
 Per message, one transaction: insert into `webhook_events` `ON CONFLICT (svix_id) DO
 NOTHING`; on conflict, commit as a duplicate; otherwise lock the email's `email_state` row,
 recompute projections, insert outbox rows, commit. The transaction runs at READ COMMITTED (the
@@ -140,13 +140,18 @@ locks; every projection row is created with `INSERT … ON CONFLICT DO NOTHING` 
 `SELECT … FOR UPDATE`. A crash at any point is either nothing or everything.
 Unknown and non-email event types, and verified events whose payload fails their type's schema
 (typed columns null where unreadable), are stored raw, skipped by projections and counted
-(RS-25). A verified event is never dead-lettered for its content: only unexpected code errors reach
+(RS-25). The payload is stored as received, minus what Postgres cannot store: before the insert,
+the worker replaces each `\u0000` and lone surrogate in the parsed payload with U+FFFD (a pure
+`packages/core` function) and counts the event as sanitized (`worker.payload_sanitized`). The sanitized event then takes the
+ordinary path: projected when it passes its type's schema, stored raw and counted when it does not.
+No retry, no savepoint.
+A verified event is never dead-lettered for its content: only unexpected code errors reach
 the DLQ (ADR-008), and the simulator's poison message is an injected fault. Dedupe is on `svix_id`,
 which Resend's retries keep (RS-06, RS-08), never on the SQS `messageId`, which redrive changes
 (AWS-21). **Conditional:** a reconciler replay dedupes only if
 it carries the original `svix-id` (RS-U01); slice 4 MUST settle it.
 Rejected: dedupe on `(email_id, type)` (collapses distinct events); one transaction per step.
-**Evidence:** pending — Testcontainers integration tests for duplicate insert and crash between steps; sim invariant 1 (slice 1).
+**Evidence:** pending — Testcontainers integration tests for duplicate insert, crash between steps, and a NUL-bearing payload stored with U+FFFD, projected and counted, not dead-lettered; a sanitizer property test; sim invariant 1 (slice 1).
 
 ### ADR-005 — Postgres only
 
@@ -184,7 +189,7 @@ Rejected: calling third parties from the worker; dedupe in memory.
 
 ### ADR-007 — Recovery by id diff and replay through ingest
 
-**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03).
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03)**; amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-03, AO-12).
 On the hourly cron and on demand, the reconciler reads the configured webhook's `status` first
 (its id is a deploy input, [integrations.md → Secrets layout](integrations.md#secrets-layout)) and
 stops with `webhook_disabled` if it is disabled (RS-11, RS-13). It then pages List Events newest
@@ -199,16 +204,26 @@ Events reach, RS-U03, so a span when runs could not run, such as a tripped kill 
 outage or a quota suspension, is covered with no `--lookback`), diffs ids against
 `webhook_events`, and replays the missing ones (RS-16). A replay re-enters through ingest, so
 verification and dedupe apply unchanged. One failed replay never aborts a run; runs never overlap
-(a run starts in one transaction that takes `pg_advisory_xact_lock` on a fixed reconcile key,
-refuses with `reconcile_in_progress` if an unfinished run is inside its time budget, and inserts its
-row) and stay inside a time budget below the Lambda timeout (AWS-03). Each run writes a
-`reconcile_runs` row. Same approach as Ingester [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13),
+and stay inside a time budget below the Lambda timeout (AWS-03), one constant shared by the start
+check and the abandoned derivation below:
+- **Start:** one transaction takes `pg_advisory_xact_lock` on a fixed reconcile key, refuses with
+  `reconcile_in_progress` if an unfinished run is inside its time budget, and inserts its row.
+- **Claim:** async invoke is at-least-once and can deliver one event twice without an error
+  (AWS-53), so before any Resend call the reconciler runs `UPDATE reconcile_runs SET claimed_at =
+  now() WHERE id = $1 AND claimed_at IS NULL`; zero rows means a duplicate invoke, which exits
+  without work. The invoke sets `MaximumRetryAttempts: 0`.
+- **Abandoned:** a run with no `finished_at` past its time budget (it crashed, or its invoke was
+  lost) will not finish. `packages/api` derives `run_abandoned` on read and never writes it to the
+  row ([api-contract.md → Error codes](api-contract.md#error-codes)); the next hourly run covers the
+  horizon.
+
+Each run writes a `reconcile_runs` row. Same approach as Ingester [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13),
 cited, not claimed. **Conditional:** the id diff holds only if List Events ids are `svix-id`s
 (RS-U02) and a replay keeps the `svix-id` (RS-U01) and passes the timestamp window (RS-U20), all
 three MUST be settled in slice 4; recoverable range is bounded by List Events reach (RS-U03); the
 grace window assumes visibility within minutes (RS-U13).
 Rejected: a write path that inserts fetched payloads directly (bypasses verification); diffing by delivery status (misses "acknowledged but never stored").
-**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; a 5-day gap since the last good run recovered with no `--lookback`; disabled webhook; `429` with `retry-after`; a queued backlog older than 10 minutes is not replayed (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
+**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; a 5-day gap since the last good run recovered with no `--lookback`; disabled webhook; `429` with `retry-after`; a queued backlog older than 10 minutes is not replayed; a second invoke of a claimed run makes no Resend call; a run past its budget with no `finished_at` reads `run_abandoned` through `reconcile.getRun` and `gaps.list` (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
 
 ### ADR-008 — Backpressure: bounded concurrency, partial batch failure, DLQ
 
@@ -327,7 +342,8 @@ Rejected: deleting ledger rows (breaks recovery diffing and rebuilds).
 
 ### ADR-015 — The worker pauses its own event source on a database outage
 
-**Accepted** (owner, 2026-10-15). Every failed receive counts toward `maxReceiveCount` (AWS-09), so
+**Accepted** (owner, 2026-10-15); **amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-05).
+Every failed receive counts toward `maxReceiveCount` (AWS-09), so
 without this a database outage longer than ~15–30 min would drain the queue into the DLQ
 ([aws.md → Constraint 4](aws.md#constraints-and-sharp-edges)), contradicting
 [idea §6.4](../docs/idea.md#64-failure-modes-and-expected-behavior) ("Queue holds events"). So:
@@ -336,8 +352,16 @@ without this a database outage longer than ~15–30 min would drain the queue in
   batch as failed and disables its own ESM (`Enabled: false`, AWS-18). Messages wait in the queue,
   up to its 13-day retention (AWS-07). Other errors follow ADR-008 to the DLQ, so poison isolation
   is unchanged.
+- **Out of storage** counts as connection-class: Neon Free caps storage at 1 GB and the ledger
+  never deletes, so at the cap every insert fails. Neon's storage-limit error (PG-U07) raises
+  `database_unavailable` and pauses the worker, so the queue holds instead of draining to the DLQ.
+  The storage budget is in [integrations.md → Cadence](integrations.md#cadence-and-the-database),
+  and the health read reports storage used.
 - **Resume:** the hourly cron invokes the worker function with a resume event. If the ESM is
-  paused, it probes Postgres and re-enables the ESM when the probe succeeds. A healthy stack never
+  paused, it probes Postgres and re-enables the ESM when the probe succeeds. The probe also reads
+  storage used and fails while it is at the storage budget's limit: a read succeeds on a full
+  database, so a read-only probe would re-enable, fail and re-pause every hour, spending a receive
+  per message until the queue drained after all. A healthy stack never
   probes, so this adds no database wake ([integrations.md → Cadence](integrations.md#cadence-and-the-database)).
   An `operate` action triggers the same resume on demand.
 - **Kill-switch safe by construction:** a tripped kill switch sets the worker's reserved
@@ -346,7 +370,7 @@ without this a database outage longer than ~15–30 min would drain the queue in
 - A paused worker shows in the health read and fires the queue-age alarm (AWS-22).
 
 Rejected: automatic DLQ redrive after recovery (needs a failure classification to keep poison messages from looping); a larger `maxReceiveCount` (covers only a bounded outage and delays poison isolation); accepting the drain plus a manual redrive (a manual step after every outage on the adopter's path fails the self-service test, lens clause 4).
-**Evidence:** pending — error-classification unit test; Testcontainers test: database stopped, ESM pause requested, no message reaches the DLQ (slice 2); `--chaos db-outage` on AWS: DLQ stays 0, queue drains after resume, invariants 1–2 (slice 3).
+**Evidence:** pending — error-classification unit test, the storage-limit SQLSTATE included once PG-U07 settles it; a resume-probe unit test (storage at the limit keeps the ESM paused); Testcontainers test: database stopped, ESM pause requested, no message reaches the DLQ (slice 2); `--chaos db-outage` on AWS: DLQ stays 0, queue drains after resume, invariants 1–2 (slice 3).
 
 ### ADR-016 — The simulator reaches AWS only through an opt-in simulator secret
 
@@ -387,7 +411,7 @@ Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24
 
 ### ADR-018 — Migrations run from the deploy command, before the code that needs them
 
-**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37)**; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): S-05).
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37)**; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): S-05; [pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-07).
 The deploy command first ensures the DML-only runtime role exists, then runs `drizzle-kit`
 migrations with the **direct** Postgres URL supplied by the deployer (each change that creates a
 table grants its DML to that role, in a custom migration right after the generated one), then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
@@ -396,9 +420,13 @@ command refuses to run while the kill switch is tripped (the worker's reserved c
 `0`) unless it runs as the re-arm, and restores an ADR-015 pause after `cdk deploy` if the worker's
 ESM was paused before it, because whether a CloudFormation update re-applies the template's
 `Enabled: true` is AWS-U09. Migrations are expand/contract only, so code from the previous deploy
-runs against the new schema and no deploy needs downtime.
+runs against the new schema and no deploy needs downtime. A contract step carries
+`-- contract-step: <commit SHA>`, the commit that stopped using the object; the app stack exports
+the deployed commit as stack output `DeployedCommit`, and before migrating the deploy command
+refuses any pending contract step whose SHA is not an ancestor of it
+(`git merge-base --is-ancestor`), so a `DROP` never runs under Lambdas that still use the object.
 Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; concurrent cold starts race); a CDK custom resource (adds a Lambda whose failure blocks the deploy).
-**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it is marked as a contract step (slice 2); the deploy command migrates, then deploys (slice 2).
+**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it carries the contract-step marker (slice 2); the deploy command refuses a contract step whose SHA is not an ancestor of `DeployedCommit` (slice 2); the deploy command migrates, then deploys (slice 2).
 
 ### ADR-019 — Application and surface stack
 
@@ -448,7 +476,7 @@ Rejected: NestJS (CDK `NodejsFunction` and Vitest compile with esbuild, which em
 | Tests | Vitest, fast-check, Testcontainers | Property tests are first-class |
 | Lint / format | Biome | |
 | Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
-| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`; vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
+| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`, `worker.payload_sanitized` (ADR-004); vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
 | Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `packages/ingest` | ADR-012, ADR-009, ADR-013 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
 | MCP | `@modelcontextprotocol/server` v2, stdio | ADR-019, ADR-011 |
@@ -525,8 +553,8 @@ account are Ask-first.
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19, the slice's library bullets |
 | 1 | RS-U21, RS-U22 | RS-U15, RS-U18, the slice's library bullets |
-| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
-| 3 | — | RS-U08 |
+| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
+| 3 | PG-U07 | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 5 | — | The slice's library bullets |
 | 6 | — | RS-U16 |
@@ -542,7 +570,9 @@ comes from the burst run there. PG-U03 from slice 2 to slice 4, because the hour
 reconciler is the first idle waker: before it, an idle stack never opens a connection (ADR-015).
 RS-U20 is new in this step (a replayed delivery passes the 5-minute timestamp window); it rides on
 the RS-U01 experiment. RS-U21 is new in bootstrap step 8 (per-event `data.to` lists only the
-impacted recipients); it rides on the RS-U15 sends.
+impacted recipients); it rides on the RS-U15 sends. PG-U06 (the pooler honors role-level
+timeouts) and PG-U07 (Neon's storage-limit error) are new in the 2026-10-16 architecture review;
+PG-U07 MAY settle in slice 2 and MUST by slice 3's first storage-budget measurement.
 
 ## Risks & mitigations
 
@@ -551,6 +581,7 @@ impacted recipients); it rides on the RS-U15 sends.
 | Cost runaway while the stack is kept up | Guardrails stack, kill switch on in the owner's deployment, overshoot bounded to the budget's refresh window (billing lag plus up to 12 h) at the steady throttle, cut to minutes by the usage trip (ADR-010, AWS-34); AWS-U01 and AWS-U02 settled in slice 2 |
 | Neon deletes an inactive Free project, losing the ledger (PG-U01) | Settled in slice 2 from Neon's docs or support; the hourly reconciler writes a row from slice 4; Aurora fallback trigger (ADR-005) |
 | Neon suspends the compute for quota (PG-U03) | The worker pauses and the queue holds events up to 13 days (ADR-015); a quota suspension lasts until the next billing period, which can exceed that (next row); quota use measured in slice 4; fallback trigger |
+| The never-delete ledger reaches Neon Free's 1 GB storage cap | Storage budget from the slice 3 burst's bytes per event ([integrations.md → Cadence](integrations.md#cadence-and-the-database)); `health.get` reports storage used; at the cap the worker pauses and the queue holds (ADR-015, PG-U07) |
 | A database outage longer than SQS retention (13 days) | Queue-age alarm fires within the hour (slice 3); past retention, the reconciler's extended lookback (ADR-007) recovers what SQS expired, within List Events reach (RS-U03) |
 | A per-message error misclassified as a connection error pauses the pipeline | The fresh-connection retry first; the hourly resume bounds the stall to one hour; classification unit test (ADR-015) |
 | A flapping database spends receive counts across pause and resume cycles | Resume only after a successful probe; a message that still reaches the DLQ is redriven, deduplicated on `svix_id` (ADR-004, ADR-008) |

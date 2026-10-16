@@ -28,7 +28,7 @@ the entry it links.
 | [`email_recipients`](#email_recipients--outcome-per-email-and-recipient) | Outcome per email and recipient | Projection | Recomputed | 1 — Local ledger and read path | [ ] |
 | [`recipient_state`](#recipient_state--deliverability-per-address) | Deliverability per address | Projection | Recomputed | 1 — Local ledger and read path | [ ] |
 | [`api_tokens`](#api_tokens--read-api-bearer-tokens) | Read API bearer tokens, hashed | Credential record | Insert, then revoke once | 2 — Durable ingest on AWS | [ ] |
-| [`reconcile_runs`](#reconcile_runs--one-row-per-recovery-run) | One row per recovery run | Ops record | Insert, then finish once | 4 — Recovery | [ ] |
+| [`reconcile_runs`](#reconcile_runs--one-row-per-recovery-run) | One row per recovery run | Ops record | Insert, claim once, finish once | 4 — Recovery | [ ] |
 | [`local_queue_messages`](#local_queue_messages--the-local-mode-queue) | SQS stand-in for local mode | Queue | Claimed, deleted or dead | 2B — Local-mode queue and docker compose | [ ] |
 | [`outbox`](#outbox--reactions-awaiting-delivery) | Reactions awaiting delivery | Outbox | Status transitions only | 6 — Reactions | [ ] |
 
@@ -53,6 +53,12 @@ and the sweep reads `outbox.next_attempt_at`.
   ([ADR-001](architecture.md#adr-001--verify-then-enqueue)). This supersedes the "exactly what
   Resend signed" wording in [idea §5.2](../docs/idea.md#52-ingest) and
   [§6.3](../docs/idea.md#63-data-model-initial).
+- `payload` is stored as received, minus what Postgres cannot store: `jsonb` rejects `\u0000` and
+  lone surrogates. Before the insert, the worker replaces them in the parsed payload with U+FFFD
+  (a pure `packages/core` function) and counts the event as sanitized. The sanitized event then
+  takes the ordinary path: projected when it passes its type's schema, stored raw and counted when
+  it does not. No retry, no savepoint. Such an event is never dead-lettered for its content
+  ([ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).
 
 ### Projections are derived
 
@@ -129,7 +135,10 @@ is never a key, because a redrive changes it (AWS-21).
   they are hashed or masked.
 - `jsonb` only for the raw event payload, the outbox payload and the local queue envelope. Anything
   a query filters on, or a projection reads, is a typed column.
-- Migrations are expand/contract only. A pushed migration is never edited (Ask first).
+- Migrations are expand/contract only. A migration is frozen once merged to `main` or applied to
+  a kept database, and never edited after that (Ask first); before that, it is regenerated freely.
+  A contract step carries the marker [ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)
+  names.
 - Every database access goes through `packages/db` repositories. All SQL is pooler-safe
   ([integrations.md → How it is used](integrations.md#decision--neon)).
 
@@ -187,7 +196,9 @@ does not identify anyone.
 | Address, each domain label | Keep the first character, mask the rest | (same) |
 | Subject or display name, each word | Keep the first `min(3, ⌊n/3⌋)` characters, mask the rest; spaces and punctuation are kept | `Your invoice is ready` → `Y*** in***** ** r****` |
 
-Every rule masks digits wherever they appear (one-time codes, order numbers). A mask preserves
+Every rule masks digits wherever they appear (one-time codes, order numbers), and maps every
+control character (C0, DEL, C1) to `*`, so no mask carries a terminal escape into human CLI
+output. A mask preserves
 length in code points and is **idempotent**: `mask(mask(x)) = mask(x)`. This is what lets
 redaction replace a raw value with its mask without changing any projection.
 
@@ -211,7 +222,7 @@ redaction replace a raw value with its mask without changing any projection.
 
 **Evidence:** pending.
 - Slice 0: fast-check properties for the masks (idempotent, length-preserving, no digit revealed,
-  at most 3 characters revealed per token).
+  at most 3 characters revealed per token, no control character).
 - Slice 1: an invariant that no projection column holds a raw input address or subject.
 - Slice 2: a deploy-command test that refuses a mismatched `key_id`.
 - Slice 7: a rebuild after redaction yields identical projections.
@@ -250,7 +261,7 @@ Load-bearing columns only. Every table also carries its
 | `email_id` | `text` null | `data.email_id` for the outbound email types (RS-27). Null for every other type. `email.received` carries a `data.email_id` too ([emails/received](https://resend.com/docs/webhooks/emails/received)), but it names an inbound email, so it stays null and projections skip it ([Deferred](#deferred)) |
 | `to_hashes` | `text[]` null | Keyed hashes of `data.to`, in the same position. Feeds `email_recipients` after redaction has masked the raw `to` |
 | `source` | `text` `CHECK (live, simulated)` | Which secret verified the request. `simulated` only through the simulator secret ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) |
-| `payload` | `jsonb` | The parsed `{ type, created_at, data }` body (RS-26). Not the signed bytes |
+| `payload` | `jsonb` | The parsed `{ type, created_at, data }` body (RS-26), as received minus what Postgres cannot store ([Immutable ledger](#immutable-ledger)). Not the signed bytes |
 
 - **Source values:** `source` has no `replay` value: a replay takes no special path (ADR-007), and
   it is expected to carry the original `svix-id` ([RS-U01](resend.md#unverified), which slice 4
@@ -261,7 +272,8 @@ Load-bearing columns only. Every table also carries its
 
 _Schema: `packages/db/src/schema/webhook-events.ts` (once it exists)._
 _Evidence: pending._
-- Slice 1: Testcontainers duplicate-insert and crash-between-steps tests; sim invariant 1.
+- Slice 1: Testcontainers duplicate-insert and crash-between-steps tests; a NUL-payload
+  integration test (stored with U+FFFD, projected, committed, never dead-lettered); sim invariant 1.
 - Slice 3: a unit test that a simulator-signed event is stamped `simulated`.
 - Slice 4: replays dedupe on `svix_id` (RS-U01).
 - Slice 7: a rebuild after redaction yields identical projections.
@@ -370,7 +382,8 @@ _Evidence: pending (slice 2)._
 | --- | --- | --- |
 | `id` | identity `bigint` | Run id in `ledger gaps` output |
 | `trigger`, `dry_run` | `text` `CHECK (scheduled, manual)`, `boolean` | Hourly cron or on demand (ADR-007). `ledger reconcile --dry-run` replays nothing |
-| `started_at`, `finished_at` | `timestamptz` | A run with no `finished_at` past its time budget is a crashed run, never a running one |
+| `started_at`, `finished_at` | `timestamptz` | A run with no `finished_at` past its time budget is abandoned (it crashed or its invoke was lost), never a running one. `reconcile.getRun` and `gaps.list` derive `run_abandoned` on read; it is never written to the row |
+| `claimed_at` | `timestamptz` null | Set once by the invoked reconciler before any Resend call. A second invoke of the same run finds it set and exits without work (AWS-53) |
 | `horizon_start`, `horizon_end` | `timestamptz` | The lookback horizon and the grace boundary actually checked (ADR-007) |
 | `checked`, `missing`, `replayed`, `failed` | `int` | `missing > 0` is the loss signal |
 | `error_code` | `text` null | Why a run stopped, as a registered error code (for example `webhook_disabled`) |
@@ -379,12 +392,21 @@ _Evidence: pending (slice 2)._
   pooler-safe), then checks for an unfinished run inside its time budget with a statement issued
   after the lock, then inserts the new row. Locking the newest run row instead does not serialize
   starts under READ COMMITTED: the waiter re-reads the row it locked, not the new one.
+- **Claim:** async invoke is at-least-once (AWS-53), so the start transaction alone does not keep
+  one run from executing twice. The reconciler first runs
+  `UPDATE reconcile_runs SET claimed_at = now() WHERE id = $1 AND claimed_at IS NULL`; zero rows
+  means a duplicate invoke, which exits without work. The invoke sets `MaximumRetryAttempts: 0`,
+  so a lost invoke reads abandoned and the next hourly run covers its horizon.
+- **Time budget:** one constant, shared by the start check and the `run_abandoned` derivation
+  ([api-contract.md → Error codes](api-contract.md#error-codes)).
 
 _Schema: `packages/db/src/schema/reconcile-runs.ts` (once it exists)._
 _Evidence: pending._
 - Slice 4: a fake-API integration test where an outage outlasts the retry schedule. It expects
   100 % recovered and 0 duplicates.
 - Slice 4: a disabled webhook writes `error_code = webhook_disabled`.
+- Slice 4: a second invoke of a claimed run makes no Resend call; a run with no `finished_at` past
+  its time budget reads `run_abandoned`.
 
 - **Slices:** 4 — Recovery
 

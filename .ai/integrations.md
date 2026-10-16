@@ -26,8 +26,9 @@ Manager, [Secrets layout](#secrets-layout))
    function. The CLI and MCP server never call Resend themselves (ADR-011), and the one operation
    that spends the budget, `reconcile.start`, spends it inside the reconciler
    ([api-contract.md → Conventions](api-contract.md#conventions), Rate limits). Each caller is
-   single-flight (the reconciler by non-overlapping runs, ADR-007; the dispatcher by its
-   transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. A read-API route that calls
+   single-flight (the reconciler by non-overlapping runs, ADR-007, and by its run claim, which
+   absorbs a duplicate async invoke, AWS-53, [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run);
+   the dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. A read-API route that calls
    Resend directly adds a caller and MUST restate this bound. *Why 2:* Ledger is a
    background consumer of the team's budget. At 2 req/s, recovering a 10,000-event gap (100 List
    Events pages plus 10,000 replays, RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6
@@ -83,9 +84,13 @@ The Resend webhook id is not a secret: it is a deploy input (CDK context, never 
 `GET /webhooks` is rejected: one more call per run, and the response may carry signing secrets
 (RS-05).
 
-That is USD 1.20/month in M1 and 1.60 from M2 ([aws.md → Cost shape](aws.md#cost-shape)). Secret
-names are prefixed per stack, and each Lambda receives only the ARNs of the secrets it reads, with
-IAM read access to those alone. The dispatcher never holds the `full_access` key: a dispatcher
+That is USD 1.20/month in M1 and 1.60 from M2 ([aws.md → Cost shape](aws.md#cost-shape)). The
+names above are **logical**: secrets take no physical name (CloudFormation generates it), so a
+redeploy after teardown never collides with a secret still in its recovery window (AWS-11,
+AWS-U06). The deploy script reads secret ARNs from stack outputs. Function and HTTP API names stay
+stack-prefixed, because the kill switch finds them by name
+([aws.md → Budget alarms](aws.md#budget-alarms) item 1). Each Lambda receives only the ARNs of the
+secrets it reads, with IAM read access to those alone. The dispatcher never holds the `full_access` key: a dispatcher
 leak can send email, but cannot read the signing secret or touch webhooks (RS-05).
 
 ### Relationship to the Webhook Ingester
@@ -209,22 +214,30 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   the owner role. Grants are per table: `webhook_events` gets `SELECT, INSERT` and, once the
   retention job lands (slice 7), column-level `UPDATE` on the columns it rewrites; never `DELETE`.
   **Order (MUST)**, through the direct URL:
-  1. The deploy command ensures the role exists (idempotent: created only if absent).
+  1. The deploy command ensures the role exists (idempotent: created only if absent), and sets
+     `ALTER ROLE <runtime role> SET idle_in_transaction_session_timeout = …` and
+     `SET lock_timeout = …`, both below the worker timeout (values fixed by slice 2). They bound,
+     server-side, the locks of a Lambda killed or frozen mid-transaction: both default to 0, and a
+     client timeout dies with its client. Whether the pooler applies role settings is PG-U06.
   2. It runs the migrations. Each change that creates a table grants that table's DML to the
      role, in a custom migration right after the generated one; pending migrations apply in one
      transaction, so the table never exists ungranted.
   3. It deploys the code ([ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)).
 
   The local setup command and the Testcontainers harness follow the same order, so the role and
-  its grants exist in every environment. Because a pushed migration is never edited, grants start with the first
-  migration (slice 1). Evidence: integration test where the runtime role gets
-  `permission denied` on `DELETE FROM webhook_events` and on `CREATE TABLE` (slice 2).
+  its grants exist in every environment. Because a migration is never edited once merged to `main`
+  or applied to a kept database ([data-modeling.md → Modeling conventions](data-modeling.md#modeling-conventions-canonical)),
+  grants start with the first migration (slice 1). Evidence: integration test where the runtime
+  role gets `permission denied` on `DELETE FROM webhook_events` and on `CREATE TABLE`, and one where
+  an idle lock holder does not stop the worker committing (slice 2).
 - **Pooler-safe SQL only.** No session-level advisory locks, `SET`, `LISTEN/NOTIFY` or SQL-level
   `PREPARE` ([pooling](https://neon.com/docs/connect/connection-pooling)). Mutual exclusion uses row
   locks or transaction-scoped locks inside one transaction.
 - **A cold or dropped connection is retryable.** The worker reports the batch item as failed, so
   the message stays in SQS (AWS-05). Ingest never touches the database, so a cold database never
-  fails a Resend delivery.
+  fails a Resend delivery. Neon's storage-limit error is classified with the connection errors, so
+  it pauses the worker and the queue holds instead of draining to the DLQ
+  ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage), PG-U07).
 - **Outside the AWS budget.** Neon spend is not covered by the AWS budget or kill switch. On Free,
   it cannot bill. Moving to a paid Neon plan is an owner decision, because that spend sits outside
   the hard cap ([Open decisions](#open-decisions)).
@@ -250,6 +263,13 @@ Neon compute for at least the 5-minute suspend window
   ([architecture.md → ADR-017](architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep)).
   The worker's resume check probes Postgres only while its ESM is paused
   ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
+- **Storage budget: 1 GB on Neon Free.** `webhook_events` is never deleted (retention masks, it does
+  not delete), so storage only grows. At the limit, "inserts, updates, and deletes that would
+  increase storage fail in that project until you free space or upgrade"
+  ([FAQ](https://neon.com/faqs/free-plan-limits-and-quotas), read 2026-10-16), and the worker
+  pauses (ADR-015, PG-U07). Bytes per event are measured in the slice 3 burst, and
+  this line then states the bursts left before 1 GB (pending, slice 3). `health.get` reports the
+  database's storage used (`pg_database_size`) when reachable. PG-U03 tracks it.
 
 ### [Unverified]
 
@@ -260,9 +280,11 @@ Ids are stable: never renumber, never reuse.
 | --- | --- | --- | --- | --- |
 | PG-U01 | Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box. Whether it covers AWS regions, and what counts as activity, is unstated. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
 | PG-U02 | `SELECT … FOR UPDATE` locks hold for the whole transaction through Neon's transaction-mode pooler | Inferred from PgBouncer's definition. Neon's page doesn't name it | A deployed concurrency test: two transactions on one `email_id` through the pooled URL serialize | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
-| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month) | An estimate from the 5-min suspend window | Neon's usage page after 30 idle days (CU-hours and public network transfer), recorded beside [aws.md → Cost shape](aws.md#cost-shape) | [slice 4](build-checklist.md#4--recovery) (moved from slice 2: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)) |
+| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month), and storage inside the [storage budget](#cadence-and-the-database) (1 GB) | An estimate from the 5-min suspend window; bytes per event are unmeasured until the slice 3 burst | Neon's usage page after 30 idle days (CU-hours and public network transfer), recorded beside [aws.md → Cost shape](aws.md#cost-shape); storage used (`health.get`) against the bursts-left figure | [slice 4](build-checklist.md#4--recovery) (moved from slice 2: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute or a full store pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage), PG-U07) |
 | PG-U04 | A module-scope connection survives the compute suspending under it | Neon doesn't say what happens to open client connections at suspend | A worker or tick test after > 5 min idle | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (a connection error is retryable; reconnect on error) |
 | PG-U05 | Drizzle's `aws-data-api/pg` driver supports `db.transaction()` | Neither the connect page nor the transactions page says | Drizzle's source or a test against a real cluster | Not owed while Neon holds. The ADR that switches to the fallback settles it |
+| PG-U06 | Neon's transaction-mode pooler applies role-level settings (`ALTER ROLE … SET`) to the server sessions it opens | The [pooling](https://neon.com/docs/connect/connection-pooling) page offers "Set at the role level" for `search_path` as the transaction-mode workaround, but says nothing of timeouts or of the user the pooler connects as (read 2026-10-16) | A deployed check: `SHOW idle_in_transaction_session_timeout` through the pooled URL | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled: if not honored, a stuck lock holder is bounded only by the client timeouts ([Runtime role](#decision--neon)) |
+| PG-U07 | The error Neon raises when a Free project is over its storage limit: its SQLSTATE (likely `53100 disk_full`), and whether `pg` surfaces it as a statement error | The [FAQ](https://neon.com/faqs/free-plan-limits-and-quotas) says only that writes "that would increase storage fail" (read 2026-10-16) | Neon docs or support, or the error read from a write over the limit | [slice 3](build-checklist.md#3--operations-and-evidence-on-aws), by the first storage-budget measurement; MAY settle in [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled: ADR-015's classifier pauses the worker only on an error it recognizes; otherwise every insert drains to the DLQ |
 
 ## Open decisions
 
