@@ -6,8 +6,8 @@ import { isLoopbackHost } from './is-loopback-host.ts';
 // Composition root for local mode (ADR-013): the same package factories the Lambdas use, served
 // by @hono/node-server. stdout carries only the listening line, which scripts wait for.
 
-function refuse(msg: string, fields: Record<string, string> = {}): never {
-  process.stderr.write(`${JSON.stringify({ level: 'error', msg, ...fields })}\n`);
+function refuse(message: string, fields: Record<string, string> = {}): never {
+  process.stderr.write(`${JSON.stringify({ level: 'error', message, ...fields })}\n`);
   process.exit(1);
 }
 
@@ -40,11 +40,9 @@ function readFlags(): { port: number; host: string } {
 const { port, host } = readFlags();
 const api = createApi();
 
-const server = serve({ fetch: api.fetch, hostname: host, port }, (info) => {
-  const address = info.family === 'IPv6' ? `[${info.address}]` : info.address;
-  process.stdout.write(
-    `${JSON.stringify({ msg: 'local server listening', url: `http://${address}:${info.port}` })}\n`,
-  );
+const server = serve({ fetch: api.fetch, hostname: host, port }, () => {
+  // Log fields are allow-listed (data-modeling.md → Log fields): no url or port field.
+  process.stdout.write(`${JSON.stringify({ level: 'info', message: 'local server listening' })}\n`);
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {

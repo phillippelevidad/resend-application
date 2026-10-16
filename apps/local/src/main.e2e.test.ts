@@ -36,7 +36,7 @@ function collect(stream: NodeJS.ReadableStream | null): { text: () => string } {
   return { text: () => text };
 }
 
-function waitForListening(proc: ChildProcess): Promise<{ msg: string; url: string }> {
+function waitForListening(proc: ChildProcess): Promise<{ level: string; message: string }> {
   return new Promise((resolve, reject) => {
     let buffered = '';
     const timer = setTimeout(
@@ -77,12 +77,9 @@ describe('apps/local main.ts', () => {
     const proc = startLocal(['--port', String(port)]);
 
     const listening = await waitForListening(proc);
-    expect(listening).toEqual({
-      msg: 'local server listening',
-      url: `http://127.0.0.1:${port}`,
-    });
+    expect(listening).toEqual({ level: 'info', message: 'local server listening' });
 
-    const response = await fetch(`${listening.url}/`);
+    const response = await fetch(`http://127.0.0.1:${port}/`);
     expect(response.status).toBe(404);
   });
 
