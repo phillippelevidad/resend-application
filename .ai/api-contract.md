@@ -71,7 +71,8 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
 - **Errors.** The shape is the same everywhere ([AGENTS.md → Error shape](../AGENTS.md#error-shape)),
   and codes come only from [Error codes](#error-codes). Clients MUST treat an unknown `code` as a
   generic failure. A response without the error shape (the HTTP API's own `429` or `5xx`, as after
-  a kill-switch trip, AWS-14) maps in the SDK to the client-side code `api_unavailable`. The CLI
+  a kill-switch trip, AWS-14), or no response at all (a network failure), maps in the SDK to the
+  client-side code `api_unavailable`. The CLI
   exits `0` on success and `1` on any registry error. With `--json` it prints the error object to
   stdout; without it, it prints `message` and `hint` to stderr. It exits `2` on a usage error,
   which never reaches the API. An MCP tool failure is a tool execution error, `isError: true`, with
@@ -130,8 +131,8 @@ entries are owed by slice 3 and completed in slice 7.
 | `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, invalid or deleted, restricted, or suspended (RS-22, RS-U17) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | packages/reconciler via packages/resend-client |
 | `resend_unavailable` | — (run outcome) | Resend's API answered `5xx` past the client's retries (RS-22) | The next scheduled run retries | [Errors](https://resend.com/docs/api-reference/errors) | packages/reconciler via packages/resend-client |
 | `database_unavailable` | 503 | Postgres is unreachable | The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume` | runbook | packages/db through any database-reading operation; `worker.resumeEventSource` probe |
-| `internal_error` | 500 | An unexpected server failure. `message` carries no internals | Retry; if it persists, read the API logs by request id | runbook | packages/api error handler |
-| `api_unavailable` | — (client-side) | The API answered without the error shape: an HTTP API throttle or a stopped function | The kill switch may be tripped: check the budget alerts, then run the re-arm script | runbook | packages/sdk |
+| `internal_error` | 500 | An unexpected failure, in the API or client-side in the CLI or MCP server. `message` carries no internals | Retry; if it persists, read the API logs by request id | runbook | packages/api error handler; apps/cli and apps/mcp for an unexpected client-side failure, so a `--json` caller always gets an error object |
+| `api_unavailable` | — (client-side) | The API answered without the error shape (an HTTP API throttle or a stopped function), or did not answer at all (the request failed on the network) | Check `LEDGER_URL`. The kill switch may be tripped: check the budget alerts, then run the re-arm script | runbook | packages/sdk |
 
 A **run outcome** code is never an HTTP status of its own. It is stored in
 [`reconcile_runs.error_code`](data-modeling.md#reconcile_runs--one-row-per-recovery-run) and comes

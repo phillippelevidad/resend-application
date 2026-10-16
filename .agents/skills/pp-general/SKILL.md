@@ -96,7 +96,7 @@ The deciding test, not the trade-off. Each is countable from the diff or a named
 
 | Do this | Deciding test |
 | --- | --- |
-| Extract an abstraction | The third duplicate exists, **or** it is a named ADR seam: a port in `packages/shared` ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)) or `resend-client` ([ADR-012](../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)) |
+| Extract an abstraction | The third duplicate exists, **or** it is a named ADR seam: a port in `packages/shared` ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)) or `resend-client` ([ADR-012](../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)). In `infra`, the shared function construct comes at the second function ([adding-things.md](references/adding-things.md#extract-an-abstraction), O-15) |
 | Declare an interface | It is a named port. A test double is not a second implementation |
 | Add an error subclass | A caller in the same diff branches on it |
 | Add a workspace package | The [Projects](../../../AGENTS.md#projects) table lands it in this slice, **or** a second project imports it in this diff |

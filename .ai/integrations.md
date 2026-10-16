@@ -189,6 +189,12 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
 
 **How it is used (MUST):**
 
+- **Postgres 18** (owner, 2026-10-16). Neon "currently supports Postgres 14, 15, 16, 17, and 18",
+  and the major is selected "when creating a Neon project"
+  ([version policy](https://neon.com/docs/postgresql/postgres-version-policy)), so slice 2 creates
+  the project on 18. The Testcontainers image pins an exact 18.x minor tag, never `latest` or a bare
+  major, chosen when slice 1 adds the harness, so the tested major is the deployed one.
+
 - **Connection.** Runtime Lambdas use the **pooled** connection string with `sslmode=require`.
   Neon's guidance is "Use pooled connections by default" and direct connections for migrations
   ([choose-connection](https://neon.com/docs/connect/choose-connection)). Migrations run with the

@@ -121,7 +121,13 @@ slice that settles it:
 - Sizes: pp-workflow, pp-general, pp-backend, pp-database, pp-testing and pp-infra SKILL.md run
   12.6 to 13.9 KB against the ~12 KB target.
 
-## Owner checkpoint after Phase 3 (open)
+## Owner checkpoint after Phase 3
+
+**Outcome (2026-10-16): O-11 to O-15 approved as recommended and applied.** O-11 and O-12 in
+api-contract.md → Error codes and Conventions; O-13 as a "to amend in the slice 1 pre-proposal"
+note on ADR-019's CLI line; O-14 in integrations.md → Decision — Neon and pp-testing (its
+`[Unverified]` is resolved, so drop pp-testing's row from the Open questions queue above); O-15 in
+pp-general → adding-things and pp-infra.
 
 | ID | Question | Recommended |
 | --- | --- | --- |

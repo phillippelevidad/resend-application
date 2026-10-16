@@ -61,7 +61,7 @@ Real Postgres, because the integration tier exists for what the database enforce
 ([postgres-harness.md](references/postgres-harness.md)):
 
 - **One container per test run** (the `int` project's global setup), its image pinned to the
-  Neon project's Postgres major ([`[Unverified]`](references/postgres-harness.md#the-image)).
+  Neon project's Postgres major, 18 ([the image](references/postgres-harness.md#the-image)).
 - **Setup follows S-05:** ensure the runtime role, migrate through the deploy command's code path,
   mark that database a template ([Decision — Neon](../../../.ai/integrations.md#decision--neon), ADR-018).
 - **Each test file gets a fresh clone** (`CREATE DATABASE … TEMPLATE …`): files run in parallel,

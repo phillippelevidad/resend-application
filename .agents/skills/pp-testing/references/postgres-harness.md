@@ -98,14 +98,10 @@ It is the one exception to one container per run ([Case-by-case](../SKILL.md#cas
 
 ## The image
 
-**`[Unverified]` — the Postgres major.** The harness MUST run the major the Neon project runs.
-integrations.md does not state it. Neon "currently supports Postgres 14, 15, 16, 17, and 18", and
-"You select the major version of Postgres when creating a Neon project"
-([Neon → version policy](https://neon.com/docs/postgresql/postgres-version-policy)). So the major is
-chosen once: the slice 1 pre-proposal picks it, records it in
-[integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon), and slice 2
-creates the Neon project on it. The image tag names the exact minor, never `latest` or a bare major,
-so CI runs are reproducible.
+**Postgres 18.** The harness MUST run the major the Neon project runs, which is 18
+([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)). The image tag
+names an exact 18.x minor, never `latest` or a bare major, so CI runs are reproducible; slice 1
+picks the minor when it adds the harness.
 
 `@testcontainers/postgresql` is a dev dependency of `packages/db` only, Ask-first when slice 1 adds
 it ([Permissions](../../../../AGENTS.md#permissions)). The harness needs Docker locally and in CI

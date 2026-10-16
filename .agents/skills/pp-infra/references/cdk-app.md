@@ -32,7 +32,7 @@ infra/
 - **One shared function construct, from the second function**, never a construct class per
   function. Every cost-brake property MUST be identical on every function, and a copy that misses
   one is a cost or teardown defect, not a style issue; that is why this path does not wait for the
-  third duplicate ([adding-things.md](../../pp-general/references/adding-things.md#extract-an-abstraction)).
+  third duplicate (owner, O-15; [adding-things.md](../../pp-general/references/adding-things.md#extract-an-abstraction)).
 - **Stacks import only `aws-cdk-lib` and `constructs`.** A handler is referenced by its entry
   path, never imported. Scripts import workspace packages ([scripts.md](scripts.md)).
 - **The CDK app runs under Node 24 type stripping**, no build step

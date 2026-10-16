@@ -66,6 +66,18 @@ to each slice's pre-proposal. Each lives in the skill named.
 | C-01 to C-04 | commander with one `<noun>-<verb>.cli.ts` per command; exit `0`/`1`/`2` via `exitOverride()`; `styleText` colour on a TTY only; `202` waits by default | [pp-cli](../../../.agents/skills/pp-cli/SKILL.md) |
 | M-01 to M-04 | MCP SDK v2 over stdio; `parseArgs`; operate tools only with an `operate` token and `--enable-operate`, failing closed; masks only, `isError` results, handlers never throw | [pp-mcp](../../../.agents/skills/pp-mcp/SKILL.md) |
 
+## Owner checkpoint after Phase 3 (2026-10-16)
+
+The owner approved the recommended option for each.
+
+| ID | Decision | Lives in |
+| --- | --- | --- |
+| O-11 | `api_unavailable` also covers no answer at all (a network failure) | [api-contract.md → Error codes](../../api-contract.md#error-codes), Conventions |
+| O-12 | `internal_error` is also raised client-side by `apps/cli` and `apps/mcp`, so a `--json` caller always gets an error object | [api-contract.md → Error codes](../../api-contract.md#error-codes) |
+| O-13 | commander 15 replaces 14, amended in the slice 1 pre-proposal | ADR-019's CLI line (note) |
+| O-14 | Postgres 18 for Neon and the Testcontainers image, an exact minor tag pinned | [integrations.md → Decision — Neon](../../integrations.md#decision--neon), pp-testing |
+| O-15 | In `infra`, the shared function construct comes at the second function | pp-general → adding-things, pp-infra |
+
 ## Owner checkpoint after Phase 2 (2026-10-16)
 
 The owner approved the recommended option for each.

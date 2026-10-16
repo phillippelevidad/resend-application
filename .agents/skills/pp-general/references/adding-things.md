@@ -30,6 +30,10 @@ ADR already paid for the deliberation: the queue port and the other port interfa
 `packages/shared` ([ADR-013](../../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)), and
 `packages/resend-client` ([ADR-012](../../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)).
 
+**One path exception (owner, O-15):** in `infra`, the shared Lambda function construct is extracted
+at the **second** function, because a copy that misses one cost-brake property is a cost or teardown
+defect, not a style issue ([pp-infra → layout](../../pp-infra/references/cdk-app.md#layout)).
+
 ## Rejected patterns
 
 | Instead of | Do |
