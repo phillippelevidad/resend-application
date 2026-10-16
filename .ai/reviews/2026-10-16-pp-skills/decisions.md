@@ -52,6 +52,19 @@ Code-level conventions no doc owned, decided by the docs and the decision lens. 
 | G-13 | An address only in a request body; never in a URL, log, metric dimension, error text or MCP output |
 | G-14 | Comments give the why and cite ids; no `.ai/` prose in code |
 
+## Owner checkpoint after Phase 2 (2026-10-16)
+
+The owner approved the recommended option for each.
+
+| ID | Decision | Lives in |
+| --- | --- | --- |
+| O-05 | `engines.node` `>=24.12 <25`: type stripping is Stable from v24.12 | Root `package.json`, [AWS-54](../../aws.md), pp-general |
+| O-06 | Log fields by exact key, adding `error_code` (a registry code) | [data-modeling.md → Log fields](../../data-modeling.md#log-fields) |
+| O-07 | `[!]` also means blocked on an unverified fact | [build-checklist.md → Legend](../../build-checklist.md#legend) |
+| O-08 | `.env.example` lists public variables only; CDK-set ones live in `infra` | pp-workflow → Definition of done |
+| O-09 | A `workspace:*` entry is not a third-party dependency, so not Ask-first | pp-general → adding-things |
+| O-10 | The public SDK returns `{ data, error }` like Resend's SDK (RS-23); the one exception to "no `Result` type" | pp-general → errors, pp-backend → Surfaces |
+
 ## Open for the owner at the Phase 1 checkpoint
 
 **Outcome (2026-10-16):** the owner approved the recommended option for O-01 to O-04, and all four

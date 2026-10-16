@@ -119,6 +119,8 @@ The deciding test, not the trade-off. Each is countable from the diff or a named
 - **`process.env` read outside a composition root** → typed config passed in
   ([config-and-env.md](references/config-and-env.md)).
 - **A `Result` or Either type** → throw the error class with a registered `code` ([errors.md](references/errors.md)).
+  One named exception: the public SDK returns `{ data, error }` like Resend's SDK (owner, O-10;
+  [pp-backend → Surfaces](../pp-backend/SKILL.md#surfaces--sdk-cli-mcp)).
 - **A second error envelope** → the [one shape](../../../AGENTS.md#error-shape), mapped at the edge
   ([errors.md](references/errors.md#one-mapping-per-surface)).
 - **An error code invented in code** → register it in [Error codes](../../../.ai/api-contract.md#error-codes)

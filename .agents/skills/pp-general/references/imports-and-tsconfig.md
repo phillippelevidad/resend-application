@@ -140,6 +140,6 @@ cannot express a ban, the [review greps](boundaries.md#review-greps) carry it.
 
 ## Engines
 
-Root `package.json` pins `engines.node` to `>=24 <25`. Type stripping is Stable only from v24.12
-and `--env-file-if-exists` non-experimental only from v24.10 ([config-and-env.md](config-and-env.md#local-env-file)).
-Raising the floor to `>=24.12 <25` is proposed to the owner, not made here.
+Root `package.json` pins `engines.node` to `>=24.12 <25` (owner, O-05): type stripping is Stable
+only from v24.12, and `--env-file-if-exists` non-experimental only from v24.10
+([config-and-env.md](config-and-env.md#local-env-file)).

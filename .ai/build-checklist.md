@@ -44,7 +44,7 @@ restate. Milestones carry no dates ([about.md → Milestones](about.md#milestone
 
 ## Legend
 
-`[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked on an owner decision (one-line why).
+`[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked on an owner decision or an unverified fact (one-line why).
 
 The marker lives on the card's `Status` line, in backticks, and nowhere else. Headings MUST stay
 marker-free: they are link anchors (`#2b--local-mode-queue-and-docker-compose`). Checkbox lines

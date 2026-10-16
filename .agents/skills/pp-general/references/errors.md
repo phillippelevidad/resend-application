@@ -35,6 +35,8 @@ Fields are assigned in the body, never as parameter properties
 ([imports-and-tsconfig.md](imports-and-tsconfig.md#node-24-runs-ts-directly)).
 
 - **Throw it; never return a `Result` or Either type.** One error channel means one place to look.
+  The one named exception is the public SDK, which returns `{ data, error }` like Resend's SDK
+  (RS-23; owner, O-10); the CLI and MCP server unwrap it and map once.
 - **`ErrorCode` is the core Zod enum** that mirrors the registry. Never invent a code in code:
   register it first, Ask-first ([Conventions](../../../../.ai/api-contract.md#conventions)).
 - **HTTP status, default `hint` and `docs` come from the registry**, mirrored beside the enum in

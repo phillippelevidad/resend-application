@@ -61,7 +61,10 @@ git-ignored.
   filter vs Winston's lowercase levels) each owe an about.md Open questions entry (slice 0 settles
   the first three, slice 2 the last).
 
-**Owner checkpoint (ratified-doc or toolchain edits; held until approved):**
+**Owner checkpoint — outcome (2026-10-16): O-05 to O-10 approved as recommended.** O-05 to O-09
+are applied (`package.json`, aws.md AWS-54, data-modeling → Log fields, build-checklist → Legend,
+pp-workflow's DoD env row, pp-general). O-10 is applied in pp-general; Phase 3 MUST mark B-06
+"approved (O-10)" in pp-backend, pp-cli and pp-mcp when their agents finish.
 - O-05 Root `package.json` `engines.node` `>=24 <25` → `>=24.12 <25` (type stripping is Stable
   from v24.12, G-03). Recommended: approve, applied in slice 0.
 - O-06 data-modeling → Log fields: exact key names (`error_name`, `pg_code`, `<name>_count`,

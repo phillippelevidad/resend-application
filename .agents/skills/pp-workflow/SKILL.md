@@ -70,7 +70,7 @@ duty below that the change triggers is discharged in the same diff. Until slice 
 | Leaves a question unresolved | An [about.md → Open questions](../../../.ai/about.md#open-questions) entry tagged `[Unverified]`, and the card marked `[!]` with a one-line reason |
 | Settles an `RS-UNN`, `AWS-UNN` or `PG-UNN` row | That row updated in [resend.md](../../../.ai/resend.md#unverified), [aws.md](../../../.ai/aws.md#unverified) or [integrations.md](../../../.ai/integrations.md#unverified) |
 | Relies on a Resend behavior | The `RS-NN` fact it rests on, cited ([resend.md](../../../.ai/resend.md)) |
-| Introduces an environment variable | `.env.example` (names only, never values), and a boot-time assertion if it is required ([pp-general](../pp-general/SKILL.md)) |
+| Introduces an environment variable | A public one ([Conventions](../../../.ai/api-contract.md#conventions)): its `.env.example` line (names only, never values). An internal, CDK-set one: `infra` only, never `.env.example` ([pp-infra](../pp-infra/SKILL.md)). Either: a boot-time assertion if it is required ([pp-general](../pp-general/SKILL.md)) |
 | Touches a mandatory-tier surface | An integration test against real Postgres, or the named test for the other Mandatory rows ([Test tiers](#test-tiers)) |
 | Introduces a code-level convention no doc owns | The owning pp-* skill updated in the same change ([routing](#which-skill-answers-a-code-question)) |
 

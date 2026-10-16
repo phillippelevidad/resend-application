@@ -67,7 +67,7 @@ already does, **and** the owner approved it. A third-party dependency is
   ([ADR-019](../../../../.ai/architecture.md#adr-019--application-and-surface-stack)).
 
 A `workspace:*` entry for a `@ledger/*` package is a boundary declaration, not a third-party
-dependency; it follows [imports-and-tsconfig.md → Imports](imports-and-tsconfig.md#imports).
+dependency, so it is not Ask-first (owner, O-09); it follows [imports-and-tsconfig.md → Imports](imports-and-tsconfig.md#imports).
 
 ## Add a workspace package
 

@@ -35,7 +35,8 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
 - **Messages are constants, never interpolated.** `logger.info('event.duplicate', { svix_id })`,
   never `` logger.info(`duplicate ${svixId}`) ``. Interpolation is how a value the allow-list would
   drop slips into the one field it never inspects.
-- **Errors are logged by name**, plus the Postgres SQLSTATE code when there is one. Never the
+- **Errors are logged by name** (`error_name`), plus the registry code (`error_code`) for a
+  `LedgerError` and the Postgres SQLSTATE (`pg_code`) when there is one. Never the
   error's `message`, `detail` or `cause` text: they can quote a row.
 
 ## Metrics

@@ -221,10 +221,11 @@ The canonical log allow-list. Every app logs through the one shared logger, whic
 fields and drops any other, masks included (AWS-29; ids are log fields, never metric dimensions,
 AWS-12):
 
-- **Allowed:** `svix_id`, `email_id`, `type`, `request_id`, `run_id`, `token_id` (the
-  `api_tokens.id`, never a token or its hash), the error name, the Postgres SQLSTATE `code`,
-  counts, durations, the function name and `cold_start`. The line's `level` and its message, a
-  constant written in code, never interpolated.
+- **Allowed**, by these exact keys: `svix_id`, `email_id`, `type`, `request_id`, `run_id`,
+  `token_id` (the `api_tokens.id`, never a token or its hash), `error_name`, `error_code` (a
+  [registry](api-contract.md#error-codes) code), `pg_code` (the Postgres SQLSTATE), counts as
+  `<name>_count`, durations as `<name>_ms`, `function_name`, `cold_start` and `timestamp`. The
+  line's `level` and its message, a constant written in code, never interpolated.
 - **Never:** an error's `message` or `detail` from parsing or Postgres (they can quote a row), an
   address or `address_hash`, a subject, request or response headers, a token or secret, the raw
   payload or any part of it.
