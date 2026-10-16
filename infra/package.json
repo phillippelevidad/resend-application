@@ -4,6 +4,9 @@
   "type": "module",
   "description": "AWS CDK app: app stack and guardrails stack",
   "license": "MIT",
+  "scripts": {
+    "synth": "cdk synth --quiet"
+  },
   "dependencies": {
     "aws-cdk-lib": "2.273.0",
     "constructs": "10.8.1"
