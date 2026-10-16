@@ -14,7 +14,7 @@ git-ignored.
 | 1 — decision docs: ADR-019, ADR-013 amendment, doc tensions | done — ADR-019 added; ADR-011, ADR-013 and ADR-018 amended; S-01 to S-11 settled | `stages/PHASE-1-BRIEF.md`; edits to `.ai/` and root `AGENTS.md` |
 | 1b — owner checkpoint | done — O-01 to O-04 approved as recommended and applied | [decisions.md](decisions.md#open-for-the-owner-at-the-phase-1-checkpoint) |
 | 2 — `pp-general`, `pp-workflow` | done — `pp-general` added, `pp-workflow` rewritten; G-01 to G-14 settled | `stages/PHASE-2-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-2); the queue below |
-| 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | **next** — write `stages/PHASE-3-BRIEF.md` first; it MUST carry the Phase 3 items of the queue below | Five agents in parallel, on disjoint folders |
+| 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | **in progress** — `stages/PHASE-3-BRIEF.md` written (B-, D-, T-, I-, C-, M- decisions; fixed anchors); five agents writing | Five agents in parallel, on disjoint folders |
 | 4 — consumer routing | pending | Skill-name lists in root `AGENTS.md`, `wf-*`, `implement-plan`, `openspec/config.yaml` and the `check.mjs` strings; anchor and link check |
 | 5 — adversarial review and fixes | pending | Reviewers check each skill against `.ai/` (the doc wins), then fixes |
 
@@ -73,6 +73,9 @@ git-ignored.
   CDK-set internal ones; pp-workflow's DoD row says so. Recommended: approve.
 - O-09 A `workspace:*` entry is not a third-party dependency, so not Ask-first (pp-general says
   so). Recommended: approve.
+- O-10 (from Phase 3) The public SDK returns `{ data, error }` like Resend's SDK (RS-23), never
+  throwing for an API error; the one named exception to pp-general's "no `Result` type". The CLI
+  and MCP unwrap it and map once. Recommended: approve. Rejected, the SDK throws the shared error.
 
 ## Consumer contract: what Phase 4 MUST keep
 
