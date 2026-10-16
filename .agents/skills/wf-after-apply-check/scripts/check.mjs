@@ -99,6 +99,18 @@ const git = (args, opts = {}) =>
     ...opts,
   });
 
+// The installed openspec CLI's JS entry, from its package.json `bin`; null when not installed.
+function openspecBin() {
+  const pkgDir = join(repoRoot, "node_modules", "@fission-ai", "openspec");
+  try {
+    const { bin } = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+    const entry = join(pkgDir, typeof bin === "string" ? bin : bin.openspec);
+    return existsSync(entry) ? entry : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- artifacts
 
 function loadDoc(name, path) {
@@ -162,20 +174,25 @@ if (!review)
 // ---------------------------------------------------------------- openspec validate
 
 {
-  const r = spawnSync(
-    "npx",
-    [
-      "--no-install",
-      "openspec",
-      "validate",
-      changeName,
-      "--type",
-      "change",
-      "--strict",
-      "--no-interactive",
-    ],
-    { cwd: repoRoot, encoding: "utf8", shell: process.platform === "win32" },
-  );
+  // Run the pinned CLI's JS entry with this Node and an argument array: no npx and no shell, so
+  // `changeName` is never parsed by a shell (Windows refuses `.cmd` files without one). A missing
+  // package lands in the "could not run" branch, as `npx --no-install` did.
+  const bin = openspecBin();
+  const r = bin
+    ? spawnSync(
+        process.execPath,
+        [
+          bin,
+          "validate",
+          changeName,
+          "--type",
+          "change",
+          "--strict",
+          "--no-interactive",
+        ],
+        { cwd: repoRoot, encoding: "utf8" },
+      )
+    : { status: null };
   if (r.error || r.status === null)
     record(
       "openspec",
