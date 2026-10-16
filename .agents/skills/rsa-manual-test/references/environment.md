@@ -17,7 +17,8 @@ updates [Surfaces by slice](#surfaces-by-slice) in the same change.
    (stdio, no tools yet); `node scripts/secret-scan.mjs` (needs Docker; prints
    `secrets: canary caught 3/3 rules` then `secrets: repo clean (<k> commits scanned)`);
    `node scripts/check-links.mjs [file …]` (README.md by default; prints `links: canary caught 2/2`
-   then `links: <file> <n> checked, <k> broken`).
+   then `links: <file> <n> checked, <k> broken`); `pnpm sim` (flags in
+   [Surfaces by slice](#surfaces-by-slice); prints its seed and namespace, then the projection).
    `pnpm check` and `pnpm verify` are gates, never walked. Every other
    command lands with its slice and its Commands line.
 2. **Setup commands come from the walkthrough's `## Before you start`** until the table below names
@@ -48,7 +49,7 @@ names the command yet, the slice's card is the source.
 | `apps/local`, routeless | 0 | `pnpm --filter @ledger/app-local start` (or `pnpm dev`, watch mode); `--port` (default `3200`, clear of the other local stacks on this machine), `--host` (default `127.0.0.1`, loopback only: a non-loopback host exits `1`). Stdout: `{"level":"info","message":"local server listening"}`; every path `404` until slice 1 | No |
 | `ledger` CLI, no commands · MCP server, no tools | 0 | `pnpm --filter @ledger/app-cli start --help` (no `bin` until slice 1) · `pnpm --filter @ledger/app-mcp start` (stdio; an unknown flag exits non-zero) | No |
 | CI run on a pushed commit | 0 | GitHub Actions on the pushed `HEAD`; read its conclusion. Never push a scratch commit to provoke one | No |
-| `pnpm sim` printing a projection | 0 | Root script; no live process | No |
+| `pnpm sim` printing a projection | 0 | `pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shuffle`, every flag optional, no `--` before them; root script, no live process. Line 1 `sim seed=<seed> namespace=<namespace>` (chosen when not given), line 2 `history emails=<m> events=<n> duplicates=<d> shuffled=<true\|false>`, then the projection JSON, masks only. A bad flag prints `sim: <flag> <reason>` on stderr and exits `2`. `pnpm -s sim` drops pnpm's script banner from stdout | No |
 | `apps/local`: ingest `POST /webhooks/resend`, worker, read API | 1 | `pnpm --filter @ledger/app-local start` (slice 0's start command; slice 1 adds the routes and any database flag, in Commands). Auth skipped only on loopback ([Conventions → Auth in slice 1](../../../../.ai/api-contract.md#conventions)) | No |
 | `ledger email <email_id>` · `ledger recipient <address>` | 1 | `LEDGER_URL`; `LEDGER_TOKEN` from slice 2 (no `--token` flag, [pp-cli](../../pp-cli/SKILL.md)) | No |
 | `pnpm sim --duplicates 0.2 --shuffle` | 1 | Against `apps/local` | No |

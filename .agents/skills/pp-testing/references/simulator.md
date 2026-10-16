@@ -28,7 +28,7 @@ Svix's scheme, on `node:crypto`, no dependency. The signed content is
 [Svix → manual verification](https://docs.svix.com/receiving/verifying-payloads/how-manual)).
 
 ```ts
-// packages/core/src/testing/sign-webhook.ts — shape; slice 0 or 1 writes it
+// packages/core/src/testing/sign-webhook.ts — shape; slice 1 writes it
 import { Buffer } from 'node:buffer';
 import { createHmac } from 'node:crypto';
 

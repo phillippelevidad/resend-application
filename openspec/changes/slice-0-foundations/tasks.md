@@ -71,15 +71,15 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 6. Simulator (Ships 8; D15, D16)
 
-- [ ] 6.1 Add `packages/core/src/testing.ts` re-exporting `ledgerHistory`, and `"./testing": "./src/testing.ts"` to `packages/core/package.json` `exports`. Verify: `pnpm typecheck` exits 0.
-- [ ] 6.2 Write `sim/src/main.ts` per D16. Flags via `parseArgs`: `--seed`, `--namespace`, `--duplicates`, `--shuffle`. It samples the history with `fc.sample(…, { seed, numRuns: 1 })`, applies seeded duplicates and a seeded permutation, projects, then prints the two header lines (`events` counts the generated events, `duplicates` the repeats added) and the masks-only JSON with `recipientKey` omitted. A bad flag prints `sim: <flag> <reason>` on stderr and exits 2. Add `"sim": "node --env-file-if-exists=.env.local sim/src/main.ts"` to the root `package.json`. Verify: `pnpm sim --seed 42 --namespace walk` exits 0 and line 1 is `sim seed=42 namespace=walk`.
-- [ ] 6.3 Write `sim/src/main.e2e.test.ts`, spawning the running `node` binary on `sim/src/main.ts`. It asserts: the same seed and namespace twice give identical stdout; `--shuffle --duplicates 0.3` leaves the JSON block identical and line 2 shows a non-zero `duplicates`; another namespace gives different email ids; no generated `to`, `from` or `subject` that differs from its own mask appears in stdout (the history is regenerated with the same seed and namespace); `--duplicates 2` exits 2. Verify: `pnpm test:e2e` passes.
-- [ ] 6.4 Docs. Verify: the Commands line names all four flags, and the card's eighth `Ships` box reads `[x]`.
+- [x] 6.1 Add `packages/core/src/testing.ts` re-exporting `ledgerHistory`, and `"./testing": "./src/testing.ts"` to `packages/core/package.json` `exports`. Verify: `pnpm typecheck` exits 0.
+- [x] 6.2 Write `sim/src/main.ts` per D16. Flags via `parseArgs`: `--seed`, `--namespace`, `--duplicates`, `--shuffle`. It samples the history with `fc.sample(…, { seed, numRuns: 1 })`, applies seeded duplicates and a seeded permutation, projects, then prints the two header lines (`events` counts the generated events, `duplicates` the repeats added) and the masks-only JSON with `recipientKey` omitted. A bad flag prints `sim: <flag> <reason>` on stderr and exits 2. Add `"sim": "node --env-file-if-exists=.env.local sim/src/main.ts"` to the root `package.json`. Verify: `pnpm sim --seed 42 --namespace walk` exits 0 and line 1 is `sim seed=42 namespace=walk`.
+- [x] 6.3 Write `sim/src/main.e2e.test.ts`, spawning the running `node` binary on `sim/src/main.ts`. It asserts: the same seed and namespace twice give identical stdout; `--shuffle --duplicates 0.3` leaves the JSON block identical and line 2 shows a non-zero `duplicates`; another namespace gives different email ids; no generated `to`, `from` or `subject` that differs from its own mask appears in stdout (the history is regenerated with the same seed and namespace); `--duplicates 2` exits 2. Verify: `pnpm test:e2e` passes.
+- [x] 6.4 Docs. Verify: the Commands line names all four flags, and the card's eighth `Ships` box reads `[x]`.
   - Root AGENTS.md Commands gains `pnpm sim` with its flags.
   - rsa-manual-test environment.md: the `pnpm sim` row gains its exact command and flags.
   - pp-testing simulator.md Signing: "slice 0 or 1 writes it" becomes "slice 1" (C10).
   - Card: tick `Ships` 8.
-- [ ] 6.5 Run `pnpm check` and `pnpm test:e2e`, then commit and push. Verify: both exit 0 before the commit, and `git status --short` is empty after the push.
+- [x] 6.5 Run `pnpm check` and `pnpm test:e2e`, then commit and push. Verify: both exit 0 before the commit, and `git status --short` is empty after the push.
 
 ## 7. Core import boundary (Ships 7; D17)
 

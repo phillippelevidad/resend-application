@@ -241,6 +241,11 @@ pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 
 pnpm deps          # pnpm install only when the lockfile or a package.json changed
 pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
 
+# Simulator (every flag optional; no `--` before them)
+pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shuffle
+                   # prints `sim seed=… namespace=…` (the replay pair, chosen when not given), the
+                   # history counts, then its projection as JSON, masks only; a bad flag exits 2
+
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
 pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3200; --port, --host (loopback only)
 pnpm --filter @ledger/app-cli start --help
