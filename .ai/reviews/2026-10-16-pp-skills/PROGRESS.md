@@ -16,7 +16,8 @@ git-ignored.
 | 2 — `pp-general`, `pp-workflow` | done — `pp-general` added, `pp-workflow` rewritten; G-01 to G-14 settled | `stages/PHASE-2-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-2); the queue below |
 | 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | done — `pp-backend` and `pp-database` rewritten, four skills added; O-10 written as decided in all three surfaces | `stages/PHASE-3-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-3); the queue below |
 | 4 — consumer routing and cross-skill fixes | done — every consumer routes through pp-workflow's table; the queue applied; 0 broken links over 73 files | `stages/PHASE-4-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-4); the Phase 5 queue below |
-| 5 — adversarial review and fixes | **next** — write `stages/PHASE-5-BRIEF.md` from [the queue below](#queue-for-phase-5-adversarial-review) first | Reviewers check each skill against `.ai/` (the doc wins), then fixes |
+| 5 — adversarial review and fixes | done — five reviewers, 61 findings (2 BLOCK); every one triaged, all but the owner items applied; 0 broken links over 51 files | `stages/PHASE-5-BRIEF.md`; [decisions.md](decisions.md#settled-in-phase-5); the owner checkpoint below |
+| 5b — owner checkpoint | **next** — O-16 to O-21 below | Apply what the owner picks; then the run is closed |
 
 ## Skill set (owner, 2026-10-16)
 
@@ -111,7 +112,36 @@ slice that settles it:
 
 **Then:** an anchor and link check over every `.agents/skills/pp-*` file (all eight now exist).
 
+## Owner checkpoint after Phase 5
+
+The docs do not settle these. Each is held: nothing below is applied yet.
+
+| ID | Finding | Question | Recommended |
+| --- | --- | --- | --- |
+| O-16 | R3-01 (BLOCK) | ADR-018 and integrations.md → Decision — Neon put a new table's grant "in the same migration"; pp-database puts it in a custom migration right after the generated one (a grant inside the generated SQL is a second hand edit). drizzle-orm's `migrate()` runs every pending migration in one transaction (source on `main`), so both are atomic | Amend the docs to "in a custom migration right after the generated one" (integrations.md, ADR-018, pp-testing's postgres-harness.md:26). Alternative: the skill appends the `GRANT` to the generated file |
+| O-17 | R4-04 | api-contract → Conventions says internal variables are "declared in the CDK construct of the function that reads them"; pp-infra keeps the names in one `infra` module and sets each only on its reader. Ask-first (Conventions) | Amend Conventions to "their names in one module, each set only on the function that reads it" (S-02 precedent) |
+| O-18 | R5-09 | Conventions say every `202` command waits and takes `--no-wait`; `dlq.startRedrive` answers `202` with nothing to poll. Ask-first (CLI flags) | Conventions: `--no-wait` only where the Surfaces line names it (`reconcile.start`); `dlq.startRedrive` returns at once, progress via `health.get` |
+| O-19 | R5-10 | The MCP SDK rejects a type-invalid argument itself, with its own `isError` text outside the error shape | Record the exception in Conventions → Errors at slice 5 (Ask-first); typed schemas help the model, and the redaction test covers the text |
+| O-20 | R5-11 | `reconcile`'s Surfaces line names MCP input `dry_run` only; its In line adds `lookback`, which tool-anatomy lists | Where a Surfaces line names MCP inputs they are the full set, otherwise the In line; drop `lookback` from tool-anatomy; slice 5 records each tool's inputs |
+| O-21 | R5-12 | commander 15 echoes excess arguments in its usage error, so `ledger email <id> a@x.com` prints an address to stderr | Accept: it is the user's own argv on their own terminal, never logged, sent or printed under `--json`; note it in pp-cli |
+
+**Triaged, not applied (with reasons):** R1's extra `check.mjs` BLOCK for a `packages/core` change
+without a `*.prop.test.ts` (the core row is not in pp-workflow's Mandatory list, so the script
+would be stricter than the policy); R3-07's rename of `connection-error.ts` (a file that *is* the
+thing takes no suffix; pp-general's gate wording was the defect and is fixed). Sizes:
+pp-workflow stays 13.6 KB (the added rows are binding duties) and pp-database 12.7 KB; the other
+six are 11.9–12.6 KB.
+
 ## Queue for Phase 5 (adversarial review)
+
+**Done (2026-10-16).** Answers: the dispatcher exception is mandated by ADR-017, the lock retaken
+per batch (R2-01); the build checklist confirms pp-backend's slice owners, except the
+`ingest.rejected` reason (slice 4, R2-04); the secret port fits ADR-013; the contract-step marker
+stays on the generated migration (the migrator hashes but never compares); every closed-set change
+stays marked, with a `replace:` reason, no lint exemption; the `check.mjs` skip now covers every
+path that never touches Postgres; diff-review's `infra` bucket and tech-review gained tables (a
+helper cannot open the skills); the changed-`check()` row names slice 1; the library bullets stay
+id-less and join the owed-by-slice table. Kept for the record.
 
 - The dispatcher delivers while holding its claim transaction (ADR-017), against pp-backend B-02's
   "no external call inside it": pp-backend writes it as the one named exception. Confirm, or amend.

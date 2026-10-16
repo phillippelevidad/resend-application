@@ -79,6 +79,21 @@ Consumer routing and cross-skill fixes, decided by the docs and the decision len
 | R-05 | SQS redrive's evidence is the `packages/aws` adapter plus sim invariant 4; the Postgres tier keeps the redriven-duplicate row and local-mode redrive (T-06) | [pp-workflow → Test tiers](../../../.agents/skills/pp-workflow/SKILL.md#test-tiers) |
 | R-06 | The skills' library `[Unverified]` facts are Open questions bullets, grouped by skill, each with its slice; the Cost Explorer read cost is `AWS-U10` (slice 2) | [about.md → Open questions](../../about.md#open-questions), [aws.md → \[Unverified\]](../../aws.md#unverified) |
 
+## Settled in Phase 5
+
+Adversarial review: five reviewers, every finding checked against its cited text before applying.
+
+| ID | Settled | Lives in |
+| --- | --- | --- |
+| V-01 | The library-behavior Open questions bullets carry no ids; they join the owed-by-slice table as "the slice's library bullets", and settling one is a duty row | [architecture.md → Open questions owed by slice](../../architecture.md#open-questions-owed-by-slice), [pp-workflow → Definition of done](../../../.agents/skills/pp-workflow/SKILL.md#definition-of-done) |
+| V-02 | The Postgres-tier BLOCK skips every path that never touches Postgres: `packages/{core,aws,ingest,sdk}`, `apps/{cli,mcp,ingest}` | `wf-after-apply-check/scripts/check.mjs` |
+| V-03 | The dispatcher retakes its transaction-scoped advisory lock per batch; the worker-resume invoke is synchronous | [pp-backend → reactions-and-recovery, composition](../../../.agents/skills/pp-backend/SKILL.md) |
+| V-04 | A migration the DDL lint would fail carries `-- contract-step:`; a same-name replace (a closed set's `CHECK`, an index) or `DROP NOT NULL` gives a `replace:` reason and ships with its code; a rename prompt from drizzle-kit is split, never answered | [pp-database → migrations-and-grants](../../../.agents/skills/pp-database/references/migrations-and-grants.md) |
+| V-05 | The budget and kill-switch wiring is a cost-brake property, so diff review re-checks it | [pp-infra → Cost brake in code](../../../.agents/skills/pp-infra/SKILL.md#cost-brake-in-code) |
+| V-06 | AWS-55 (`NodejsFunction` bundling defaults) and AWS-56 (Lambda reserved keys, 4 KB) | [aws.md](../../aws.md#facts) |
+| V-07 | The SDK exports the client-side `api_unavailable` and `internal_error` objects; the CLI's `runOperation` and the MCP mapper emit `internal_error` for a defect (O-12) | pp-backend → sdk.md, pp-cli, pp-mcp |
+| V-08 | The MCP startup sequence is `startServer(…)`, testable without a spawned process | [pp-mcp → tool-anatomy](../../../.agents/skills/pp-mcp/references/tool-anatomy.md) |
+
 ## Owner checkpoint after Phase 3 (2026-10-16)
 
 The owner approved the recommended option for each.
