@@ -30,6 +30,28 @@ the resolution now lives.
 | S-10 | The SDK is generated from the API, but packages must not depend on server code | A committed `packages/sdk/openapi.json` exported from `packages/api`, committed generated types, and a `pnpm verify` drift stage | ADR-011 (amended) |
 | S-11 | Does the 2026-07-28 MCP spec keep the tool-annotation fields? | Yes. Checked against `schema.ts`; the open question is resolved | [about.md](../../about.md#open-questions) (Resolved) |
 
+## Settled in Phase 2
+
+Code-level conventions no doc owned, decided by the docs and the decision lens. Each lives in
+[pp-general](../../../.agents/skills/pp-general/SKILL.md) and its references.
+
+| ID | Convention |
+| --- | --- |
+| G-01 | Packages `@ledger/<folder>` (`apps/*`: `@ledger/app-<folder>`), all `private` until slice 8 names them |
+| G-02 | Internal packages ship TypeScript source; `exports` → `./src/index.ts`, the only barrel; `./testing` for test helpers |
+| G-03 | Node 24 type stripping runs local `.ts` entry points: `.ts` relative imports, erasable syntax only, no `tsx`. `[Unverified]` under `node_modules`; slice 0 smoke test, fallback `tsx` |
+| G-04 | One `tsconfig.base.json`: strict plus the settings type stripping requires; no `paths` |
+| G-05 | Relative imports inside a package, the declared package name across; `core` ← `shared` ← the rest |
+| G-06 | Biome enforces the boundaries; rule names checked against the installed version |
+| G-07 | Kebab-case files with one role suffix from one table; `.test.ts`, `.prop.test.ts`, `.int.test.ts` beside the code |
+| G-08 | One error base class with a registry `code`; throw, no `Result`; one mapping per surface |
+| G-09 | Winston JSON to stdout only, allow-listed fields, constant messages; EMF lines from a small helper, no library |
+| G-10 | Each composition root parses `process.env` once with Zod; `--env-file-if-exists=.env.local`, no `dotenv` |
+| G-11 | The lockfile is the version truth; read the installed version's docs before coding |
+| G-12 | The over-build procedure: step 0, third duplicate or a named ADR seam, the rejected-pattern table |
+| G-13 | An address only in a request body; never in a URL, log, metric dimension, error text or MCP output |
+| G-14 | Comments give the why and cite ids; no `.ai/` prose in code |
+
 ## Open for the owner at the Phase 1 checkpoint
 
 **Outcome (2026-10-16):** the owner approved the recommended option for O-01 to O-04, and all four
