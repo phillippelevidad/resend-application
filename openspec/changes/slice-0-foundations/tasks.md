@@ -31,11 +31,11 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 3. Address normalization and masks (Ships 6, mask half; D13, D14)
 
-- [ ] 3.1 Write `normalize-address.ts` (`trim().toLowerCase()`) and `normalize-address.test.ts`, covering case, surrounding whitespace, and no display-name parsing. Verify: `pnpm test` passes.
-- [ ] 3.2 Write `mask-text.ts`, `mask-address.ts` and `mask-from.ts` per D13. The order is: control characters to `*` first; then tokenize with `*` as a token character; keep `min(3, ⌊n/3⌋)`; mask digits. `maskFrom` splits at the last `<` when the sender ends in `>`. Add unit cases for the ratified examples (`delivered@resend.dev` → `del******@r*****.d**`, `Your invoice is ready` → `Y*** in***** ** r****`), a no-`@` input, a `Name <addr>` sender and a one-time code. Verify: `pnpm test` passes.
-- [ ] 3.3 Write `mask-text.prop.test.ts`, `mask-address.prop.test.ts` and `mask-from.prop.test.ts`. Each asserts five properties: idempotent; length-preserving in code points; no `\p{Nd}` in output; at most 3 characters revealed per token; no `\p{Cc}` in output. Inputs include digits, control characters, astral code points, `*`, separators and, for `maskFrom`, `<` and `>`. Verify: the properties pass, and treating `*` as a separator makes idempotence fail (revert after).
-- [ ] 3.4 Docs: data-modeling.md PII & retention, the slice-0 mask evidence links the three prop-test files. Verify: the slice-0 line under PII & retention **Evidence** links all three files.
-- [ ] 3.5 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 3.1 Write `normalize-address.ts` (`trim().toLowerCase()`) and `normalize-address.test.ts`, covering case, surrounding whitespace, and no display-name parsing. Verify: `pnpm test` passes.
+- [x] 3.2 Write `mask-text.ts`, `mask-address.ts` and `mask-from.ts` per D13. The order is: control characters to `*` first; then tokenize with `*` as a token character; keep `min(3, ⌊n/3⌋)`; mask digits. `maskFrom` splits at the last `<` when the sender ends in `>`. Add unit cases for the ratified examples (`delivered@resend.dev` → `del******@r*****.d**`, `Your invoice is ready` → `Y*** in***** ** r****`), a no-`@` input, a `Name <addr>` sender and a one-time code. Verify: `pnpm test` passes.
+- [x] 3.3 Write `mask-text.prop.test.ts`, `mask-address.prop.test.ts` and `mask-from.prop.test.ts`. Each asserts five properties: idempotent; length-preserving in code points; no `\p{Nd}` in output; at most 3 characters revealed per token; no `\p{Cc}` in output. Inputs include digits, control characters, astral code points, `*`, separators and, for `maskFrom`, `<` and `>`. Verify: the properties pass, and treating `*` as a separator makes idempotence fail (revert after).
+- [x] 3.4 Docs: data-modeling.md PII & retention, the slice-0 mask evidence links the three prop-test files. Verify: the slice-0 line under PII & retention **Evidence** links all three files.
+- [x] 3.5 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 4. `projectEmail` (Ships 5 half, Ships 6 two-recipient half; RS-U10, RS-U11; D1–D5, D8, D9)
 

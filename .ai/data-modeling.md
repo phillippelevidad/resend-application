@@ -220,9 +220,12 @@ redaction replace a raw value with its mask without changing any projection.
 - The retention period N is configurable and owed by slice 7. Resend keeps email data for 30 days
   (RS-31).
 
-**Evidence:** pending.
+**Evidence:** the slice 0 item holds; the slice 1, 2 and 7 items are pending.
 - Slice 0: fast-check properties for the masks (idempotent, length-preserving, no digit revealed,
-  at most 3 characters revealed per token, no control character).
+  at most 3 characters revealed per token, no control character), one `it` each in
+  [mask-text.prop.test.ts](../packages/core/src/mask-text.prop.test.ts),
+  [mask-address.prop.test.ts](../packages/core/src/mask-address.prop.test.ts) and
+  [mask-from.prop.test.ts](../packages/core/src/mask-from.prop.test.ts).
 - Slice 1: an invariant that no projection column holds a raw input address or subject.
 - Slice 2: a deploy-command test that refuses a mismatched `key_id`.
 - Slice 7: a rebuild after redaction yields identical projections.
