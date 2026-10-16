@@ -1,0 +1,12 @@
+{
+  "name": "@ledger/app-api",
+  "private": true,
+  "type": "module",
+  "description": "Lambda entry point behind the HTTP API: @ledger/api through @hono/aws-lambda",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/aws-lambda": "1.0.1",
+    "@ledger/api": "workspace:*",
+    "hono": "4.13.13"
+  }
+}

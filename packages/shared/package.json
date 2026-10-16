@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/shared",
+  "private": true,
+  "type": "module",
+  "description": "Kernel: port interfaces, logger and metrics helpers, config and env loading, error base class, clock, token mint and tag check. No AWS, Postgres or Resend",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

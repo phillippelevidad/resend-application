@@ -1,0 +1,12 @@
+{
+  "name": "@ledger/app-local",
+  "private": true,
+  "type": "module",
+  "description": "Local entry point: composes the package factories with @hono/node-server and the local queue",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@ledger/api": "workspace:*",
+    "hono": "4.13.13"
+  }
+}

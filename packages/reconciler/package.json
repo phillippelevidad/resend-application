@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/reconciler",
+  "private": true,
+  "type": "module",
+  "description": "Reconciler logic: gap detection and replay",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/resend-client",
+  "private": true,
+  "type": "module",
+  "description": "Resend API wrapper that owns the shared rate limiter. The only place that calls the Resend API",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

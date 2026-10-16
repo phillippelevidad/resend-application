@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/worker",
+  "private": true,
+  "type": "module",
+  "description": "Worker logic: ledger transaction, projections and outbox",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

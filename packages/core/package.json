@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/core",
+  "private": true,
+  "type": "module",
+  "description": "Event types, projectEmail, projectRecipient and reaction rules. Pure, no I/O",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

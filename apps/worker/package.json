@@ -1,0 +1,7 @@
+{
+  "name": "@ledger/app-worker",
+  "private": true,
+  "type": "module",
+  "description": "Lambda entry point over @ledger/worker: SQS batch and resume-event adaptation, composition root",
+  "license": "MIT"
+}

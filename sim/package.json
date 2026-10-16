@@ -1,0 +1,7 @@
+{
+  "name": "@ledger/sim",
+  "private": true,
+  "type": "module",
+  "description": "Simulation and chaos harness, run as pnpm sim",
+  "license": "MIT"
+}

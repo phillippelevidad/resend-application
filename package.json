@@ -2,7 +2,16 @@
   "name": "ledger",
   "scripts": {
     "sync-skills": "node scripts/sync-skills.mjs",
-    "postinstall": "node scripts/sync-skills.mjs"
+    "postinstall": "node scripts/sync-skills.mjs",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --project unit",
+    "test:int": "vitest run --project int",
+    "test:e2e": "vitest run --project e2e",
+    "test:watch": "vitest --project unit",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "build": "pnpm typecheck"
   },
   "packageManager": "pnpm@10.11.0",
   "type": "module",
@@ -13,6 +22,10 @@
   "private": true,
   "license": "MIT",
   "devDependencies": {
-    "@fission-ai/openspec": "1.14.2"
+    "@biomejs/biome": "2.5.15",
+    "@fission-ai/openspec": "1.14.2",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   }
 }
