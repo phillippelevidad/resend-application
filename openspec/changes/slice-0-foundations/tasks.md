@@ -105,13 +105,13 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 9. Link-check stage (Ships 9; CI stage, owner-approved 2026-10-16 in PP §7; D19)
 
-- [ ] 9.1 Write `scripts/check-links.mjs` (Node built-ins only) per D19. It runs its canary first, checks `README.md` by default or the files named as arguments, skips `http(s):` and `mailto:`, and prints the D19 output lines. Verify: `node scripts/check-links.mjs` exits 0 with `links: canary caught 2/2` and `links: README.md <n> checked, 0 broken`. A temp `probe.md` with one valid and one missing-anchor link to a sibling `target.md` exits 1 with `2 checked, 1 broken` and `(missing anchor)`.
-- [ ] 9.2 Add `{ name: 'links', command: 'node scripts/check-links.mjs' }` to `scripts/verify.mjs`, right after `lint`, so the order is `install, docker, secrets, lint, links, typecheck, unit, synth, e2e`. Remove "gitleaks and the README link check (slice 0)" from the planned-stages header comment (D20). Verify: `pnpm verify --from lint` runs `lint` then `links`, and both pass.
-- [ ] 9.3 Docs. Verify: `node scripts/check-links.mjs` still exits 0, and the card's ninth `Ships` box reads `[x]`.
+- [x] 9.1 Write `scripts/check-links.mjs` (Node built-ins only) per D19. It runs its canary first, checks `README.md` by default or the files named as arguments, skips `http(s):` and `mailto:`, and prints the D19 output lines. Verify: `node scripts/check-links.mjs` exits 0 with `links: canary caught 2/2` and `links: README.md <n> checked, 0 broken`. A temp `probe.md` with one valid and one missing-anchor link to a sibling `target.md` exits 1 with `2 checked, 1 broken` and `(missing anchor)`.
+- [x] 9.2 Add `{ name: 'links', command: 'node scripts/check-links.mjs' }` to `scripts/verify.mjs`, right after `lint`, so the order is `install, docker, secrets, lint, links, typecheck, unit, synth, e2e`. Remove "gitleaks and the README link check (slice 0)" from the planned-stages header comment (D20). Verify: `pnpm verify --from lint` runs `lint` then `links`, and both pass.
+- [x] 9.3 Docs. Verify: `node scripts/check-links.mjs` still exits 0, and the card's ninth `Ships` box reads `[x]`.
   - Root AGENTS.md Commands: the stage list, a line for `node scripts/check-links.mjs [file …]`, and the "planned stages" sentence with the slice-0 items removed.
   - rsa-manual-test environment.md: `node scripts/check-links.mjs` is listed as walkable.
   - Card: tick `Ships` 9.
-- [ ] 9.4 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 9.4 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 10. Walkthrough
 

@@ -224,10 +224,12 @@ pnpm test:int      # Vitest project int (real Postgres; the Testcontainers harne
 pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
 
 # Full gate: mirrors CI by construction (CI runs exactly this)
-pnpm verify        # install, docker, secrets, lint, typecheck, unit, synth, e2e; exit 0 = VERIFY PASSED
+pnpm verify        # install, docker, secrets, lint, links, typecheck, unit, synth, e2e; exit 0 = VERIFY PASSED
 pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
 node scripts/secret-scan.mjs # the secrets stage: a canary of each custom .gitleaks.toml rule, then
                              # gitleaks (pinned image, needs Docker) over every commit on every ref
+node scripts/check-links.mjs [file …]   # the links stage: relative links and anchors in README.md,
+                                        # or in the named files; a canary first; no network
 
 # Local stack
 pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts this repo's running
@@ -245,8 +247,8 @@ pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```
 
-`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: the README
-link check (slice 0), `int` with its first integration test plus OpenAPI and SDK drift (slice 1), migration lint (slice 2).
+`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: `int` with
+its first integration test plus OpenAPI and SDK drift (slice 1), migration lint (slice 2).
 Document every command here when it lands.
 
 ## Module boundaries
