@@ -130,8 +130,8 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 ## 11. Gate
 
 - [x] 11.1 Run `pnpm exec openspec validate slice-0-foundations --type change --strict`. Verify: it reports the change is valid.
-- [ ] 11.2 After the final push, run `gh run list --branch slice-0-foundations --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `secrets` and `links` stages passing. Report an in-progress run as in progress.
-- [ ] 11.3 Run `pnpm verify` in the background, redirected to a log. Verify: it exits 0 and ends `VERIFY PASSED`.
+- [x] 11.2 After the final push, run `gh run list --branch slice-0-foundations --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `secrets` and `links` stages passing. Report an in-progress run as in progress.
+- [x] 11.3 Run `pnpm verify` in the background, redirected to a log. Verify: it exits 0 and ends `VERIFY PASSED`.
 
 ## Workflow follow-up
 
