@@ -2,8 +2,9 @@
 # Postgres through Testcontainers. Slice 2B adds apps/local to this file, so `docker compose up`
 # runs the whole system.
 #
-# The credentials are throwaway local values. The host port is 55432, not 5432, so it does not
-# collide with another local Postgres; it is bound to loopback only.
+# The credentials are throwaway local values. The host port is 55432, clear of the other local
+# stacks run side by side (5432, Supabase's 54320–54329), and bound to loopback only;
+# scripts/dev-processes.mjs carries the same number.
 name: ledger
 
 services:

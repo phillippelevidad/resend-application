@@ -5,8 +5,9 @@
 //
 // deps (install only when the lockfile or a package.json changed) → Docker → the compose Postgres
 // → `pnpm build` (typecheck) → the apps/local dev server, attached. Each step checks before it
-// acts, so on a half-up machine it starts only what is missing; a server already answering on the
-// API port is adopted, never doubled.
+// acts, so on a half-up machine it starts only what is missing. A server already on the API port
+// is adopted only when it is this repo's apps/local; anything else there fails the start, so the
+// banner never points at another project's app.
 //
 // It ends in exactly one of two lines, for a log watcher to wait on:
 //   LEDGER READY in <n>s
@@ -15,20 +16,23 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  API_PORT,
+  DEV_PID_FILE,
+  isWindows,
+  listeners,
+  POSTGRES_PORT,
+  processTable,
+  repoRoot,
+  repoRootOf,
+} from './dev-processes.mjs';
 
-const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const API_URL = 'http://127.0.0.1:3000';
-// Keep in step with the host port in compose.yaml.
-const POSTGRES_ADDRESS = 'localhost:55432';
-// dev:stop reads it to stop the tree this script spawned.
-const DEV_PID_FILE = join(repoRoot, 'node_modules', '.ledger-dev.json');
+const API_URL = `http://127.0.0.1:${API_PORT}`;
+const POSTGRES_ADDRESS = `localhost:${POSTGRES_PORT}`;
 const DOCKER_TIMEOUT_MS = 90_000;
 const DOCKER_PROBE_TIMEOUT_MS = 10_000;
 const SERVER_TIMEOUT_MS = 30_000;
 
-const isWindows = process.platform === 'win32';
 const startedAt = Date.now();
 const step = (message) => console.log(`\ndev:full: ${message}`);
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -93,7 +97,7 @@ function stopChild(child) {
 
 async function startServer() {
   step('starting the apps/local dev server…');
-  const child = spawn('pnpm --filter @ledger/app-local dev', {
+  const child = spawn(`pnpm --filter @ledger/app-local dev --port ${API_PORT}`, {
     cwd: repoRoot,
     shell: true,
     stdio: 'inherit',
@@ -135,9 +139,32 @@ if (!run('docker compose up -d --wait postgres'))
 step('building (typecheck)…');
 if (!run('pnpm build')) fail('pnpm build failed; see above');
 
-if (await answers(API_URL)) {
+/**
+ * Who holds the API port: 'free', 'ours' (every listener traces to this repo's dev server), or the
+ * first foreign listener, which dev:full must neither adopt nor start beside.
+ */
+function apiPortHolder() {
+  const pids = listeners(API_PORT);
+  if (pids.length === 0) return 'free';
+  const table = processTable();
+  if (!table) fail(`port ${API_PORT} is in use and the process table could not be read`);
+  const foreign = pids.find((pid) => repoRootOf(pid, table) === undefined);
+  if (foreign === undefined) return 'ours';
+  const { name = '?' } = table.get(foreign) ?? {};
+  return { pid: foreign, name };
+}
+
+const holder = apiPortHolder();
+if (holder === 'ours') {
+  if (!(await answers(API_URL))) {
+    fail(`this repo's dev server holds port ${API_PORT} but does not answer; run pnpm dev:stop`);
+  }
   banner(true);
-} else {
+} else if (holder === 'free') {
   await startServer();
   banner(false);
+} else {
+  fail(
+    `port ${API_PORT} is held by pid ${holder.pid} (${holder.name}), which is not this repo's apps/local; stop it, then re-run`,
+  );
 }

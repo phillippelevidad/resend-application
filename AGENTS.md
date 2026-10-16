@@ -228,7 +228,8 @@ pnpm verify        # install, docker, lint, typecheck, unit, synth, e2e; exit 0 
 pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
 
 # Local stack
-pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts a running server;
+pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts this repo's running
+                   # server, fails on any other process holding the API port;
                    # prints LEDGER READY or LEDGER START FAILED: <reason>
 pnpm dev:stop      # compose stop; stops the dev server only if it belongs to this repo
 pnpm dev           # apps/local under node --watch, loading .env.local if present
@@ -237,7 +238,7 @@ pnpm deps          # pnpm install only when the lockfile or a package.json chang
 pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
 
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
-pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3000; --port, --host (loopback only)
+pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3200; --port, --host (loopback only)
 pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```

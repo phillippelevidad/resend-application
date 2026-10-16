@@ -16,7 +16,8 @@ function readFlags(): { port: number; host: string } {
   try {
     ({ values } = parseArgs({
       options: {
-        port: { type: 'string', default: '3000' },
+        // Clear of the other local stacks; scripts/dev-processes.mjs carries the same number.
+        port: { type: 'string', default: '3200' },
         host: { type: 'string', default: '127.0.0.1' },
       },
       strict: true,
