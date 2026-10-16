@@ -1,2 +1,20 @@
-// @ledger/core: event types, projectEmail, projectRecipient, reaction rules. Pure, no I/O. Lands in slice 0.
-export {};
+// @ledger/core: event types, projectEmail, projectRecipient, reaction rules. Pure, no I/O (ADR-013).
+// The package's one public surface. Test arbitraries are not here: they ship through `./testing`.
+export { type Deliverability, deliverabilitySchema } from './deliverability.schema.ts';
+export { type EmailEvent, emailEventSchema } from './email-event.schema.ts';
+export { type EmailEventType, emailEventTypes } from './email-event-types.ts';
+export { type EmailStatus, emailStatusSchema } from './email-status.schema.ts';
+export { eventRank } from './event-rank.ts';
+export type { LedgerEvent } from './ledger-event.ts';
+export { maskAddress } from './mask-address.ts';
+export { maskFrom } from './mask-from.ts';
+export { maskText } from './mask-text.ts';
+export { normalizeAddress } from './normalize-address.ts';
+export {
+  type EmailRecipientState,
+  type EmailState,
+  projectEmail,
+} from './project-email.projection.ts';
+export { type SoftSignal, softSignalSchema } from './soft-signal.schema.ts';
+export { type StickySignal, stickySignalSchema } from './sticky-signal.schema.ts';
+export { type WebhookEnvelope, webhookEnvelopeSchema } from './webhook-envelope.schema.ts';

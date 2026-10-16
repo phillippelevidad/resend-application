@@ -288,7 +288,7 @@ _Evidence: pending._
 | Column | Type | Why it matters |
 | --- | --- | --- |
 | `email_id` | `text` PK | The lock target that serializes workers per email (ADR-004) |
-| `status` | `text` + `CHECK` | Outcome precedence over all the email's events, not recency. Terminal negatives outrank `delivered` (ADR-003). The closed set is the outcome-bearing email types of RS-25 |
+| `status` | `text` null + `CHECK` | Outcome precedence over all the email's events, not recency. Terminal negatives outrank `delivered` (ADR-003). The closed set is the outcome-bearing email types of RS-25. Null until the event set holds an outcome event; never inferred from `opened` or `clicked` |
 | `from_masked`, `subject_masked` | `text` | Masks of `data.from` and `data.subject` (RS-27). Readable for support, with no raw PII |
 | `open_count`, `click_count`, `first_opened_at`, `first_clicked_at` | `int`, `timestamptz` | Counters keep the state bounded. Opens are not reliable (RS-29) |
 | `last_event_at`, `event_count` | `timestamptz`, `int` | Freshness, and the rebuild check |
@@ -299,8 +299,9 @@ _Evidence: pending._
   `email_recipients`.
 
 _Schema: `packages/db/src/schema/email-state.ts` (once it exists)._
-_Evidence: pending._
-- Slice 0: fast-check permutation, idempotence, monotonicity and oracle properties.
+_Evidence: the slice 0 item holds; the slice 1 item is pending._
+- Slice 0: fast-check permutation, idempotence, monotonicity and oracle properties, one `it` each
+  in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
 - Slice 1: sim invariant 2 under `--shuffle`.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path; 5 — MCP server and contract hardening
@@ -311,17 +312,22 @@ _Evidence: pending._
 | --- | --- | --- |
 | `email_id`, `address_hash` | `text`, composite PK | One row per recipient of an email |
 | `address_masked` | `text` | What support sees |
-| `status` | `text` + `CHECK` | The same closed set as `email_state.status`, folded only from events whose own `data.to` lists this recipient |
-| `status_at` | `timestamptz` | The `event_created_at` of the deciding event |
+| `status` | `text` null + `CHECK` | The same closed set as `email_state.status`, null likewise, folded only from events whose own `data.to` lists this recipient |
+| `status_at` | `timestamptz` null | The `event_created_at` of the deciding event |
 | `bounce_type`, `bounce_sub_type` | `text` null | From `data.bounce` (RS-28), open strings. A hard bounce is `Permanent` only (RS-35) |
+| `sticky_signal` | `text` null + `CHECK (hard_bounced, suppressed, complained)` | The strongest sticky signal among the row's own events (a `Permanent` bounce, `email.suppressed`, `email.complained`), ranked `hard_bounced` > `suppressed` > `complained`, earliest on ties. `recipient_state` reads it, never `status`: a later `failed` or soft bounce outranks `suppressed` or `complained` in `status` and would hide it |
+| `sticky_signal_at`, `sticky_signal_svix_id` | `timestamptz`, `text` null | That event's `event_created_at` and `svix_id`: the `recipient_state` recompute's tie-break keys |
+| `soft_signal` | `text` null + `CHECK (delivered, bounced)` | The latest of the row's `email.delivered` and non-`Permanent` `email.bounced` events by `event_created_at`, `rank` and `svix_id`, so a soft bounce clears on a later delivery although `bounced` outranks `delivered` in `status` |
+| `soft_signal_at`, `soft_signal_svix_id` | `timestamptz`, `text` null | That event's `event_created_at` and `svix_id` |
 
 - **Indexes:** `(address_hash)` btree for the per-address recompute of `recipient_state`.
 - **Locking:** the row is written under the email's lock.
 
 _Schema: `packages/db/src/schema/email-recipients.ts` (once it exists)._
-_Evidence: pending._
+_Evidence: the slice 0 item holds; the slice 1 items are pending._
 - Slice 0: a property test that a two-recipient email whose bounce names one recipient leaves the
-  other recipient's outcome unchanged.
+  other recipient's outcome unchanged, in
+  [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
 - Slice 1: sim invariant 2; RS-U21 settled by the Ask-first two-recipient send.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path
