@@ -90,8 +90,9 @@ or push only when asked.** Uncommitted work dies with its worktree or chat.
   one commit at the end.
 - Then `git push` (`git push -u origin HEAD` the first time). Commit to the current branch, `main`
   included. Never create a branch unasked.
-- Run the cheap checks for what you touched first (lint, the affected tests). Off `main`, a red
-  check does not hold the commit: commit, push, and name what is red in the body.
+- Run `pnpm check` first, plus any extra check the touched path's skill names
+  ([gate tiers](.agents/skills/pp-workflow/SKILL.md#definition-of-done)). Off `main`, a red check
+  does not hold the commit: commit, push, and name what is red in the body.
 - Stage by path. Never `git add -A`. Never commit `.env*` (except `.env.example`, which lists
   names only, never values), secrets or scratch files.
 - In multi-agent runs, the orchestrator commits and pushes. Helper agents run no git commands.
@@ -139,11 +140,16 @@ Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 
 ## Projects
 
-**Planned — not created yet.** This table is the canonical layout (adapted from the frozen
-[idea §6.2](docs/idea.md#62-repository-layout)). Each project lands in the slice that first needs it
-([build order](.ai/architecture.md#build-order-vertical-slices)):
+This table is the canonical layout (adapted from the frozen
+[idea §6.2](docs/idea.md#62-repository-layout)). **Every project exists as a scaffold** (its
+`package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
+2026-10-16). Its logic lands in the slice the **Logic lands** column names
+([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
+scaffolds hold: `packages/api`'s routeless `createApi()`, served by `apps/api`
+(`handle(createApi())`) and `apps/local` (`@hono/node-server`, loopback-only); `apps/cli`'s program
+with no commands and `apps/mcp`'s server with no tools; `infra`'s two empty stacks.
 
-| Project | Role | Lands |
+| Project | Role | Logic lands |
 | --- | --- | --- |
 | **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O (ADR-003, ADR-013) | 0 |
 | **packages/shared** | Kernel: port interfaces, logger and metrics helpers, config and env loading with a boot-time Zod assertion, error base class carrying a registry `code`, clock, token mint and tag check. No AWS, Postgres or Resend (ADR-013) | 1 |
@@ -170,13 +176,15 @@ Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 Ingest and worker logic live in `packages/ingest` and `packages/worker` and meet at the queue port
 in `packages/shared`. In slice 1, `apps/local` runs them and the read API in one local process over
 the in-process queue; on AWS, `packages/aws` implements the port with SQS (slice 2), and in local
-mode a Postgres-backed queue does (slice 2B) (ADR-013). Update this table as projects land.
+mode a Postgres-backed queue does (slice 2B) (ADR-013). Update this table when a project is added,
+removed or repurposed.
 
 ## Stack
 
-- **Runtime:** Node.js 24 (`engines` in `package.json`), ES modules, pnpm workspaces
+- **Runtime:** Node.js 24 (`engines` in `package.json`), ES modules, pnpm workspaces, no
+  Turborepo ([architecture.md → Technology](.ai/architecture.md#technology))
 - **Code:** TypeScript (strict), Zod 4, Drizzle + Postgres, Winston (JSON logs)
-- **Surfaces:** Hono + `@hono/zod-openapi` (read API), `commander` 14 (CLI),
+- **Surfaces:** Hono + `@hono/zod-openapi` (read API), `commander` 15 (CLI),
   `@modelcontextprotocol/server` v2 (MCP), `openapi-typescript` + `openapi-fetch` (SDK)
   ([ADR-019](.ai/architecture.md#adr-019--application-and-surface-stack))
 - **Tests:** Vitest, fast-check (property tests), Testcontainers (Postgres)
@@ -202,8 +210,42 @@ and `.claude/commands/opsx/` (the `/opsx:propose`, `/opsx:apply`, `/opsx:archive
 Customize OpenSpec only through `openspec/config.yaml`. After `openspec update`, run
 `pnpm sync-skills`, because the `claude` target also writes copies into `.claude/skills/`.
 
-Slice 0 adds the rest. The intended shape: one `pnpm verify` that mirrors CI stage for stage, and
-whose exit 0 means every stage ran and passed. Document every command here when it lands.
+**Gates.** Two tiers: `pnpm check` before each commit, `pnpm verify` at slice close and in CI (the
+merge gate). When each runs is canonical in
+[pp-workflow → Definition of done](.agents/skills/pp-workflow/SKILL.md#definition-of-done).
+
+```bash
+# Everyday loop
+pnpm check         # lint + typecheck + unit tests; the commit gate
+pnpm lint          # biome check .   (pnpm lint:fix writes the fixes)
+pnpm typecheck     # tsc -p tsconfig.json: one pass over every project (pnpm build is the same; nothing emits)
+pnpm test          # Vitest project unit   (pnpm test:watch to watch)
+pnpm test:int      # Vitest project int (real Postgres; the Testcontainers harness lands in slice 1)
+pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
+
+# Full gate: mirrors CI by construction (CI runs exactly this)
+pnpm verify        # install, docker, lint, typecheck, unit, synth, e2e; exit 0 = VERIFY PASSED
+pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
+
+# Local stack
+pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts a running server;
+                   # prints LEDGER READY or LEDGER START FAILED: <reason>
+pnpm dev:stop      # compose stop; stops the dev server only if it belongs to this repo
+pnpm dev           # apps/local under node --watch, loading .env.local if present
+pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
+pnpm deps          # pnpm install only when the lockfile or a package.json changed
+pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
+
+# Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
+pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3000; --port, --host (loopback only)
+pnpm --filter @ledger/app-cli start --help
+pnpm --filter @ledger/app-mcp start     # MCP server over stdio
+```
+
+`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: gitleaks
+and the README link check (slice 0), `int` with its first integration test plus OpenAPI and SDK
+drift (slice 1), migration lint (slice 2).
+Document every command here when it lands.
 
 ## Module boundaries
 

@@ -1,6 +1,6 @@
 ---
 name: pp-workflow
-description: Ledger's process discipline, end to end — the read order and where to stop, slice scoping and the in-scope test, the `pnpm verify` gate (the cheap checks for what was touched until slice 0 lands it), the doc duties every change owes, the test-tier policy, the Ask-first permission check, report honesty, and which pp-* skill answers a code question. Process only, no code rule; it links the rule in `.ai/` or root AGENTS.md instead of restating it. Load it alongside every `wf-*` gate, and before scoping, proposing, building or reviewing any slice of the build checklist — "start slice N", "is this in scope", "am I done", "can I tick this", "which test does this need", "which skill covers this". Load it before the code-level pp-* skills, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
+description: Ledger's process discipline, end to end — the read order and where to stop, slice scoping and the in-scope test, the two-tier gate (`pnpm check` before each commit, `pnpm verify` at slice close and in CI), the doc duties every change owes, the test-tier policy, the Ask-first permission check, report honesty, and which pp-* skill answers a code question. Process only, no code rule; it links the rule in `.ai/` or root AGENTS.md instead of restating it. Load it alongside every `wf-*` gate, and before scoping, proposing, building or reviewing any slice of the build checklist — "start slice N", "is this in scope", "am I done", "can I tick this", "which test does this need", "which skill covers this". Load it before the code-level pp-* skills, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
 ---
 
 # pp-workflow — how a Ledger change is scoped, built and closed
@@ -38,10 +38,20 @@ with a one-line reason, [Legend](../../../.ai/build-checklist.md#legend)) are in
 
 ## Definition of done
 
-A change is done when `pnpm verify` exits 0 (every stage ran and passed, mirroring CI) and every
-duty below that the change triggers is discharged in the same diff. Until slice 0 lands
-`pnpm verify`, the cheap checks for what was touched stand in (lint, the affected tests,
-`openspec validate --strict` when `openspec/` was touched), and the report names which ran.
+A change is done when its gate tier passed and every duty below that the change triggers is
+discharged in the same diff. **This is the canonical gate policy**; every other skill links here.
+
+- **`pnpm check`** (lint, typecheck, unit tests) — the inner-loop gate. Run it when a feature is
+  finished, once after a whole batch of bug fixes, and before each commit.
+- **`pnpm verify`** (every CI stage, in order; exit 0 means every stage ran and passed) — the full
+  gate and the merge gate. CI runs exactly `pnpm verify` on every push and pull request. Run it
+  locally at slice close ([`wf-after-apply-check`](../wf-after-apply-check/SKILL.md)) or when asked;
+  otherwise, after pushing, report the CI run (`gh run list --branch <branch> --limit 1`).
+
+Add `pnpm exec openspec validate <change> --type change --strict` when `openspec/` was touched.
+The report names which tier ran and its actual outcome; a path skill's extra check (an integration
+test, a `Template` assertion) runs on top of `pnpm check`. Mechanics:
+[definition-of-done.md → 1](references/definition-of-done.md#1--the-gate).
 
 | If the change… | It must also contain |
 | --- | --- |
@@ -178,8 +188,9 @@ not hold.
 
 ## Gate — then read the diff
 
-`pnpm verify` exits 0 with every stage run ([Definition of done](#definition-of-done)); until slice 0
-lands it, the cheap checks for what was touched, each named in the report. Then read the diff:
+The tier the moment calls for passed, named in the report with its outcome: `pnpm check` before a
+commit, `pnpm verify` (local, or the CI run) at slice close ([Definition of done](#definition-of-done)).
+Then read the diff:
 
 Each `Ships` bullet the change advances has its named evidence in the diff (the test, property,
 invariant run, measured number or command) · every duty row the diff triggers is discharged in the

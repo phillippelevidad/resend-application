@@ -7,13 +7,26 @@ the code. The duty table itself is in [SKILL.md → Definition of done](../SKILL
 
 ## 1 — The gate
 
-**Once slice 0 lands it**, the gate is `pnpm verify`, which mirrors CI stage for stage
-([root AGENTS.md → Commands](../../../../AGENTS.md#commands),
-[slice 0](../../../../.ai/build-checklist.md#0--foundations)).
+Two tiers; the policy for when each runs is in [SKILL.md → Definition of done](../SKILL.md#definition-of-done).
+Commands: [root AGENTS.md → Commands](../../../../AGENTS.md#commands).
 
-- **Exit 0 means every stage ran and passed; nothing else does.** It needs Docker (Testcontainers,
-  the gitleaks image). If Docker is not up, the gate is **not run**: a partial run is not a lesser
-  pass, it is no pass. Start Docker; do not route around the check.
+**`pnpm check`** runs `pnpm lint`, `pnpm typecheck` and `pnpm test` (the Vitest `unit` project), in
+that order, stopping at the first failure. It needs no Docker and finishes in seconds. It is the
+commit gate, not the merge gate: it leaves out install, synth, the `int` and `e2e` projects, and
+every stage later slices add.
+
+**`pnpm verify`** (`scripts/verify.mjs`) is the full gate. CI runs exactly `pnpm verify`
+(`.github/workflows/ci.yml`), so the stage list in that one file mirrors CI by construction:
+install, docker, lint, typecheck, unit, synth, e2e. Every stage runs everywhere; none can be
+skipped.
+
+- **Exit 0 with `VERIFY PASSED` means every stage ran and passed; nothing else does.**
+  `pnpm verify --from <stage>` resumes after a fix and ends `VERIFY PARTIAL`, never
+  `VERIFY PASSED`: it is not the gate.
+- **It needs Docker** (its `docker` stage runs `docker info`; Testcontainers and the planned
+  gitleaks stage depend on it).
+  If Docker is not up, the gate is **not run**: a partial run is not a lesser pass, it is no pass.
+  Start Docker; do not route around the check.
 - **It runs long.** Run it in the background, redirected to a log, and wait for the completion
   notice ([root AGENTS.md → Waiting for a long command](../../../../AGENTS.md#waiting-for-a-long-command-on-this-machine)).
   Before restarting it, check that nothing survived the last attempt.
@@ -25,11 +38,10 @@ the code. The duty table itself is in [SKILL.md → Definition of done](../SKILL
   is a real contract change: read the diff before regenerating, and treat a changed contract as
   Ask-first.
 
-**Until slice 0 lands `pnpm verify`**, the cheap checks for what was touched stand in
-([Commit and push as you go](../../../../AGENTS.md#commit-and-push-as-you-go)): the affected tests,
-the linter or formatter for those files if one exists, and
-`pnpm exec openspec validate <change> --type change --strict` when `openspec/` was touched. Record
-which checks stood in; [`implement-plan`](../../implement-plan/SKILL.md) uses the same stand-in.
+**When the local run is not the evidence**, the CI run is: after pushing, read it with
+`gh run list --branch <branch> --limit 1` and report its conclusion; an in-progress run is reported
+as in progress, not as passed. Off `main`, a red check does not hold the commit
+([Commit and push as you go](../../../../AGENTS.md#commit-and-push-as-you-go)).
 
 ## 2 — Discharge the duties
 
@@ -88,8 +100,8 @@ The report states what ran and what it produced:
 
 - Name the command and its actual outcome. "`pnpm verify` passed" is a claim about a command that
   ran; if it did not run, say so instead.
-- A skipped stage is reported as skipped, with why (Docker absent, a suite excluded). Before slice
-  0, name the checks that stood in for the gate.
+- Name the tier: "`pnpm check` passed" is not "`pnpm verify` passed", and a CI run is cited by its
+  conclusion. A skipped stage is reported as skipped, with why (Docker absent, a suite excluded).
 - If part of the scope was left out, say what and why. Narrowing scope is the owner's call.
 - List every Ask-first item still held, and what it waits on.
 - Do not hedge a verified result, and do not upgrade an unverified one. Claiming done on an unrun

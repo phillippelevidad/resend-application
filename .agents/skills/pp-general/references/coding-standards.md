@@ -44,8 +44,9 @@ export are called.
 | CDK construct (`infra/` only; pp-infra owns the shape) | `.construct.ts` | `ledger-function.construct.ts` → `LedgerFunctionConstruct` |
 
 **Tests** sit beside the code they test and add a tier suffix after the file's own name:
-`.test.ts` (unit), `.prop.test.ts` (fast-check), `.int.test.ts` (real Postgres):
-`project-email.projection.prop.test.ts`. [pp-testing](../../pp-testing/SKILL.md) owns their
+`.test.ts` (unit), `.prop.test.ts` (fast-check), `.int.test.ts` (real Postgres), `.e2e.test.ts`
+(a real local process booted from its entry point, no Docker):
+`project-email.projection.prop.test.ts`, `main.e2e.test.ts`. [pp-testing](../../pp-testing/SKILL.md) owns their
 mechanics.
 
 **Exempt** (never renamed to fit): `index.ts` (a package's one public surface, `packages/*/src/`

@@ -1,6 +1,6 @@
 ---
 name: pp-testing
-description: Ledger's test and simulator mechanics — test files and the Vitest project per tier, the Testcontainers Postgres harness (one container per run, a migrated template, a fresh database per test file, tests as the runtime role), fakes at the port only (in-process queue, fake clock, fake Resend client, a local fake Resend API, AWS adapters against the port contract), fast-check arbitraries shared with `sim`, regressions locked from a failing seed, and the simulator's Svix signing, seed and one checker per invariant. Which tier a claim needs is pp-workflow's; this skill says how the test is built. Load it before writing or reviewing any `*.test.ts`, `*.prop.test.ts` or `*.int.test.ts`, the root `vitest.config.ts`, a package's `testing.ts`, or anything under `sim/` — "how do I test this", "where does this test go", "which fake do I use", "write the integration test", "add a property", "a property failed", "add a simulator invariant", "sign a webhook in a test". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
+description: Ledger's test and simulator mechanics — test files and the Vitest project per tier, the Testcontainers Postgres harness (one container per run, a migrated template, a fresh database per test file, tests as the runtime role), fakes at the port only (in-process queue, fake clock, fake Resend client, a local fake Resend API, AWS adapters against the port contract), fast-check arbitraries shared with `sim`, regressions locked from a failing seed, and the simulator's Svix signing, seed and one checker per invariant. Which tier a claim needs is pp-workflow's; this skill says how the test is built. Load it before writing or reviewing any `*.test.ts`, `*.prop.test.ts`, `*.int.test.ts` or `*.e2e.test.ts`, the root `vitest.config.ts`, a package's `testing.ts`, or anything under `sim/` — "how do I test this", "where does this test go", "which fake do I use", "write the integration test", "add a property", "a property failed", "add a simulator invariant", "sign a webhook in a test". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
 ---
 
 # pp-testing — patterns and practices, tests and the simulator
@@ -42,14 +42,16 @@ beats pp-general; where it is silent, pp-general applies.
 | `<subject>.test.ts` | unit | `unit` | Nothing: no Docker; network only to a fake on `127.0.0.1` |
 | `<subject>.prop.test.ts` | property (fast-check) | `unit` | Nothing |
 | `<subject>.int.test.ts` | integration, real Postgres | `int` | Docker and the [harness](#postgres-harness) |
+| `<entry>.e2e.test.ts` (`apps/**`, `sim/**`) | end-to-end, a real local process booted from its entry point | `e2e` | Nothing: no Docker; the process binds `127.0.0.1` only |
 | `infra/**/*.test.ts` | CDK assertion | `unit` | Content owned by [pp-infra](../pp-infra/SKILL.md#cost-brake-in-code) |
 
 - **Beside the code**, named for the file it tests plus the tier suffix
   (`project-email.projection.prop.test.ts`); never a `__tests__/` or `test/` folder
   ([pp-general → Role suffixes](../pp-general/references/coding-standards.md#role-suffixes)).
-- **One root `vitest.config.ts`, two projects:** `unit` (unit and property together) and `int`, so
-  `pnpm verify` runs them as separate stages and `unit` never needs Docker. The stage names are
-  slice 0's ([vitest-layout.md](references/vitest-layout.md#root-config)).
+- **One root `vitest.config.ts`, three projects:** `unit` (unit and property together), `int` and
+  `e2e`, so `pnpm verify` runs each as its own stage and `unit` never needs Docker. `unit` and
+  `e2e` are verify stages now; slice 1 adds the `int` stage with its first integration test
+  ([vitest-layout.md](references/vitest-layout.md#root-config)).
 - **Name the test after the behavior and its consequence:** the name is what a red CI run shows
   first ([naming](references/vitest-layout.md#test-names)).
 - **A Ships bullet's named test is written as the bullet names it** — "a duplicate insert and a
@@ -144,14 +146,13 @@ signs on `node:crypto`, prints its seed first and runs one checker per invariant
 
 ## Gate — then read the diff
 
-**Gate.** Until slice 0 lands `pnpm verify`: run the affected project (`pnpm exec vitest run
---project unit`, and `--project int` when the diff touches `packages/db`, an `*.int.test.ts`, or a package or app
-that has one) and report
-its actual result. After it: `pnpm verify` exits 0 with every stage run
-([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)).
+**Gate.** The two tiers of [pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done),
+plus, before each commit, the project `pnpm check` skips when the diff reaches it: `pnpm test:int`
+when it touches `packages/db`, an `*.int.test.ts`, or a package or app that has one; `pnpm test:e2e`
+when it touches an `*.e2e.test.ts` or the process it boots. Report each actual result.
 
 **Then read the diff** (greps in [vitest-layout.md](references/vitest-layout.md#review-greps)):
-new test files end `.test.ts`, `.prop.test.ts` or `.int.test.ts`, beside their subject · no
+new test files end `.test.ts`, `.prop.test.ts`, `.int.test.ts` or `.e2e.test.ts`, beside their subject · no
 `.spec.`, `.integration.`, `__tests__/` or `test/` folder · no `vi.mock(` · no `TRUNCATE` · no
 `.only(` or `.skip(` · `testcontainers` imported only by `packages/db`'s harness · no
 `Math.random`, `Date.now` or `randomUUID` in generated data (grep 6 names the two allowed

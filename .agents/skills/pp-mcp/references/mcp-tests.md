@@ -14,10 +14,10 @@ File names and runners are [pp-testing](../../pp-testing/SKILL.md#test-files-and
   in-process through `createMcpHandler(createServer)` and a `Client` with
   `StreamableHTTPClientTransport` whose `fetch` is `handler.fetch`; `InMemoryTransport.createLinkedPair()`
   is its alternative for 2025-era protocol versions
-  ([v2 → Testing](https://ts.sdk.modelcontextprotocol.io/v2/testing.html)). `Client`,
-  `StreamableHTTPClientTransport` and `InMemoryTransport` come from `@modelcontextprotocol/client`
-  (`createMcpHandler` is the server package's), a dev dependency: **Ask-first**, approved with the server SDK in
-  slice 5. `createMcpHandler` stays in tests; the server ships stdio only.
+  ([v2 → Testing](https://ts.sdk.modelcontextprotocol.io/v2/testing.html)). `Client` and
+  `StreamableHTTPClientTransport` come from `@modelcontextprotocol/client`, a dev dependency:
+  **Ask-first**, approved with the tools in slice 5. `createMcpHandler` and `InMemoryTransport` are
+  exported by the installed `@modelcontextprotocol/server` 2.3.1 itself. `createMcpHandler` stays in tests; the server ships stdio only.
 - **`createServer({ ledger, tools })`** is the same factory `main.ts` serves
   ([tool-anatomy.md](tool-anatomy.md#the-server-factory)), and `selectTools` the same selection.
 - **The fake SDK** comes from `@ledger/sdk/testing`, typed against the SDK's client and returning

@@ -11,7 +11,7 @@ Only ADR-fixed majors are written here; the lockfile is the version truth.
 | Zod 4 | see lockfile | [npm](https://www.npmjs.com/package/zod) |
 | Drizzle ORM, drizzle-kit, `pg` | see lockfile | [drizzle-orm](https://www.npmjs.com/package/drizzle-orm) · [pg](https://www.npmjs.com/package/pg) |
 | Hono, `@hono/zod-openapi`, `@hono/aws-lambda`, `@hono/node-server` | see lockfile | [Hono on Lambda](https://hono.dev/docs/getting-started/aws-lambda) · [zod-openapi](https://raw.githubusercontent.com/honojs/middleware/main/packages/zod-openapi/README.md) |
-| `commander` 15 and `@commander-js/extra-typings` 15 (O-13; slice 1 amends ADR-019's 14) | see lockfile | [npm](https://www.npmjs.com/package/commander) |
+| `commander` 15 and `@commander-js/extra-typings` 15 (O-13, ADR-019) | see lockfile | [npm](https://www.npmjs.com/package/commander) |
 | `@modelcontextprotocol/server` v2 | see lockfile | [repo](https://github.com/modelcontextprotocol/typescript-sdk) |
 | `openapi-typescript`, `openapi-fetch` | see lockfile | [npm](https://www.npmjs.com/package/openapi-fetch) |
 | Winston | see lockfile | [npm](https://www.npmjs.com/package/winston) |

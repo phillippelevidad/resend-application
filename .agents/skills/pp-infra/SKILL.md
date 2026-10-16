@@ -61,8 +61,10 @@ pp-general; where it is silent, pp-general applies.
   queued ([teardown](references/scripts.md#teardown), lens clause 7).
 - Deploying, creating AWS resources and running a script against AWS are Ask-first
   ([Permissions](../../../AGENTS.md#permissions)). `cdk synth` and the `Template` tests need no
-  credentials (`[Unverified]` until slice 2's first synth, [names](references/env-and-inputs.md#names-account-and-region));
-  nothing else runs unapproved.
+  credentials (synth with no credentials succeeded in CI on the empty stacks; every slice 2
+  construct stays `[Unverified]` until slice 2's first synth, [names](references/env-and-inputs.md#names-account-and-region));
+  nothing else runs unapproved. With AWS credentials present, the CDK CLI makes one read-only STS
+  `GetCallerIdentity` call during synth; it runs without per-run approval (owner, 2026-10-16).
 
 ## Cost brake in code
 
@@ -142,9 +144,10 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
 
 ## Gate — then read the diff
 
-**Gate.** Until slice 0 lands `pnpm verify`, the cheap checks for what was touched (lint and the
-infra `*.test.ts`); after it, `pnpm verify` exits 0 with every stage run
-([Definition of done](../pp-workflow/SKILL.md#definition-of-done)). The report names what ran.
+**Gate.** The two tiers of [pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)
+(`pnpm check` runs the infra `*.test.ts` `Template` assertions in the `unit` project), plus
+`pnpm synth` before each commit that touches `infra/`, because `pnpm check` does not synthesize.
+The report names what ran.
 
 **Then read the diff.** Each [review grep](references/cost-brake-assertions.md#review-greps)
 prints nothing. Then: every new

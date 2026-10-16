@@ -35,11 +35,10 @@ pp-general; a doc beats both.
 
 - **`@modelcontextprotocol/server` v2 over stdio** ([ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack));
   never the v1 `@modelcontextprotocol/sdk`. `McpServer` comes from `@modelcontextprotocol/server`
-  and the stdio entry from `@modelcontextprotocol/server/stdio`; the v2 docs use
-  `serveStdio(factory)`, the README `new StdioServerTransport()` plus `server.connect()`
-  ([serving over stdio](https://ts.sdk.modelcontextprotocol.io/v2/serving/stdio.html),
-  [README](https://github.com/modelcontextprotocol/typescript-sdk)). `[Unverified]`: which one the
-  version slice 5 pins documents; use that one.
+  and the stdio entry from `@modelcontextprotocol/server/stdio`. The installed 2.3.1 ships both
+  `serveStdio(factory)` (the v2 docs) and `new StdioServerTransport()` plus `server.connect()` (the
+  README); `apps/mcp/src/main.ts` uses `serveStdio`, and that is the one form
+  ([serving over stdio](https://ts.sdk.modelcontextprotocol.io/v2/serving/stdio.html)).
 - **Flags through `node:util` `parseArgs`** ([Node docs](https://nodejs.org/docs/latest-v24.x/api/util.html#utilparseargsconfig)),
   `strict` and no positionals: the one flag is `--enable-operate`. No flag-parsing dependency.
 - **`apps/mcp` is `@ledger/app-mcp`.** It imports `@ledger/sdk` and `@ledger/shared` (config loader,
@@ -156,8 +155,8 @@ Evidence: the tool-registration test per scope ([slice 5](../../../.ai/build-che
 
 ## Gate — then read the diff
 
-**Gate.** [pp-general's gate](../pp-general/SKILL.md#gate--then-read-the-diff): the cheap checks
-until slice 0 lands `pnpm verify`, then `pnpm verify` exits 0 with every stage run.
+**Gate.** The two tiers of [pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done):
+`pnpm check` before each commit, `pnpm verify` at slice close or in CI.
 
 **Then read the diff** (each yes or no; expected output of each grep: none) · the `name` strings in
 `apps/mcp/src/tools/*.tool.ts` are exactly api-contract's MCP tool names, and each `scope` equals

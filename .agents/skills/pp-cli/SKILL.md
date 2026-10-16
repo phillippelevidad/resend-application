@@ -1,6 +1,6 @@
 ---
 name: pp-cli
-description: Ledger's `ledger` CLI conventions — `commander` 14 with `@commander-js/extra-typings`, one command per operation in `apps/cli/src/commands/<noun>-<verb>.cli.ts` registered in `main.ts`, the SDK's `{ data, error }` unwrapped once, exit codes `0` / `1` / `2`, `--json` on stdout and `message` + `hint` on stderr, colour only on a TTY through `node:util` `styleText`, `LEDGER_URL` / `LEDGER_TOKEN` with no `--token` flag, waiting on a `202` command with `--no-wait`, and the per-command `--json` output tests against a fake SDK. Load it before writing or reviewing anything under `apps/cli/**` — "add a CLI command", "add a flag", "what does the CLI print", "which exit code", "why is this coloured", "make it wait", "test the CLI". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
+description: Ledger's `ledger` CLI conventions — `commander` 15 with `@commander-js/extra-typings`, one command per operation in `apps/cli/src/commands/<noun>-<verb>.cli.ts` registered in `main.ts`, the SDK's `{ data, error }` unwrapped once, exit codes `0` / `1` / `2`, `--json` on stdout and `message` + `hint` on stderr, colour only on a TTY through `node:util` `styleText`, `LEDGER_URL` / `LEDGER_TOKEN` with no `--token` flag, waiting on a `202` command with `--no-wait`, and the per-command `--json` output tests against a fake SDK. Load it before writing or reviewing anything under `apps/cli/**` — "add a CLI command", "add a flag", "what does the CLI print", "which exit code", "why is this coloured", "make it wait", "test the CLI". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
 ---
 
 # pp-cli — patterns and practices, the `ledger` CLI
@@ -32,8 +32,8 @@ pp-general; a doc beats both.
 
 ## Stack and layout
 
-- **`commander` 15 with `@commander-js/extra-typings` 15** (owner, O-13; the slice 1 pre-proposal
-  applies it to [ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack)).
+- **`commander` 15 with `@commander-js/extra-typings` 15** (owner, O-13;
+  [ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack); installed 15.0.0).
   Import `Command` from `@commander-js/extra-typings` (major and minor matching `commander`); types
   build up only through one chain per command ([README](https://github.com/commander-js/extra-typings)).
 - **`apps/cli` is `@ledger/app-cli`, `bin` `ledger`.** It imports `@ledger/sdk` and
@@ -141,8 +141,8 @@ and mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#wa
 
 ## Gate — then read the diff
 
-**Gate.** [pp-general's gate](../pp-general/SKILL.md#gate--then-read-the-diff): the cheap checks
-until slice 0 lands `pnpm verify`, then `pnpm verify` exits 0 with every stage run.
+**Gate.** The two tiers of [pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done):
+`pnpm check` before each commit, `pnpm verify` at slice close or in CI.
 
 **Then read the diff** (each yes or no; expected output of each grep: none) · every new command is
 one `apps/cli/src/commands/<noun>-<verb>.cli.ts` named for its operation id, and its command,

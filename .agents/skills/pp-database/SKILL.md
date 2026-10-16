@@ -131,9 +131,10 @@ Each entry names its alternative. The full modeling list:
 
 ## Gate — then read the diff
 
-**Gate.** Until slice 0 lands `pnpm verify`: lint and the `packages/db` integration tests for what
-was touched, each named in the report (no Docker means skipped, reported as skipped). After it:
-`pnpm verify` exits 0 with every stage run ([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)).
+**Gate.** The two tiers of [pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done),
+plus, before each commit, the `packages/db` integration tests for what was touched
+(`pnpm test:int`), because `pnpm check` runs no integration test. Each is named in the report (no
+Docker means skipped, reported as skipped).
 
 **Then read the diff:** each new table's file at its `_Schema:_` path, exported from `src/index.ts` ·
 base fields present · every column's nullability decided · every closed set a named `check()` with

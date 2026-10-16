@@ -85,7 +85,7 @@ The deciding test, not the trade-off. Each is countable from the diff or a named
 | Extract an abstraction | The third duplicate exists, **or** it is a named ADR seam: a port in `packages/shared` ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)) or `resend-client` ([ADR-012](../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)). In `infra`, the shared function construct comes at the second function ([adding-things.md](references/adding-things.md#extract-an-abstraction), O-15) |
 | Declare an interface | It is a named port. A test double is not a second implementation |
 | Add an error subclass | A caller in the same diff branches on it |
-| Add a workspace package | The [Projects](../../../AGENTS.md#projects) table lands it in this slice, **or** a second project imports it in this diff |
+| Add a workspace package | A project not in the [Projects](../../../AGENTS.md#projects) table (every listed one already exists as a scaffold, its logic landing in the slice its **Logic lands** column names): a second project imports it in this diff, **and** the same diff adds its Projects row |
 | Add a `"./testing"` export | A test or `sim` outside the package imports from it in this diff |
 | Add a dependency | Not a one-liner, not a second way to do an installed thing, **and** owner-approved ([Permissions](../../../AGENTS.md#permissions)) |
 | Add a cache | The same change names its invalidation trigger |
@@ -132,9 +132,8 @@ The deciding test, not the trade-off. Each is countable from the diff or a named
 
 ## Gate — then read the diff
 
-**Gate.** Until slice 0 lands `pnpm verify`: run the cheap checks for what you touched (lint and the
-affected tests) and report their actual result. After it: `pnpm verify` exits 0 with every stage run
-([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)).
+**Gate.** The two tiers of [pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done):
+`pnpm check` before each commit, `pnpm verify` at slice close or in CI. Report the actual result.
 
 **Then read the diff** (greps in [boundaries.md](references/boundaries.md#review-greps)): new files
 kebab-case, a role file with a [listed suffix](references/coding-standards.md#role-suffixes) · no deep

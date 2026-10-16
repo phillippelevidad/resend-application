@@ -2,9 +2,8 @@
 name: implement-plan
 description: >-
   Implements and verifies a small change from a plan file — a tweak too small
-  for an OpenSpec change — by delegating the work to subagents, then gates it on
-  `pnpm verify` exiting 0 (the cheap checks for what was touched until slice 0
-  lands `pnpm verify`). Use when the owner asks to implement, execute or verify
+  for an OpenSpec change — by delegating the work to subagents, gating each wave
+  on `pnpm check` and the finished run on `pnpm verify` exiting 0. Use when the owner asks to implement, execute or verify
   a plan file (.plan.md, _step-*.md, or an equivalent YAML-frontmatter plan).
   Never for a build-checklist slice, a public contract change or a migration —
   those go through opsx:propose, opsx:apply and wf-after-apply-check.
@@ -167,23 +166,21 @@ prompt includes these rules.
 
 ### The verify gate (mandatory)
 
-**The plan is not done until the gate passes.** After every implementation wave and every fix round,
-delegate a **shell subagent** to run, from the repo root:
+**The plan is not done until the gate passes.** The two tiers are
+[pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)'s. After every
+implementation wave and every fix round, delegate a **shell subagent** to run `pnpm check` from the
+repo root (plus `pnpm exec openspec validate <change> --type change --strict` when `openspec/` was
+touched). Once the verifier returns PASS, a shell subagent runs the full gate, because invoking
+this skill is the owner asking for verification:
 
 ```bash
 pnpm verify
 ```
 
-`pnpm verify` mirrors CI stage for stage, and exit 0 means every stage ran and passed
-([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)). It runs long
-(Testcontainers, the gitleaks Docker image), so the subagent runs it in the background, redirected to
-a log, and waits for completion ([root AGENTS.md → Waiting for a long command](../../../AGENTS.md#waiting-for-a-long-command-on-this-machine)).
-The one-minute cap below does not apply to it.
-
-**Until slice 0 lands `pnpm verify`**, the gate is the cheap checks for what the plan touched
-([root AGENTS.md → Commit and push](../../../AGENTS.md#commit-and-push-as-you-go)): the scoped tests,
-the linter or formatter for those files if one exists, and `pnpm exec openspec validate <change>
---type change --strict` when `openspec/` was touched. Record which checks stood in for the gate.
+Exit 0 with `VERIFY PASSED` means every stage ran and passed. It needs Docker and runs long, so the
+subagent runs it in the background, redirected to a log, and waits for completion
+([root AGENTS.md → Waiting for a long command](../../../AGENTS.md#waiting-for-a-long-command-on-this-machine)).
+The one-minute cap below applies to neither tier.
 
 - Record the command, working directory, exit code and a short summary of any failure.
 - On a non-zero exit, delegate implementers to fix only what the gate reported, then re-run the gate
@@ -206,7 +203,7 @@ When the plan is vague, pick the **smallest** test files that exercise the chang
 
 ### Time limits
 
-- **At most one minute wall-clock per scoped test command** (hard cap). The verify gate is exempt.
+- **At most one minute wall-clock per scoped test command** (hard cap). The gate tiers are exempt.
 - Prefer one focused file over a directory. If a run exceeds a minute, stop, report the partial run
   and the timeout, and narrow it in the next fix round.
 - If a scoped test cannot finish in a minute, report **blocked** with the exact command, and let the
@@ -243,7 +240,7 @@ Read the plan and build an execution map:
 - work type per todo
 - which todos can run in **parallel** (no shared files, no phase dependency, no shared output)
 - the scoped checks derived from the plan
-- the gate: `pnpm verify` (or its stand-in) after every implement or fix wave
+- the gate: `pnpm check` after every implement or fix wave, `pnpm verify` once the verifier passes
 - the projects the plan touches ([root AGENTS.md → Projects](../../../AGENTS.md#projects))
 - referenced plan or doc paths to pass into subagent prompts
 
@@ -351,10 +348,11 @@ Repeat until the verifier returns **PASS** with zero blocking findings and the g
 ```
 loop:
   implement (1+ subagents, parallel when safe)
-  gate      (shell: pnpm verify, or its stand-in; red → fix implementer → gate)
+  gate      (shell: pnpm check; red → fix implementer → gate)
   verify    (1 fresh read-only subagent)
   if blocking findings: fix (1+ subagents) → gate
   until verifier PASS && gate exit 0
+full gate   (shell: pnpm verify; red → fix implementer → gate → verify → full gate)
 ```
 
 Hard rules:
@@ -377,7 +375,7 @@ conflicting todos and parallelize the rest. "Optional" todos are still verified.
 
 Commit and push each completed plan step without being asked
 ([root AGENTS.md → Commit and push](../../../AGENTS.md#commit-and-push-as-you-go)), using
-[`wf-commit`](../wf-commit/SKILL.md): run the step's cheap checks first, stage by path, never
+[`wf-commit`](../wf-commit/SKILL.md): run `pnpm check` first, stage by path, never
 `git add -A`. Off `main`, a red check does not hold the commit; name what is red in the body. An
 Ask-first change waits uncommitted for the owner's approval while the rest of the step is committed.
 Helper subagents run no git commands.
@@ -386,7 +384,7 @@ Helper subagents run no git commands.
 
 The run is complete only when:
 
-- the gate exits 0 (`pnpm verify`, or its recorded stand-in before slice 0)
+- `pnpm verify` exits 0 with `VERIFY PASSED`
 - a verifier returns **PASS** with zero blocking findings
 - every todo is satisfied and marked `completed` in the plan frontmatter
 - every step is committed and pushed

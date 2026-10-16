@@ -64,13 +64,13 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 0 — Foundations
 
-- **Status:** `[ ]`
+- **Status:** `[~]`
 - **Goal:** A monorepo where the projection logic is proven by property tests, the simulator generates histories, and CI gates every push.
 - **Depends on:** — (foundational).
 - **Refs:** [ADR-003](architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [resend.md → Event types and payloads](resend.md#event-types-and-payloads-rs-25rs-30) · [features.md → Ledger & projections](features.md#ledger--projections) · [features.md → discover](features.md#adopter-lifecycle)
 - **Ships:**
-  - [ ] pnpm workspace with strict TypeScript, Biome and Vitest; `pnpm verify` mirrors CI stage for stage and exits 0 only when every stage ran and passed.
-  - [ ] GitHub Actions CI runs `pnpm verify` on every push and pull request (`pull_request`, never `pull_request_target`; `permissions: contents: read`; third-party actions pinned by commit SHA; `pnpm install --frozen-lockfile`); evidence: a green run on a pushed commit.
+  - [x] pnpm workspace with strict TypeScript, Biome and Vitest; `pnpm verify` mirrors CI stage for stage and exits 0 only when every stage ran and passed.
+  - [x] GitHub Actions CI runs `pnpm verify` on every push and pull request (`pull_request`, never `pull_request_target`; `permissions: contents: read`; third-party actions pinned by commit SHA; `pnpm install --frozen-lockfile`); evidence: a green run on a pushed commit.
   - [ ] `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` extending the default ruleset (`[extend] useDefault = true`) and adding rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
   - [ ] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
   - [ ] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity (for `projectRecipient`, of the sticky states), oracle agreement (ADR-003).

@@ -7,9 +7,14 @@ updates [Surfaces by slice](#surfaces-by-slice) in the same change.
 ## Fast path
 
 1. **What exists today** is root [AGENTS.md → Commands](../../../../AGENTS.md#commands), the
-   canonical list: `pnpm install`, `pnpm sync-skills`,
-   `pnpm exec openspec validate <change> --type change --strict`. Every other command lands with
-   its slice and its Commands line.
+   canonical list. Walkable now: `pnpm dev:full` (deps → Docker → compose Postgres → typecheck →
+   `apps/local`; adopts a server already up; ends `LEDGER READY` or `LEDGER START FAILED: <reason>`)
+   and `pnpm dev:stop`; `pnpm --filter @ledger/app-local start` (serves the routeless read API on
+   `127.0.0.1:3000`, every path `404` until slice 1); `pnpm db:up` (compose Postgres on
+   `127.0.0.1:55432`); `pnpm --filter @ledger/app-cli start --help` (no commands yet; never
+   `start -- --help`, pnpm 10.11 forwards the literal `--`); `pnpm --filter @ledger/app-mcp start`
+   (stdio, no tools yet). `pnpm check` and `pnpm verify` are gates, never walked. Every other
+   command lands with its slice and its Commands line.
 2. **Setup commands come from the walkthrough's `## Before you start`** until the table below names
    the surface's start command. Never invent one.
 3. **Health first, reuse a running stack.** Probe before starting anything (`ledger health` from
@@ -30,10 +35,14 @@ names the command yet, the slice's card is the source.
 
 | Surface | Lands in | How it is reached | Live? |
 | --- | --- | --- | --- |
-| `pnpm verify` | 0 | Root script. The gate, never walked by this skill ([hard rule 7](../SKILL.md#hard-rules-must)) | No |
+| `pnpm check` · `pnpm verify` | 0 | Root scripts. Gates, never walked by this skill ([hard rule 7](../SKILL.md#hard-rules-must)) | No |
+| `pnpm dev:full` · `pnpm dev:stop` | 0 | Root scripts. `dev:full` brings up compose Postgres and `apps/local`, adopting a running server, and prints `LEDGER READY` or `LEDGER START FAILED: <reason>`; `dev:stop` stops compose, and the dev server only if it belongs to this repo | No |
+| Compose Postgres | 0 | `pnpm db:up` / `pnpm db:down`; `127.0.0.1:55432`, throwaway `ledger` credentials. Tests never use it (Testcontainers) | No |
+| `apps/local`, routeless | 0 | `pnpm --filter @ledger/app-local start` (or `pnpm dev`, watch mode); `--port` (default `3000`), `--host` (default `127.0.0.1`, loopback only: a non-loopback host exits `1`). Stdout: `{"level":"info","message":"local server listening"}`; every path `404` until slice 1 | No |
+| `ledger` CLI, no commands · MCP server, no tools | 0 | `pnpm --filter @ledger/app-cli start --help` (no `bin` until slice 1) · `pnpm --filter @ledger/app-mcp start` (stdio; an unknown flag exits non-zero) | No |
 | CI run on a pushed commit | 0 | GitHub Actions on the pushed `HEAD`; read its conclusion. Never push a scratch commit to provoke one | No |
 | `pnpm sim` printing a projection | 0 | Root script; no live process | No |
-| `apps/local`: ingest `POST /webhooks/resend`, worker, read API | 1 | Start command: slice 1's, in Commands. Auth skipped only on loopback ([Conventions → Auth in slice 1](../../../../.ai/api-contract.md#conventions)) | No |
+| `apps/local`: ingest `POST /webhooks/resend`, worker, read API | 1 | `pnpm --filter @ledger/app-local start` (slice 0's start command; slice 1 adds the routes and any database flag, in Commands). Auth skipped only on loopback ([Conventions → Auth in slice 1](../../../../.ai/api-contract.md#conventions)) | No |
 | `ledger email <email_id>` · `ledger recipient <address>` | 1 | `LEDGER_URL`; `LEDGER_TOKEN` from slice 2 (no `--token` flag, [pp-cli](../../pp-cli/SKILL.md)) | No |
 | `pnpm sim --duplicates 0.2 --shuffle` | 1 | Against `apps/local` | No |
 | `resend webhooks listen` | 1 | Resend CLI: `--url` your own public tunnel, `--forward-to` local ingest ([RS-33](../../../../.ai/resend.md#facts)) | **Yes**, per session |

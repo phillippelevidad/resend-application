@@ -55,14 +55,17 @@ Node strips types; it does not transform syntax. So:
 - **No tsconfig `paths`:** "`paths` won't be transformed and therefore produce an error" (Node docs).
   Across packages use the package name; inside one, a relative path.
 
-**[Unverified] — the `node_modules` tripwire.** Node "refuses to handle TypeScript files inside
-folders under a `node_modules` path" (Node docs), and pnpm links workspace packages there. Node
-resolves symlinks to their real path by default, so it should work. Slice 0 proves it with a smoke
-run of an entry point importing `@ledger/core`. If that fails, the fallback is `tsx`, Ask-first.
+**The `node_modules` tripwire — settled.** Node "refuses to handle TypeScript files inside folders
+under a `node_modules` path" (Node docs), and pnpm links workspace packages there. Node resolves the
+symlink to its real path, so a workspace package's `.ts` source is stripped normally: proven by
+`apps/local/src/main.e2e.test.ts`, which spawns `node apps/local/src/main.ts` (importing
+`@ledger/api` through pnpm's link) and gets HTTP 404 from the routeless app, on Windows locally and
+on Linux in CI. No `tsx`.
 
 ## tsconfig
 
 One root `tsconfig.base.json`; every project's `tsconfig.json` extends it and adds only `include`.
+The installed compiler is TypeScript 7.0.2 (the native compiler; root `devDependencies`).
 
 ```json
 {
@@ -74,11 +77,14 @@ One root `tsconfig.base.json`; every project's `tsconfig.json` extends it and ad
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "target": "esnext",
+    "lib": ["esnext"],
+    "types": ["node"],
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "skipLibCheck": true
   }
 }
 ```
@@ -91,9 +97,11 @@ One root `tsconfig.base.json`; every project's `tsconfig.json` extends it and ad
 - `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` catch the index and optional-field
   bugs that a projection over arbitrary event sets would otherwise hide.
 - No `paths`, no `baseUrl` aliases.
-- Type-check is `tsc --noEmit -p <project>` per project, or one `tsc -b` over project references.
-  Slice 0 picks by measured time. [Unverified]: whether `tsc -b` accepts `noEmit` on the installed
-  TypeScript; read its docs before choosing (see [the version rule](../SKILL.md#check-the-installed-version-not-memory)).
+- **Type-check is one pass:** `pnpm typecheck` runs `tsc -p tsconfig.json`, where the root
+  `tsconfig.json` extends the base and includes every project's `src` plus `vitest.config.ts`
+  (measured ≈0.7 s over 301 files). No project references and no `tsc -b`. The per-project
+  `tsconfig.json` files exist for editors only. A new project adds its `src` to the root
+  `include`, or `pnpm typecheck` skips it.
 
 ## Imports
 
@@ -118,25 +126,29 @@ One root `tsconfig.base.json`; every project's `tsconfig.json` extends it and ad
 
 ## Lint enforcement (Biome)
 
-A ban without enforcement drifts. Slice 0 configures these and proves them with build-checklist
-slice 0's deliberate-violation fixture. The rule names below are from Biome's docs; check them
-against the installed version before configuring
-([version rule](../SKILL.md#check-the-installed-version-not-memory)).
+A ban without enforcement drifts. These are configured in `biome.json` (Biome 2.5.15). The
+`noRestrictedImports` bans were observed to fire by hand with throwaway violating files in core,
+worker, aws and ingest: unproven until build-checklist slice 0's committed deliberate-violation
+fixture lands ([slice 0](../../../../.ai/build-checklist.md#0--foundations)). Check a rule name against the
+installed version before changing it ([version rule](../SKILL.md#check-the-installed-version-not-memory)).
 
 | Ban | Biome rule |
 | --- | --- |
 | `@aws-sdk/*`, `pg`, `drizzle-orm`, `resend` in `packages/core` and `packages/shared` | [`style/noRestrictedImports`](https://biomejs.dev/linter/rules/no-restricted-imports/), `patterns` (since v2.2.0) |
 | `@aws-sdk/*` anywhere but `packages/aws` | same rule |
 | `resend` anywhere but `packages/resend-client` and `packages/ingest` (ingest: `webhooks.verify` only, ADR-009) | same rule |
-| A deep import `@ledger/*/…` other than `/testing`; a relative path leaving the package | same rule, `patterns` |
+| A deep import `@ledger/*/…` other than `/testing` | same rule, `patterns` |
+| A relative path leaving the package | Not configured in Biome; carried by [review grep 10](boundaries.md#review-greps) |
 | An undeclared package import | [`correctness/noUndeclaredDependencies`](https://biomejs.dev/linter/rules/no-undeclared-dependencies/): checks the closest `package.json` only, which is the per-package check wanted |
 | An import cycle | [`suspicious/noImportCycles`](https://biomejs.dev/linter/rules/no-import-cycles/) (since v2.0.0) |
 | A relative import without its extension | [`correctness/useImportExtensions`](https://biomejs.dev/linter/rules/use-import-extensions/) (suggests `.ts` for a TS file) |
 
-None of these is in Biome's recommended set, so each is enabled explicitly. [Unverified]: scoping
-a restriction to one folder through Biome `overrides`, and a `patterns` glob that matches "a
-relative path leaving the package"; slice 0 settles both against the installed Biome. Where Biome
-cannot express a ban, the [review greps](boundaries.md#review-greps) carry it.
+None of these is in Biome's recommended set, so each is enabled explicitly. [Unverified]: how a
+folder-scoped `noRestrictedImports` entry in Biome `overrides` combines with the base ban list.
+Observed by hand: it replaces the base list rather than merging with it, so `biome.json` repeats
+each folder's full list (the deep-import pattern included); unproven until slice 0's
+deliberate-violation fixture lands. Where Biome does not carry a ban, the
+[review greps](boundaries.md#review-greps) do.
 
 ## Engines
 

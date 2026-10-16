@@ -16,8 +16,8 @@ infra/
   src/
     main.ts                     composition root: parses deploy inputs, builds both stacks, tags the app
     infra.config.ts             Zod schema for the deploy inputs
-    app.stack.ts                AppStack
-    guardrails.stack.ts         GuardrailsStack
+    app.stack.ts                AppStack, stack id LedgerApp
+    guardrails.stack.ts         GuardrailsStack, stack id LedgerGuardrails
     ledger-function.construct.ts  the shared function shape
     function-env.ts             internal variable values, keyed by the names from `@ledger/shared`
     *.test.ts                   Template assertions, beside the stack they test
@@ -39,6 +39,15 @@ infra/
   ([scripts.md](scripts.md)).
 - **The CDK app runs under Node 24 type stripping**, no build step
   ([imports-and-tsconfig.md](../../pp-general/references/imports-and-tsconfig.md#node-24-runs-ts-directly)).
+- **`cdk.json`** carries the feature flags `cdk init` wrote for `aws-cdk` 2.1145.0, plus
+  `cli-telemetry: false`, `versionReporting: false` and `notices: false`. Among them,
+  `@aws-cdk/aws-lambda:useCdkManagedLogGroup: true` MUST be reconciled with the explicit
+  `logs.LogGroup` rule ([SKILL.md](../SKILL.md#cost-brake-in-code)) when slice 2 adds the first
+  function: the `Template` assertion on explicit log groups is the check.
+- **An empty stack fails synth.** `@aws-cdk/core:validateAgainstDefaultRules` rejects a stack with
+  no resources (`CloudFormation-Validate::F0001`), so both stacks acknowledge F0001 through
+  `Validations.of(this).acknowledge(...)` until slice 2 adds their first resource, which removes
+  it. Their tests assert zero resources, and no `Fn::ImportValue` in the guardrails stack.
 
 ## Bundling
 

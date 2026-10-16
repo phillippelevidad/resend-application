@@ -15,8 +15,8 @@ of them against AWS or a live Resend account is Ask-first ([Permissions](../../.
   (pp-general's [review grep 14](../../pp-general/references/boundaries.md#review-greps) allowance).
 - **Run by Node 24 directly**: `node --env-file-if-exists=.env.local infra/scripts/<name>.ts`, no
   `tsx` ([config-and-env.md](../../pp-general/references/config-and-env.md#local-env-file)). The
-  scripts import workspace packages, so pp-general's `node_modules` type-stripping `[Unverified]`
-  applies to them ([imports-and-tsconfig.md](../../pp-general/references/imports-and-tsconfig.md#node-24-runs-ts-directly)).
+  scripts import workspace packages, which Node strips through pnpm's link (settled in
+  [imports-and-tsconfig.md](../../pp-general/references/imports-and-tsconfig.md#node-24-runs-ts-directly)).
 - **What they import.** Every AWS call through `@ledger/aws`, every database step through
   `@ledger/db`, the token mint from `@ledger/shared`
   ([data-modeling.md → `api_tokens`](../../../../.ai/data-modeling.md#api_tokens--read-api-bearer-tokens)),

@@ -8,8 +8,8 @@ it missed.
 > engineering roles at Resend: **Backend Engineer** and **Software Engineer, Developer Tools**.
 > It's an independent project, not affiliated with or endorsed by Resend.
 
-**Status:** design accepted, build not started. Nothing below is built yet: it describes the
-design. The living design is in [`.ai/`](.ai/AGENTS.md): start with [about.md](.ai/about.md) and
+**Status:** design accepted; the monorepo is scaffolded and the first slice is in progress. No
+ledger behavior is built yet: everything below describes the design. The living design is in [`.ai/`](.ai/AGENTS.md): start with [about.md](.ai/about.md) and
 [architecture.md](.ai/architecture.md). The [original RFC](docs/idea.md) is frozen as accepted.
 
 ## The problem
@@ -78,6 +78,20 @@ happened?": it verifies webhooks and stores each event as a row in your database
 what comes next: "what's true now, and what should we do about it?" It's designed to complement
 the Ingester, not to compete with it
 ([about.md → Positioning](.ai/about.md#positioning)).
+
+## Develop
+
+Prerequisites: Node.js `>=24.12 <25`, pnpm 10.11.0 (`corepack enable` picks it up from
+`packageManager`), and Docker.
+
+```bash
+pnpm install    # install the workspace
+pnpm dev:full   # local Postgres and the local server; prints LEDGER READY when up (pnpm dev:stop stops it)
+pnpm check      # lint, typecheck and unit tests
+pnpm verify     # the full gate, the same command CI runs
+```
+
+Every command is listed in [AGENTS.md → Commands](AGENTS.md#commands).
 
 ## License
 

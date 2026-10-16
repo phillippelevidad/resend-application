@@ -15,7 +15,7 @@ Read the change's **Impact** section and its task groups, then load every row th
 
 | Load | When the change touches |
 | --- | --- |
-| [`pp-workflow`](../../pp-workflow/SKILL.md) | Always — read order, slice scoping, the `pnpm verify` gate, doc duties, test tiers, Ask-first, skill routing |
+| [`pp-workflow`](../../pp-workflow/SKILL.md) | Always — read order, slice scoping, the two-tier gate (`pnpm check`, `pnpm verify`), doc duties, test tiers, Ask-first, skill routing |
 | [`pp-general`](../../pp-general/SKILL.md) | Always, when the change writes TypeScript — naming, imports, boundaries, adding a dependency or package, errors, logging, PII in code, config and env |
 | [`pp-database`](../../pp-database/SKILL.md) | Any table, column, closed set, index, constraint, grant, `jsonb` column, or migration |
 | [`pp-backend`](../../pp-backend/SKILL.md) | Anything under `packages/` or `apps/` outside `packages/db`, `apps/cli` and `apps/mcp` — a Lambda handler, projection, port, outbox reaction, reconcile or redrive path, a read-API route, `resend-client` — **and** the SDK and the rules every surface shares: an error `message` or `hint`, masks, one contract |

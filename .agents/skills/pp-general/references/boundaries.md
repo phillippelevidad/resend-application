@@ -23,8 +23,9 @@ One question settles most placements: **does it do I/O?**
 | Is the logic of one function (ingest, worker, dispatcher, reconciler, the read API) | That function's package, as a factory over ports |
 | Adapts a Lambda event, or wires concrete classes | The `apps/<fn>` entry point: a `.handler.ts` plus its `main.ts` composition root |
 
-A package lands in the slice the [Projects](../../../../AGENTS.md#projects) table names; adding,
-removing or repurposing one is a doc duty ([pp-workflow → Definition of done](../../pp-workflow/SKILL.md#definition-of-done)).
+Every package the [Projects](../../../../AGENTS.md#projects) table lists exists as a scaffold; its
+logic lands in the slice the table's **Logic lands** column names. Adding, removing or repurposing
+one is a doc duty ([pp-workflow → Definition of done](../../pp-workflow/SKILL.md#definition-of-done)).
 Before creating a package, see [adding-things.md](adding-things.md#add-a-workspace-package).
 
 ## Review greps

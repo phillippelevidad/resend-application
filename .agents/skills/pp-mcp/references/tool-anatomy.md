@@ -74,9 +74,9 @@ export async function startServer({ ledger, enableOperate, serve, stderr, setExi
   setExitCode })` in `start-server.ts`. `main.ts` passes `serveStdio`, `process.stderr` and an
   exit-code setter, so the failing-`getCurrent` case runs over the fake SDK without a spawned
   process.
-- If the pinned version documents `new StdioServerTransport()` plus `await server.connect(transport)`
-  instead, use that ([README](https://github.com/modelcontextprotocol/typescript-sdk)). `[Unverified]`
-  until slice 5 pins the version.
+- The installed 2.3.1 also ships `new StdioServerTransport()` plus `await server.connect(transport)`
+  ([README](https://github.com/modelcontextprotocol/typescript-sdk)); `serveStdio` is the form
+  `apps/mcp/src/main.ts` uses, so it stays the only one.
 - Shutdown: on stdin EOF the transport closes itself; a `SIGINT` handler calls the handle's
   `close()` ([v2 → stdio](https://ts.sdk.modelcontextprotocol.io/v2/serving/stdio.html)).
 

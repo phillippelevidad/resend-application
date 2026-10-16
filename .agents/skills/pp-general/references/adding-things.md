@@ -75,8 +75,9 @@ dependency, so it is not Ask-first (owner, O-09); it follows [imports-and-tsconf
 
 ## Add a workspace package
 
-**Deciding test:** the [Projects](../../../../AGENTS.md#projects) table lands it in this slice,
-**or** a second project imports it in this diff.
+**Deciding test:** every project the [Projects](../../../../AGENTS.md#projects) table lists already
+exists as a scaffold, and its logic lands in the slice the **Logic lands** column names. A project
+not in the table is added only when a second project imports it in this diff.
 
 Code shared by one consumer is not shared code; it is code with an extra hop. Colocate first, and
 lift on the second real consumer, not the anticipated one. A new package updates the Projects
