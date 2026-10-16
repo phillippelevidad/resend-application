@@ -36,7 +36,7 @@ ADR already paid for the deliberation: the queue port and the other port interfa
 | --- | --- |
 | A command bus or query bus | Call the command's or reader's `execute(input)` directly; the call stays greppable (ADR-019) |
 | An in-process event emitter for anything with an effect | An outbox row in the same transaction, delivered by the dispatcher ([ADR-006](../../../../.ai/architecture.md#adr-006--transactional-outbox-for-reactions)) |
-| A `BaseRepository`, generic repository or Unit of Work | A concrete repository per table group in `packages/db`; the Drizzle transaction is the unit of work |
+| A `BaseRepository`, generic repository or Unit of Work | Executor-first repository functions per table in `packages/db` ([pp-database](../../pp-database/SKILL.md)); the Drizzle transaction is the unit of work |
 | A DI container or decorators | One hand-wired composition root per app, `main.ts` ([ADR-019](../../../../.ai/architecture.md#adr-019--application-and-surface-stack)) |
 | An interface with one implementation | The concrete class. Only a named port is an interface; a test double is not a second implementation |
 | A `Result` / Either type | Throw the base error with a registered `code` ([errors.md](errors.md)) |

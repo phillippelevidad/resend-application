@@ -29,7 +29,7 @@ export are called.
 | Hono route: `createRoute` plus its handler (ADR-019) | `.route.ts` | `get-email.route.ts` → `getEmailRoute` |
 | Write class, one public `execute(input)` (ADR-019) | `.command.ts` | `start-reconcile.command.ts` → `StartReconcileCommand` |
 | Read class, one public `execute(input)` (ADR-019) | `.reader.ts` | `get-email.reader.ts` → `GetEmailReader` |
-| Repository (`packages/db` only) | `.repository.ts` | `webhook-event.repository.ts` → `WebhookEventRepository` |
+| Repository (`packages/db` only) | `.repository.ts` | `webhook-events.repository.ts` → `webhookEventsRepository` (one object of executor-first functions, [pp-database](../../pp-database/references/schema-and-repositories.md#repositories)) |
 | Port interface (`packages/shared`) | `.port.ts` | `queue.port.ts` → `QueuePort` |
 | Port implementation | `.adapter.ts` | `sqs-queue.adapter.ts` → `SqsQueueAdapter` |
 | Zod schema | `.schema.ts` | `email-event.schema.ts` → `emailEventSchema` |
