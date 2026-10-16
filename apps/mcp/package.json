@@ -1,0 +1,16 @@
+{
+  "name": "@ledger/app-mcp",
+  "private": true,
+  "type": "module",
+  "description": "MCP server, built on the SDK",
+  "license": "MIT",
+  "scripts": {
+    "start": "node src/main.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

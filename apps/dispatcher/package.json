@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/app-dispatcher",
+  "private": true,
+  "type": "module",
+  "description": "Lambda entry point over @ledger/dispatcher",
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

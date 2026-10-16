@@ -1,0 +1,13 @@
+{
+  "name": "@ledger/db",
+  "private": true,
+  "type": "module",
+  "description": "Drizzle schema, migrations and repositories",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

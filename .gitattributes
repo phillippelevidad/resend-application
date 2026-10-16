@@ -1,0 +1,16 @@
+# LF everywhere, whatever core.autocrlf says: Biome's formatter expects LF, so a CRLF checkout on
+# Windows would fail `biome ci` in `pnpm verify`.
+* text=auto eol=lf
+
+# Binary files, never normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.woff binary
+*.woff2 binary

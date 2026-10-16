@@ -1,0 +1,13 @@
+{
+  "name": "@ledger/aws",
+  "private": true,
+  "type": "module",
+  "description": "The only @aws-sdk importer: SQS queue adapter, Secrets Manager, ESM control, SQS attributes, DLQ receive and redrive, Lambda invoke",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

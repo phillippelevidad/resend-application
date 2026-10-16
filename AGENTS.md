@@ -13,33 +13,73 @@ portfolio project, built as part of an application to Resend. Not affiliated wit
 
 ## Decision lens — evidence over claims, right-sized
 
-**Apply when:** choosing infra, dependencies or patterns, scoping a phase, or writing anything that
-claims a behavior. Do NOT re-litigate decisions recorded in [docs/idea.md](docs/idea.md) (verify
-then enqueue; SQS standard, not FIFO; projection recomputed from the event set; Postgres only;
-outbox for reactions) without a superseding decision written into that doc.
+**Apply when:** choosing infra, dependencies or patterns, scoping a slice, or writing anything that
+claims a behavior. Do NOT re-litigate an accepted ADR in [architecture.md](.ai/architecture.md#decisions)
+(verify then enqueue, ADR-001; SQS standard, not FIFO, ADR-002; projection recomputed from the
+event set, ADR-003; Postgres only, because dedupe, row locks and the outbox commit in one
+transaction, ADR-005; outbox for reactions, ADR-006) without a superseding ADR.
 
 - **Every reliability claim MUST carry its evidence.** A behavior in the docs or the README is
   backed by a unit test, a property test, an integration test or a simulator invariant
-  ([idea §5.9](docs/idea.md#59-the-chaos-and-simulation-harness)), and the doc points at it. A
-  claim without evidence is deleted or moved to Open questions. This project exists to be checked.
+  ([architecture.md → Simulator invariants](.ai/architecture.md#simulator-invariants)), and the doc points at it. A
+  claim without evidence is deleted or moved to [Open questions](.ai/about.md#open-questions).
+  This project exists to be checked.
 - **Verify Resend behavior; never assume it.** Check API and webhook behavior against the docs
   (`https://resend.com/docs/llms.txt`, and any page as `.md`) before relying on it. Cite the page
   in the doc that depends on it. If the docs don't settle it, add it to
-  [idea §10](docs/idea.md#10-open-questions) instead of guessing.
+  [about.md → Open questions](.ai/about.md#open-questions), tagged `[Unverified]`, instead of guessing.
 - **Complement, don't duplicate.** Before building something, check whether Resend's
   [Webhook Ingester](https://github.com/resend/resend-webhooks-ingester) or its open PRs already do
-  it. Where Ledger's work would help upstream, prefer offering it there.
+  it. Ledger builds what the Ingester does not ([positioning](.ai/about.md#positioning)). Upstream
+  PRs are not planned.
 - **Cost brake — MUST.** This runs on a personal AWS account. Serverless, pay-per-use, near-zero
   idle cost. No always-on resources (NAT gateways, provisioned RDS, idle containers) without a
-  stated, measured reason. Everything torn down with one command.
+  stated, measured reason in an ADR. Everything torn down with one command.
 - **Stay close to Resend's public stack** ([tech stack](https://resend.com/handbook/engineering/what-is-our-tech-stack)):
   TypeScript, Postgres + Drizzle, Zod, Vitest, Biome, pnpm, AWS CDK, GitHub Actions. A deviation
   needs one line of reasoning in the doc that introduces it.
-- **v0 per phase, smallest PR.** Each [phase](docs/idea.md#7-implementation-plan) ships usable and
+- **v0 per slice, smallest PR.** Each [slice](.ai/architecture.md#build-order-vertical-slices) ships usable and
   tested on its own. Optimize a change for how fast it can be reviewed and merged.
 
+**Right-sizing — how much to build:**
+
+1. **Right-size to the ceiling.** Build for
+   [about.md → Platform scale assumptions](.ai/about.md#platform-scale-assumptions) and nothing past
+   it. The ceiling caps owner operations as well as engineering: one owner, no on-call, so a manual
+   step that recurs per deploy, per demo or per review walk MUST be scripted.
+2. **Reversible-cheap over optimal-expensive.** Sort every deferral by its stated reason.
+   **Temporal** (build cost, sequencing): defer with a countable threshold or a named observable
+   event, never "when demand warrants". **Categorical** (the reason holds at every point below the
+   ceiling, e.g. SQS FIFO, multi-database, multi-tenant, an always-on charge in a kept-up deploy):
+   reject. Only a superseding ADR reopens it.
+3. **Reviewers arrive at milestone boundaries.** Every finished milestone
+   ([M1–M3](.ai/about.md#milestones)) MUST leave the README claims, the demo and the deploy
+   coherent. Inside a milestone, MUST NOT argue from adopter or reviewer harm in the gap between
+   slices. A gap that a named later slice carries is the plan working. Every finished slice MUST
+   still be hand-walkable through the CLI, the API or the simulator, because the walk is how the
+   slice is verified. Build cost and testability are the reasons that survive for pulling work
+   forward.
+4. **Self-service test, at scoping time.** Run the
+   [self-service test](.ai/about.md#guiding-principles) before a slice is scoped. On the adopter's
+   path, admit the smallest version that removes the manual step. Off it, defer on a tripwire.
+5. **Signal.** Effort is admitted when it produces something a reviewer can check (a test, an
+   invariant, a measured number, a working command) against a row in
+   [What this project must demonstrate](.ai/about.md#what-this-project-must-demonstrate).
+   Overdoing it is generality beyond the ceiling, polish nobody notices in a 30-minute review, and
+   infrastructure depth no claim depends on. Learning AWS counts only when an ADR or a test makes
+   it visible.
+6. **Spend anyway**, whatever clauses 1–5 say, when the absence causes any of: lost events;
+   duplicate effects; order-dependent state (order comes from the projection, never from transport:
+   Resend promises no delivery order); security or PII exposure, MCP tool output included;
+   misstating Resend behavior or implying affiliation; a budget-alarm gap.
+7. **Deploy and keep.** Real deploys stay up until the owner tears them down, because review
+   timing is unknown. Idle cost MUST stay near zero ([target](.ai/about.md#success-metrics)).
+   Budget alarms with a hard monthly cap are mandatory from the first deploy, not polish
+   ([risk appetite](.ai/about.md#risk-appetite)). Teardown is one command.
+
 **Tie-break:** correctness of event handling (no loss, no duplicate effects, order-independent
-state) > evidence > cost > scope > polish.
+state) > evidence > cost > scope > polish. The self-service test decides whether; the cost brake
+decides how much.
 
 ## Commit and push as you go
 
@@ -50,22 +90,48 @@ or push only when asked.** Uncommitted work dies with its worktree or chat.
   one commit at the end.
 - Then `git push` (`git push -u origin HEAD` the first time). Commit to the current branch, `main`
   included. Never create a branch unasked.
-- Run the cheap checks for what you touched first (lint, the affected tests). Off `main`, a red
-  check does not hold the commit: commit, push, and name what is red in the body.
-- Stage by path. Never `git add -A`. Never commit `.env*`, secrets or scratch files.
+- Run `pnpm check` first, plus any extra check the touched path's skill names
+  ([gate tiers](.agents/skills/pp-workflow/SKILL.md#definition-of-done)). Off `main`, a red check
+  does not hold the commit: commit, push, and name what is red in the body.
+- Stage by path. Never `git add -A`. Never commit `.env*` (except `.env.example`, which lists
+  names only, never values), secrets or scratch files.
 - In multi-agent runs, the orchestrator commits and pushes. Helper agents run no git commands.
 - An **Ask-first** change ([Permissions](#permissions)) waits uncommitted for approval. Commit the
   rest of the step around it.
 - Never force-push, amend or rebase a pushed commit, and never open a PR, unless asked.
 
+## Never loosen a rule to fit what was built
+
+**MUST. This OVERRIDES any skill or doc duty that says to update docs to match the code.** When
+built work and a doc disagree, the work is presumed wrong. The doc is not edited to make it pass.
+
+- **Gate before applying.** A doc or skill edit that relaxes, removes or weakens a rule to match
+  built work MUST be reviewed before it is applied. That covers a MUST or Never, a Mandatory test,
+  an Ask-first item, an evidence requirement, a gate stage, and a slice's scope or `Ships` bullet.
+  The reviewer is an independent helper agent, one that wrote neither the code nor the edit. It
+  gets the rule as it stood, the proposed diff and the code, and judges adversarially.
+- **Only two things clear the gate:** a fact that code, a test or a measured run proves, or a
+  decision the owner explicitly made, quoted from the owner's own words. Anything else is not
+  applied. Fix the work, or put the change to the owner as a named decision and wait.
+- **Name the verdict** in the commit body or the report: what the helper cleared, and what went to
+  the owner.
+- A fact correction that loosens nothing needs no gate: a version, a file name, a command that now
+  exists, or an `[Unverified]` row settled by a cited test.
+
 </critical>
 
 ## Product & domain context
 
-[docs/idea.md](docs/idea.md) is the canonical design document: problem, verified Resend facts,
-architecture, data model, failure modes, phases and open questions. **Read it before non-trivial
-work.** Specs derived from it (OpenSpec) will live alongside it once installed. When a decision
-changes the design, update the idea doc in the same change, so docs never drift from code.
+[`.ai/`](.ai/AGENTS.md) is the only living source of product and design context. **Read its index
+before non-trivial work** and load the documents it marks Required for the task. Facts go in
+[resend.md](.ai/resend.md) and [aws.md](.ai/aws.md), decisions in the ADRs of
+[architecture.md](.ai/architecture.md), and open questions in
+[about.md](.ai/about.md#open-questions). When a change alters a decision, update or supersede its
+ADR in the same change, so docs never drift from code. [docs/idea.md](docs/idea.md) is the frozen
+RFC the design started from (accepted 2026-10-15). Read it for history, never edit it, and never
+cite it as the current rule. OpenSpec changes and specs live in [`openspec/`](openspec/), one change
+per slice, and [openspec/config.yaml](openspec/config.yaml) injects the read order and the
+per-artifact rules into every artifact OpenSpec writes.
 
 Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 [webhooks](https://resend.com/docs/webhooks/introduction) ·
@@ -74,30 +140,53 @@ Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 
 ## Projects
 
-**Planned — not created yet.** The layout from [idea §6.2](docs/idea.md#62-repository-layout):
+This table is the canonical layout (adapted from the frozen
+[idea §6.2](docs/idea.md#62-repository-layout)). **Every project exists as a scaffold** (its
+`package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
+2026-10-16). Its logic lands in the slice the **Logic lands** column names
+([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
+scaffolds hold: `packages/api`'s routeless `createApi()`, served by `apps/api`
+(`handle(createApi())`) and `apps/local` (`@hono/node-server`, loopback-only); `apps/cli`'s program
+with no commands and `apps/mcp`'s server with no tools; `infra`'s two empty stacks.
 
-| Project | Role |
-| --- | --- |
-| **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O |
-| **packages/db** | Drizzle schema, migrations, repositories |
-| **packages/resend-client** | Headless Webhook API wrapper. Rate-limit aware. The only place that calls Resend's API |
-| **packages/sdk** | Public TS client for the read API |
-| **apps/ingest** | Lambda: verify + enqueue |
-| **apps/worker** | Lambda: ledger transaction, projections, outbox |
-| **apps/dispatcher** | Lambda: outbox delivery |
-| **apps/reconciler** | Lambda: gap detection + replay |
-| **apps/api** | Read API |
-| **apps/cli** | `ledger` CLI |
-| **apps/mcp** | MCP server |
-| **infra** | AWS CDK app |
-| **sim** | Simulation + chaos harness |
+| Project | Role | Logic lands |
+| --- | --- | --- |
+| **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O (ADR-003, ADR-013) | 0 |
+| **packages/shared** | Kernel: port interfaces, logger and metrics helpers, config and env loading with a boot-time Zod assertion, error base class carrying a registry `code`, clock, token mint and tag check. No AWS, Postgres or Resend (ADR-013) | 1 |
+| **packages/db** | Drizzle schema, migrations, repositories (ADR-018) | 1 |
+| **packages/ingest** | Ingest logic: verify + enqueue, over the queue port (ADR-001, ADR-009) | 1 |
+| **packages/worker** | Worker logic: ledger transaction, projections, outbox (ADR-004, ADR-015) | 1 |
+| **packages/api** | Hono app factory: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)); source of the OpenAPI document (ADR-011, ADR-019) | 1 |
+| **packages/sdk** | Public TS client for the read API: generated types plus a thin client (ADR-011, ADR-019) | 1 |
+| **packages/aws** | The only `@aws-sdk/*` importer: SQS queue adapter, Secrets Manager, ESM control, SQS attributes, DLQ receive and redrive, Lambda invoke (ADR-013) | 2 |
+| **packages/reconciler** | Reconciler logic: gap detection + replay (ADR-007) | 4 |
+| **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) | 4 |
+| **packages/dispatcher** | Dispatcher logic: outbox delivery (ADR-006, ADR-017) | 6 |
+| **apps/local** | Local entry point: composes the package factories with `@hono/node-server`, the in-process queue and, from 2B, the Postgres queue; local mode and `docker compose` (ADR-013) | 1 |
+| **apps/cli** | `ledger` CLI, built on the SDK (ADR-019) | 1 |
+| **apps/ingest** | Lambda entry point over `packages/ingest`: event adaptation and composition root (ADR-013) | 2 |
+| **apps/worker** | Lambda entry point over `packages/worker`: SQS batch and resume-event adaptation, composition root (ADR-008, ADR-013) | 2 |
+| **apps/api** | Lambda entry point behind the HTTP API: `packages/api` through `@hono/aws-lambda` (ADR-010, ADR-019) | 2 |
+| **apps/reconciler** | Lambda entry point over `packages/reconciler` (ADR-013) | 4 |
+| **apps/mcp** | MCP server, built on the SDK (ADR-019) | 5 |
+| **apps/dispatcher** | Lambda entry point over `packages/dispatcher` (ADR-013) | 6 |
+| **infra** | AWS CDK app: app stack and guardrails stack (ADR-010) | 2 |
+| **sim** | Simulation + chaos harness, run as `pnpm sim` (ADR-016) | 0 |
 
-Update this table as projects land.
+Ingest and worker logic live in `packages/ingest` and `packages/worker` and meet at the queue port
+in `packages/shared`. In slice 1, `apps/local` runs them and the read API in one local process over
+the in-process queue; on AWS, `packages/aws` implements the port with SQS (slice 2), and in local
+mode a Postgres-backed queue does (slice 2B) (ADR-013). Update this table when a project is added,
+removed or repurposed.
 
 ## Stack
 
-- **Runtime:** Node.js LTS, pnpm workspaces
-- **Code:** TypeScript (strict), Zod, Drizzle + Postgres, Winston (JSON logs)
+- **Runtime:** Node.js 24 (`engines` in `package.json`), ES modules, pnpm workspaces, no
+  Turborepo ([architecture.md → Technology](.ai/architecture.md#technology))
+- **Code:** TypeScript (strict), Zod 4, Drizzle + Postgres, Winston (JSON logs)
+- **Surfaces:** Hono + `@hono/zod-openapi` (read API), `commander` 15 (CLI),
+  `@modelcontextprotocol/server` v2 (MCP), `openapi-typescript` + `openapi-fetch` (SDK)
+  ([ADR-019](.ai/architecture.md#adr-019--application-and-surface-stack))
 - **Tests:** Vitest, fast-check (property tests), Testcontainers (Postgres)
 - **Infra:** AWS (API Gateway HTTP API, Lambda, SQS, EventBridge Scheduler, Secrets Manager,
   CloudWatch) via AWS CDK. GitHub Actions for CI
@@ -105,13 +194,67 @@ Update this table as projects land.
 
 ## Commands
 
-None yet. Phase 0 adds them. The intended shape: one `pnpm verify` that mirrors CI stage for stage,
-and whose exit 0 means every stage ran and passed. Document every command here when it lands.
+```bash
+pnpm install       # postinstall runs sync-skills
+pnpm sync-skills   # relink .claude/skills from .agents/skills (the canonical folder)
+pnpm exec openspec validate <change> --type change --strict   # structural check of one change
+pnpm exec openspec update   # regenerate the OpenSpec skills and commands after a version bump
+```
+
+Skills live in `.agents/skills/`. `.claude/skills/` is generated (git-ignored): never edit it, and
+run `pnpm sync-skills` after adding or removing a skill.
+
+OpenSpec is a pinned dev dependency (`@fission-ai/openspec`, `core` profile, targets `agents` and
+`claude`). Its generated files are committed and never edited by hand: `.agents/skills/openspec-*`
+and `.claude/commands/opsx/` (the `/opsx:propose`, `/opsx:apply`, `/opsx:archive`, … commands).
+Customize OpenSpec only through `openspec/config.yaml`. After `openspec update`, run
+`pnpm sync-skills`, because the `claude` target also writes copies into `.claude/skills/`.
+
+**Gates.** Two tiers: `pnpm check` before each commit, `pnpm verify` at slice close and in CI (the
+merge gate). When each runs is canonical in
+[pp-workflow → Definition of done](.agents/skills/pp-workflow/SKILL.md#definition-of-done).
+
+```bash
+# Everyday loop
+pnpm check         # lint + typecheck + unit tests; the commit gate
+pnpm lint          # biome check .   (pnpm lint:fix writes the fixes)
+pnpm typecheck     # tsc -p tsconfig.json: one pass over every project (pnpm build is the same; nothing emits)
+pnpm test          # Vitest project unit   (pnpm test:watch to watch)
+pnpm test:int      # Vitest project int (real Postgres; the Testcontainers harness lands in slice 1)
+pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
+
+# Full gate: mirrors CI by construction (CI runs exactly this)
+pnpm verify        # install, docker, lint, typecheck, unit, synth, e2e; exit 0 = VERIFY PASSED
+pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
+
+# Local stack
+pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts this repo's running
+                   # server, fails on any other process holding the API port;
+                   # prints LEDGER READY or LEDGER START FAILED: <reason>
+pnpm dev:stop      # compose stop; stops the dev server only if it belongs to this repo
+pnpm dev           # apps/local under node --watch, loading .env.local if present
+pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
+pnpm deps          # pnpm install only when the lockfile or a package.json changed
+pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
+
+# Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
+pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3200; --port, --host (loopback only)
+pnpm --filter @ledger/app-cli start --help
+pnpm --filter @ledger/app-mcp start     # MCP server over stdio
+```
+
+`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: gitleaks
+and the README link check (slice 0), `int` with its first integration test plus OpenAPI and SDK
+drift (slice 1), migration lint (slice 2).
+Document every command here when it lands.
 
 ## Module boundaries
 
 - `packages/core` imports nothing from AWS, Postgres or Resend. That's what keeps projections
   property-testable in milliseconds.
+- `packages/shared` imports nothing from AWS, Postgres or Resend.
+- Only `packages/aws` imports `@aws-sdk/*`.
+- Apps are entry points: event adaptation and wiring only. Logic lives in packages (ADR-013).
 - Apps import from `packages/` only, never from other apps.
 - Every call to Resend's API goes through `packages/resend-client`, which owns rate limiting
   (`ratelimit-*`, `retry-after`) and the shared 10 req/s budget.
@@ -124,8 +267,8 @@ and whose exit 0 means every stage ran and passed. Document every command here w
 | Tier | Examples |
 | --- | --- |
 | **Always** | Run tests and lint before committing; follow module boundaries; verify Resend behavior against docs; [commit and push each finished step](#commit-and-push-as-you-go) |
-| **Ask first** | Add a dependency; change a migration that's already pushed; change CI; alter a public contract (read API, error codes, CLI commands or flags, MCP tools); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
-| **Never** | Commit secrets, API keys, webhook signing secrets or real recipient addresses (use Resend's test addresses, such as `delivered@resend.dev`); disable a failing gate to make CI green; edit generated files by hand |
+| **Ask first** | Add a dependency; change a migration that is merged to `main` or applied to a kept database; change CI; alter or extend a public contract (read API routes, error codes, CLI commands or flags, environment variables, MCP tools; [api-contract.md → Conventions](.ai/api-contract.md#conventions)); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
+| **Never** | Commit secrets, API keys, webhook signing secrets, `.env*` files (except `.env.example`, which lists names only, never values) or real recipient addresses (use Resend's test addresses, such as `delivered@resend.dev`); disable a failing gate to make CI green; edit generated files by hand |
 
 ## Editing files on this machine
 
@@ -174,29 +317,66 @@ answer into `AGENTS.local.md` from the example file.
 
 ## Error shape
 
-One shape everywhere: read API, SDK, CLI `--json`, MCP tools ([idea §5.7](docs/idea.md#57-interfaces-read-api-sdk-cli-mcp)):
+One shape everywhere: read API, SDK, CLI `--json`, MCP tools (ADR-011, [api-contract.md → Conventions](.ai/api-contract.md#conventions)):
 
 ```json
 {
   "error": {
     "code": "webhook_disabled",
     "message": "The Resend webhook is disabled, so replays will not be delivered.",
-    "hint": "Re-enable it in the Resend dashboard, then run `ledger reconcile`.",
+    "hint": "Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile`.",
     "docs": "https://resend.com/docs/webhooks/retries-and-replays"
   }
 }
 ```
 
 `code` is stable and machine-readable. Changing or removing one is a public contract change (Ask first).
+The codes, their HTTP statuses and their raising components are registered in
+[.ai/api-contract.md → Error codes](.ai/api-contract.md#error-codes), the only list.
 
 ## Data model
 
-Initial schema in [idea §6.3](docs/idea.md#63-data-model-initial): `webhook_events` (immutable
-ledger, `svix_id` primary key), `email_state`, `recipient_state`, `outbox`, `reconcile_runs`. Once
-`packages/db` exists, its Drizzle schema is the source of truth and this section points there.
-Migrations are expand/contract only, so deploys never need downtime.
+[.ai/data-modeling.md](.ai/data-modeling.md) owns modeling principles and per-table intent, and its
+[Model index](.ai/data-modeling.md#model-index) lists every table with the slice that lands it.
+`webhook_events` is the immutable ledger, keyed on `svix_id`. The projections are rebuildable from
+it alone (ADR-003, ADR-004). Once `packages/db` exists, its Drizzle schema owns columns, types and
+indexes. Migrations are expand/contract only, so deploys never need downtime (ADR-018).
 
 ## Patterns and practices
 
-Project skills and the OpenSpec workflow are being installed. When they land, list each skill here
-with **when to load it**, and name the mandatory ones that every task loads before any code.
+Skills live in [`.agents/skills/`](.agents/skills/). When a skill and a doc it links disagree, the
+doc wins and the skill is fixed in the same change.
+
+**Mandatory.** `pp-workflow` loads before any code, any slice work, and alongside every `wf-*` gate.
+`pp-general` loads before any TypeScript. The other `pp-*` skills load whenever a change touches
+their surface, as [pp-workflow → Which skill answers a code question](.agents/skills/pp-workflow/SKILL.md#which-skill-answers-a-code-question)
+routes them. The `pp-*` skills bind every implementer and reviewer.
+
+| Skill | Load it when |
+| --- | --- |
+| `pp-workflow` | Always, before code: read order, slice scoping, the `pnpm verify` gate, the doc duties every change owes, test tiers, the Ask-first check, which `pp-*` skill answers a code question |
+| `pp-general` | Any TypeScript in `packages/`, `apps/`, `infra/`, `sim/` or `scripts/`: naming, imports and tsconfig, boundaries, adding things, errors, logging, PII in code, config and env, versions |
+| `pp-backend` | A change touches `packages/` (except `db`) or `apps/` (except `cli`, `mcp`): factories, ports, handlers, outbox, reconcile, redrive, `resend-client`, the read API, the SDK |
+| `pp-database` | A change touches `packages/db`, a table, column, index, constraint, `jsonb` column, grant, migration or seed |
+| `pp-testing` | A change adds or edits a `*.test.ts`, `*.prop.test.ts` or `*.int.test.ts`, the Vitest config, a harness, a fake, an arbitrary, or `sim/` |
+| `pp-infra` | A change touches `infra/`, a script that calls it, or adds a Lambda, queue, secret, schedule, alarm or log group |
+| `pp-cli` | A change touches `apps/cli` |
+| `pp-mcp` | A change touches `apps/mcp` |
+| `wf-before-propose` | Before proposing a slice: writes the decision-complete pre-proposal in `.ai/pre-proposals/` |
+| `wf-before-propose-check` | Right after `wf-before-propose`: verifies and repairs the pre-proposal |
+| `opsx:propose` | Creates the slice's OpenSpec change from the checked pre-proposal |
+| `wf-after-propose-check` | Right after `opsx:propose`, before `opsx:apply`: verifies and repairs the change |
+| `opsx:apply` | Builds the change's tasks |
+| `wf-after-apply-check` | Right after `opsx:apply`, before `opsx:archive`: verifies the code, runs `pnpm verify`, desk-checks `WALKTHROUGH.md` against the code |
+| `rsa-manual-test` | Right after `wf-after-apply-check`, before `opsx:archive`, or whenever asked to walk, smoke-test or reproduce something: executes the slice's `WALKTHROUGH.md` or a free-form check, report only |
+| `opsx:archive` | Archives a verified change |
+| `opsx:explore`, `opsx:update`, `opsx:sync` | Thinking a change through; revising its artifacts; syncing delta specs without archiving |
+| `implement-plan` | A tweak too small for an OpenSpec change, from a plan file. Never a slice, a public contract or a migration |
+| `architecture-designer` | Drafting a new or superseding ADR. [architecture.md](.ai/architecture.md#decisions)'s ADR format and the decision lens win over its templates |
+| `wf-commit` | Every commit, at the end of each finished step |
+| `wf-create-pr` | Only when asked to open or rewrite a PR |
+
+A slice runs `wf-before-propose` → `wf-before-propose-check` → `opsx:propose` →
+`wf-after-propose-check` → `opsx:apply` → `wf-after-apply-check` → `rsa-manual-test` →
+`opsx:archive`. The `openspec-*` skills are OpenSpec's generated twins of the `/opsx:*` commands (see
+[Commands](#commands)).

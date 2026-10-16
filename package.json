@@ -1,0 +1,39 @@
+{
+  "name": "ledger",
+  "scripts": {
+    "sync-skills": "node scripts/sync-skills.mjs",
+    "postinstall": "node scripts/sync-skills.mjs",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --project unit",
+    "test:int": "vitest run --project int",
+    "test:e2e": "vitest run --project e2e",
+    "test:watch": "vitest --project unit",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "build": "pnpm typecheck",
+    "verify": "node scripts/verify.mjs",
+    "deps": "node scripts/deps.mjs",
+    "dev": "pnpm --filter @ledger/app-local dev",
+    "dev:full": "node scripts/dev-full.mjs",
+    "dev:stop": "node scripts/dev-stop.mjs",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose stop postgres",
+    "synth": "pnpm --filter @ledger/infra synth"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.12 <25",
+    "pnpm": "10.11.0"
+  },
+  "private": true,
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@fission-ai/openspec": "1.14.2",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "catalog:"
+  }
+}

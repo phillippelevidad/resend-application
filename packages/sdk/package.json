@@ -1,0 +1,13 @@
+{
+  "name": "@ledger/sdk",
+  "private": true,
+  "type": "module",
+  "description": "Public TS client for the read API: generated types plus a thin client",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

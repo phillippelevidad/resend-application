@@ -1,0 +1,13 @@
+{
+  "name": "@ledger/dispatcher",
+  "private": true,
+  "type": "module",
+  "description": "Dispatcher logic: outbox delivery",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

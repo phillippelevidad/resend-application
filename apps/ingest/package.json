@@ -1,0 +1,10 @@
+{
+  "name": "@ledger/app-ingest",
+  "private": true,
+  "type": "module",
+  "description": "Lambda entry point over @ledger/ingest: event adaptation and composition root",
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

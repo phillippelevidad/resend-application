@@ -1,0 +1,13 @@
+{
+  "name": "@ledger/ingest",
+  "private": true,
+  "type": "module",
+  "description": "Ingest logic: verify and enqueue, over the queue port",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

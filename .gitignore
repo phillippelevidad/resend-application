@@ -5,3 +5,23 @@ tools/
 
 # Per-developer agent settings (template: AGENTS.local.example.md)
 AGENTS.local.md
+
+# Local secrets (API keys, webhook signing secrets). Never committed.
+.env*
+!.env.example
+
+# Raw stage output of a docs review run (only its decisions log is committed)
+.ai/reviews/*/stages/
+
+# CDK synth output and context cache: they can hold values and account ids (CBL-19, CBL-10)
+cdk.out
+cdk.context.json
+
+# Dependencies
+node_modules/
+
+# Claude skills (synced from .agents/skills via pnpm sync-skills)
+.claude/skills
+
+# Agent worktrees (isolated checkouts for parallel sessions)
+.claude/worktrees/

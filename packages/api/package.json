@@ -1,0 +1,18 @@
+{
+  "name": "@ledger/api",
+  "private": true,
+  "type": "module",
+  "description": "Hono app factory: read routes plus operate-scoped routes; source of the OpenAPI document",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "1.6.3",
+    "hono": "4.13.13",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

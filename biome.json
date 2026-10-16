@@ -1,0 +1,160 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "packages/**/*.{ts,js,mjs,json}",
+      "apps/**/*.{ts,js,mjs,json}",
+      "infra/**/*.{ts,js,mjs,json}",
+      "sim/**/*.{ts,js,mjs,json}",
+      "scripts/**/*.{ts,js,mjs,json}",
+      "biome.json",
+      "package.json",
+      "tsconfig*.json",
+      "vitest.config.ts",
+      "!!**/node_modules",
+      "!!**/cdk.out"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noUndeclaredDependencies": "error",
+        "useImportExtensions": "error"
+      },
+      "suspicious": {
+        "noImportCycles": "error"
+      },
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "resend": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
+            },
+            "patterns": [
+              {
+                "group": ["@aws-sdk/*", "@aws-sdk/**"],
+                "message": "Only packages/aws may import @aws-sdk/* (ADR-013)."
+              },
+              {
+                "group": ["@ledger/*/**", "!@ledger/*/testing"],
+                "message": "Import a workspace package by its name only; the one allowed subpath is /testing."
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/core/**", "packages/shared/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "pg": "packages/core and packages/shared import nothing from Postgres (ADR-013).",
+                  "drizzle-orm": "packages/core and packages/shared import nothing from Postgres (ADR-013).",
+                  "resend": "packages/core and packages/shared import nothing from Resend (ADR-013)."
+                },
+                "patterns": [
+                  {
+                    "group": ["@aws-sdk/*", "@aws-sdk/**"],
+                    "message": "packages/core and packages/shared import nothing from AWS (ADR-013)."
+                  },
+                  {
+                    "group": ["drizzle-orm/**"],
+                    "message": "packages/core and packages/shared import nothing from Postgres (ADR-013)."
+                  },
+                  {
+                    "group": ["@ledger/*/**", "!@ledger/*/testing"],
+                    "message": "Import a workspace package by its name only; the one allowed subpath is /testing."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/aws/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "resend": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
+                },
+                "patterns": [
+                  {
+                    "group": ["@ledger/*/**", "!@ledger/*/testing"],
+                    "message": "Import a workspace package by its name only; the one allowed subpath is /testing."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/resend-client/**", "packages/ingest/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@aws-sdk/*", "@aws-sdk/**"],
+                    "message": "Only packages/aws may import @aws-sdk/* (ADR-013)."
+                  },
+                  {
+                    "group": ["@ledger/*/**", "!@ledger/*/testing"],
+                    "message": "Import a workspace package by its name only; the one allowed subpath is /testing."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}
