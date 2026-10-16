@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    vitest:
+      specifier: 5.0.5
+      version: 5.0.5
+
 importers:
 
   .:
@@ -21,7 +27,7 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: 5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
   apps/api:
@@ -35,6 +41,10 @@ importers:
       hono:
         specifier: 4.13.13
         version: 4.13.13
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
   apps/cli:
     dependencies:
@@ -44,10 +54,22 @@ importers:
       commander:
         specifier: 15.0.0
         version: 15.0.0
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  apps/dispatcher: {}
+  apps/dispatcher:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  apps/ingest: {}
+  apps/ingest:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
   apps/local:
     dependencies:
@@ -60,6 +82,10 @@ importers:
       hono:
         specifier: 4.13.13
         version: 4.13.13
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
   apps/mcp:
     dependencies:
@@ -69,10 +95,22 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  apps/reconciler: {}
+  apps/reconciler:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  apps/worker: {}
+  apps/worker:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
   infra:
     dependencies:
@@ -86,6 +124,9 @@ importers:
       aws-cdk:
         specifier: 2.1145.0
         version: 2.1145.0
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
   packages/api:
     dependencies:
@@ -98,28 +139,76 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/aws: {}
+  packages/aws:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/core: {}
+  packages/core:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/db: {}
+  packages/db:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/dispatcher: {}
+  packages/dispatcher:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/ingest: {}
+  packages/ingest:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/reconciler: {}
+  packages/reconciler:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/resend-client: {}
+  packages/resend-client:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/sdk: {}
+  packages/sdk:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/shared: {}
+  packages/shared:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  packages/worker: {}
+  packages/worker:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
-  sim: {}
+  sim:
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(yaml@2.9.1))
 
 packages:
 

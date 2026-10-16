@@ -8,5 +8,8 @@
     "@hono/aws-lambda": "1.0.1",
     "@ledger/api": "workspace:*",
     "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
   }
 }

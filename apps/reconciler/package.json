@@ -3,5 +3,8 @@
   "private": true,
   "type": "module",
   "description": "Lambda entry point over @ledger/reconciler",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
 }

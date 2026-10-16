@@ -3,3 +3,8 @@ packages:
   - "apps/*"
   - "infra"
   - "sim"
+
+# One version for tools every project declares. Biome's noUndeclaredDependencies checks the
+# closest package.json, so each project declares `vitest: catalog:` and the version lives here.
+catalog:
+  vitest: 5.0.5

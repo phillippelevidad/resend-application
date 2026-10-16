@@ -1,0 +1,30 @@
+# Local development database only. Tests never use it: the integration tests start their own
+# Postgres through Testcontainers. Slice 2B adds apps/local to this file, so `docker compose up`
+# runs the whole system.
+#
+# The credentials are throwaway local values. The host port is 55432, not 5432, so it does not
+# collide with another local Postgres; it is bound to loopback only.
+name: ledger
+
+services:
+  postgres:
+    # Postgres 18 (.ai/integrations.md), pinned to an exact minor tag.
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger
+      POSTGRES_DB: ledger
+    ports:
+      - '127.0.0.1:55432:5432'
+    volumes:
+      # From Postgres 18 the image keeps PGDATA under /var/lib/postgresql/<major>, so the volume
+      # mounts the parent folder, not /var/lib/postgresql/data.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ledger -d ledger']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres-data:
