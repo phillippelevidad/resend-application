@@ -26,9 +26,9 @@ infra/
 ```
 
 - **Two stacks, no more** (ADR-010). No nested stack; a third stack is an ADR.
-- **`.stack.ts` and `.construct.ts`** are role suffixes; they join
-  [pp-general's table](../../pp-general/references/coding-standards.md#role-suffixes) in the change
-  that first needs them (slice 2).
+- **`.stack.ts` and `.construct.ts`** are role suffixes in
+  [pp-general's table](../../pp-general/references/coding-standards.md#role-suffixes), valid under
+  `infra/` only.
 - **One shared function construct, from the second function**, never a construct class per
   function. Every cost-brake property MUST be identical on every function, and a copy that misses
   one is a cost or teardown defect, not a style issue; that is why this path does not wait for the

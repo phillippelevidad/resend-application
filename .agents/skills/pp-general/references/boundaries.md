@@ -88,9 +88,10 @@ the tree. `git grep -P` needs a PCRE-enabled git (Git for Windows ships one).
     ```sh
     git grep -nE "@ledger/(db|aws|api|ingest|worker|reconciler|dispatcher|resend-client)['\"]" -- apps/cli apps/mcp
     ```
-14. `process.env` is read only in a composition root. Allowed: what pp-infra permits in `infra`:
+14. `process.env` is read only in a composition root: a `main.ts`, and each
+    `infra/scripts/*.ts` ([pp-infra → scripts](../../pp-infra/references/scripts.md)):
     ```sh
-    git grep -n "process\.env" -- packages apps sim infra ':!*main.ts'
+    git grep -n "process\.env" -- packages apps sim infra ':!*main.ts' ':!infra/scripts/*.ts'
     ```
 15. No address outside Resend's test domain. Package specifiers such as `@ledger/x` do not match:
     ```sh

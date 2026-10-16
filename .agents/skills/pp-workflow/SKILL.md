@@ -97,8 +97,13 @@ that proves it; a lower tier does not count. Harness, file naming, arbitraries a
 
 - **Integration against real Postgres:** idempotency on `svix_id` and the outbox `dedupe_key` (a
   duplicate delivery leaves one row and one effect), order-independent projections, outbox
-  delivery, reconcile and replay, DLQ redrive, migrations, and auth boundaries (token scopes)
-  (ADR-004, ADR-006, ADR-007, ADR-008, ADR-018 in [Decisions](../../../.ai/architecture.md#decisions)).
+  delivery, reconcile and replay, the Postgres side of DLQ redrive (a redriven message under a new
+  SQS `messageId` leaves one row, AWS-21; local mode's redrive, slice 2B), migrations, and auth
+  boundaries (token scopes) (ADR-004, ADR-006, ADR-007, ADR-008, ADR-018 in
+  [Decisions](../../../.ai/architecture.md#decisions)).
+- **SQS redrive:** the `packages/aws` adapter tested against its port contract, plus the slice 3
+  poison run (simulator invariant 4)
+  ([pp-testing → DLQ redrive](../pp-testing/references/fakes-and-doubles.md#dlq-redrive)).
 - **Verify before enqueue:** a forged, stale or unsigned request never reaches the queue port, and
   `200` follows only a successful enqueue ([ADR-001](../../../.ai/architecture.md#adr-001--verify-then-enqueue)).
 - **PII masking in MCP output:** every tool's actual output carries masks only

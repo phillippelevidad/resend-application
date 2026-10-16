@@ -19,6 +19,12 @@ faked in tests, and how its own tests stand in for Resend's API, are
   reconciler a `full_access` key, the dispatcher a `sending_access` key
   ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)). The key arrives as config from
   the secret port; it never appears in a log, an error or an output (rule 7).
+- **Constructed with every option explicit:** `new Resend(key, { baseUrl, userAgent })`, `baseUrl`
+  from the function's typed config. Left unset, the SDK reads `process.env.RESEND_BASE_URL`
+  (`resend@6.33.0`), an env read outside the composition root that the config schema never sees;
+  the fake Resend API is reached the same way ([pp-testing](../../pp-testing/references/fakes-and-doubles.md#the-fake-resend-api)).
+  The AWS adapters likewise take their SDK client from `main.ts`, never build one with ambient
+  defaults ([composition.md](composition.md#the-composition-root)).
 - **Only the operations its callers need**, each a named method (List Events, Retrieve Webhook,
   Replay Event for slice 4; Send Email for slice 6). Never a generic `request(path)` passthrough.
   Whether the pinned `resend` SDK exposes each Headless Webhook API endpoint is checked in the slice

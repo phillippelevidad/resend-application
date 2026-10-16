@@ -12,7 +12,10 @@ mechanics.
 One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
 
 - **Console transport to stdout only.** Never an HTTP, file or CloudWatch transport: an async or
-  network transport can lose lines when Lambda freezes the environment.
+  network transport can lose lines when Lambda freezes the environment. Two surfaces differ:
+  `apps/mcp`, whose stdout is the JSON-RPC channel, routes every level to stderr (Winston Console
+  `stderrLevels`, [pp-mcp → Output](../../pp-mcp/SKILL.md#output)); `apps/cli` logs nothing, since
+  its output is its interface ([pp-cli → Output and exit codes](../../pp-cli/SKILL.md#output-and-exit-codes)).
 - **Write `level`, `timestamp` and `request_id` yourself.** Winston's Console transport writes to
   `console._stdout` unless `forceConsole` is set
   ([source](https://raw.githubusercontent.com/winstonjs/winston/master/lib/winston/transports/console.js)),

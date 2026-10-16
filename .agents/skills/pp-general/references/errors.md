@@ -70,8 +70,8 @@ surface. Anything that is not a `LedgerError` becomes `internal_error`: logged b
 | --- | --- | --- |
 | Read API (`packages/api`) | The Hono app's `onError`, plus the `@hono/zod-openapi` `defaultHook` for request validation ([ADR-019](../../../../.ai/architecture.md#adr-019--application-and-surface-stack)) | The registry status and `{ "error": { code, message, hint, docs } }` |
 | SDK (`packages/sdk`) | Its response handler | The same object. A response without the shape maps to `api_unavailable`; an unknown `code` is a generic failure ([Conventions](../../../../.ai/api-contract.md#conventions)) |
-| CLI (`apps/cli`) | Its exit-code mapping | Exit `1` on a registry error: the object on stdout with `--json`, else `message` and `hint` on stderr; exit `2` on a usage error ([pp-cli](../../pp-cli/SKILL.md)) |
-| MCP (`apps/mcp`) | Its tool-result mapping | `isError: true` with the error object as text content, never a JSON-RPC protocol error ([pp-mcp](../../pp-mcp/SKILL.md)) |
+| CLI (`apps/cli`) | Its exit-code mapping | Exit `1` on a registry error: the object on stdout with `--json`, else `message` and `hint` on stderr; exit `2` on a usage error ([pp-cli → Output and exit codes](../../pp-cli/SKILL.md#output-and-exit-codes)) |
+| MCP (`apps/mcp`) | Its tool-result mapping | `isError: true` with the error object as text content, never a JSON-RPC protocol error ([pp-mcp → Output](../../pp-mcp/SKILL.md#output)) |
 | Reconcile run outcome | The reconciler | The code stored in `reconcile_runs.error_code`, returned as the run's `error` object ([Error codes](../../../../.ai/api-contract.md#error-codes)) |
 
 **One envelope only.** A second error format on any surface, a per-route error shape, or a raw

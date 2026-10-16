@@ -71,8 +71,8 @@ Real Postgres, because the integration tier exists for what the database enforce
 
 ## Fakes at the port
 
-A fake implements a [named port](../pp-general/references/adding-things.md#add-an-interface) or the
-client `resend-client` exports; nothing else is faked
+A fake implements a [named port](../pp-general/references/adding-things.md#add-an-interface), the
+client `resend-client` exports, or the SDK client in CLI and MCP tests; nothing else is faked
 ([fakes-and-doubles.md](references/fakes-and-doubles.md)). The in-process queue is real, not a
 fake (ADR-013); time comes from the fake clock; `resend-client`'s consumers get a fake client, and
 `resend-client` itself, plus every claim crossing its limiter, runs the real client against a

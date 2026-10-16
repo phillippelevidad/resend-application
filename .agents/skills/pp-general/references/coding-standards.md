@@ -36,10 +36,12 @@ export are called.
 | Row or domain → wire (carries the masks) | `.mapper.ts` | `email-response.mapper.ts` → `emailResponseMapper` |
 | Projection (`packages/core`) | `.projection.ts` | `project-email.projection.ts` → `projectEmail` |
 | Reaction rule (`packages/core`) | `.rule.ts` | `bounce-suppression.rule.ts` → `bounceSuppressionRule` |
-| CLI command definition (pp-cli owns the shape) | `.cli.ts` | `email.cli.ts` → `emailCli` |
+| CLI command definition, one per operation (pp-cli owns the shape) | `.cli.ts` | `email-get.cli.ts` → `emailGetCli` |
 | MCP tool (pp-mcp owns the shape) | `.tool.ts` | `get-email-status.tool.ts` → `getEmailStatusTool` |
 | Config schema for a composition root | `.config.ts` | `worker.config.ts` → `workerConfig` |
 | Error class ([errors.md](errors.md)) | `.error.ts` | `ledger.error.ts` → `LedgerError` |
+| CDK stack (`infra/` only; pp-infra owns the shape) | `.stack.ts` | `app.stack.ts` → `AppStack` |
+| CDK construct (`infra/` only; pp-infra owns the shape) | `.construct.ts` | `ledger-function.construct.ts` → `LedgerFunction` |
 
 **Tests** sit beside the code they test and add a tier suffix after the file's own name:
 `.test.ts` (unit), `.prop.test.ts` (fast-check), `.int.test.ts` (real Postgres):
