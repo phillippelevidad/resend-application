@@ -4,6 +4,9 @@
   "type": "module",
   "description": "ledger CLI, built on the SDK",
   "license": "MIT",
+  "scripts": {
+    "start": "node src/main.ts"
+  },
   "dependencies": {
     "@commander-js/extra-typings": "15.0.0",
     "commander": "15.0.0"
