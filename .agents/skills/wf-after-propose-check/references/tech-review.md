@@ -11,13 +11,18 @@ You are not inventing a review standard. You are applying one that is already wr
 
 ## Routing — which skills the change earns
 
-Read the change's **Impact** section and its task groups, then load every row that matches. Loading too few is the failure mode; a skill costs one read and catches a class of defect.
+Read the change's **Impact** section and its task groups, then load every row that matches. Loading too few is the failure mode; a skill costs one read and catches a class of defect. This table maps what a design says to the skill; the path routing it mirrors is [pp-workflow → Which skill answers a code question](../../pp-workflow/SKILL.md#which-skill-answers-a-code-question), which wins if the two disagree.
 
 | Load | When the change touches |
 | --- | --- |
-| [`pp-workflow`](../../pp-workflow/SKILL.md) | Always — read order, slice scoping, the `pnpm verify` gate, doc duties, test tiers, Ask-first, naming, boundaries |
-| [`pp-database`](../../pp-database/SKILL.md) | Any table, column, closed set, index, constraint, `jsonb` column, or migration |
-| [`pp-backend`](../../pp-backend/SKILL.md) | Anything under `apps/` or `packages/` — a Lambda handler, projection, repository, port, outbox reaction, reconcile or redrive path — **and** every surface: `apps/cli`, `apps/mcp`, `packages/sdk`, a command, flag, tool, output format, error `message` or `hint` |
+| [`pp-workflow`](../../pp-workflow/SKILL.md) | Always — read order, slice scoping, the `pnpm verify` gate, doc duties, test tiers, Ask-first, skill routing |
+| [`pp-general`](../../pp-general/SKILL.md) | Always, when the change writes TypeScript — naming, imports, boundaries, adding a dependency or package, errors, logging, PII in code, config and env |
+| [`pp-database`](../../pp-database/SKILL.md) | Any table, column, closed set, index, constraint, grant, `jsonb` column, or migration |
+| [`pp-backend`](../../pp-backend/SKILL.md) | Anything under `packages/` or `apps/` outside `packages/db`, `apps/cli` and `apps/mcp` — a Lambda handler, projection, port, outbox reaction, reconcile or redrive path, a read-API route, `resend-client` — **and** the SDK and the rules every surface shares: an error `message` or `hint`, masks, one contract |
+| [`pp-testing`](../../pp-testing/SKILL.md) | Any test the change promises, the Postgres harness, a fake, an arbitrary, or `sim/` |
+| [`pp-infra`](../../pp-infra/SKILL.md) | `infra/`, a Lambda, queue, secret, schedule, alarm or log group, a deploy, teardown or AWS-facing script |
+| [`pp-cli`](../../pp-cli/SKILL.md) | `apps/cli` — a command, flag, output format or exit code |
+| [`pp-mcp`](../../pp-mcp/SKILL.md) | `apps/mcp` — a tool, its registration, annotations or output |
 
 Where two rules collide, the [decision-lens tie-break](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) decides: correctness of event handling (no loss, no duplicate effects, order-independent state) outranks everything else.
 
@@ -54,7 +59,7 @@ The [new-table recipe](../../pp-database/SKILL.md#new-table-recipe) is the check
 | The Drizzle schema in `packages/db` as the source of truth, migrations expand/contract | A hand-edited generated migration, or a contract step that needs downtime |
 | The **Model index** `Modeled` checkbox as a task | The only place "is this table real yet?" is answerable |
 
-Its `Never` list in one line each: editing an applied migration · a `pgEnum` · deduplicating on anything but `svix_id` · updating or deleting a `webhook_events` row outside the retention job · patching a projection incrementally or ordering its input by arrival · a projection column with no source in the event set · a uniqueness rule enforced by reading first · business logic in a trigger or procedure, or a view used as an API · FKs or cascades between `webhook_events` and projections · `jsonb` for anything a query filters on · a raw address, unkeyed hash or plaintext token · a `tenant_id`, `deleted_at`, secret or real recipient address anywhere.
+Then walk [`pp-database` → Never](../../pp-database/SKILL.md#never) entry by entry against the design. Read it there, never from a copy: the list is the binding text and it changes.
 
 ## Backend — `pp-backend`
 
@@ -73,9 +78,9 @@ Its `Never` list in one line each: editing an applied migration · a `pgEnum` ·
 
 Watch specifically for the **read-then-write** shape: a cap, a quota, or a uniqueness rule enforced by counting first. Two concurrent submits both pass it. The constraint decides, never a read.
 
-## Surfaces — `pp-backend`
+## Surfaces — `pp-backend`, `pp-cli`, `pp-mcp`
 
-[`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp) binds the read API, the SDK, the CLI and the MCP server.
+[`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp) binds the SDK and the rules every surface shares. [`pp-cli` → Output and exit codes](../../pp-cli/SKILL.md#output-and-exit-codes) owns the CLI's, and [`pp-mcp` → Tool registration and least privilege](../../pp-mcp/SKILL.md#tool-registration-and-least-privilege) the MCP server's.
 
 | Read the design for | The defect when it is silent |
 | --- | --- |

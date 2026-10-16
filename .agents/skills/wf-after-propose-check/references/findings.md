@@ -119,7 +119,7 @@ The script helps with the first shape only, listing every backticked identifier 
 - An Ask-first task not flagged — a change to a pushed migration, a new dependency, a CI change, a public-contract change, an AWS deploy or a live Resend write that apply would commit without the owner.
 - `pnpm verify` not last, or absent. Exit 0 with every stage run is the only definition of done.
 - A task bundling three independent things, so it cannot fail cleanly or land as one PR.
-- The [doc-update duties `pp-workflow` owes](../../pp-workflow/SKILL.md#definition-of-done) missing entirely: the build-checklist `Status` line and `Ships` boxes in place, the data-modeling **Model index** `Modeled` checkbox, `api-contract.md`, the root `AGENTS.md` **Projects** table, `.env.example`.
+- The [doc-update duties `pp-workflow` owes](../../pp-workflow/SKILL.md#definition-of-done) missing entirely: the build-checklist `Status` line and `Ships` boxes in place, the data-modeling **Model index** `Modeled` checkbox, `api-contract.md`, the root `AGENTS.md` **Projects** table and **Commands** line, `.env.example`, and the owning `pp-*` skill for a code-level convention no doc owns.
 
 **What it costs.** A half-applied migration, or a build that stops at task 4 of 9 with the owner holding the pieces.
 

@@ -287,14 +287,20 @@ Skills live in [`.agents/skills/`](.agents/skills/). When a skill and a doc it l
 doc wins and the skill is fixed in the same change.
 
 **Mandatory.** `pp-workflow` loads before any code, any slice work, and alongside every `wf-*` gate.
-`pp-backend` and `pp-database` load whenever a change touches their surface. Those three bind every
-implementer and reviewer.
+`pp-general` loads before any TypeScript. The other `pp-*` skills load whenever a change touches
+their surface, as [pp-workflow → Which skill answers a code question](.agents/skills/pp-workflow/SKILL.md#which-skill-answers-a-code-question)
+routes them. The `pp-*` skills bind every implementer and reviewer.
 
 | Skill | Load it when |
 | --- | --- |
-| `pp-workflow` | Always, before code: read order, slice scoping, the `pnpm verify` gate, the doc duties every change owes, test tiers |
-| `pp-backend` | A change touches `apps/` or `packages/`: handlers, projections, repositories, ports, outbox, reconcile, CLI, MCP, SDK |
-| `pp-database` | A change touches a table, column, index, constraint, `jsonb` column, migration or seed |
+| `pp-workflow` | Always, before code: read order, slice scoping, the `pnpm verify` gate, the doc duties every change owes, test tiers, the Ask-first check, which `pp-*` skill answers a code question |
+| `pp-general` | Any TypeScript in `packages/`, `apps/`, `infra/`, `sim/` or `scripts/`: naming, imports and tsconfig, boundaries, adding things, errors, logging, PII in code, config and env, versions |
+| `pp-backend` | A change touches `packages/` (except `db`) or `apps/` (except `cli`, `mcp`): factories, ports, handlers, outbox, reconcile, redrive, `resend-client`, the read API, the SDK |
+| `pp-database` | A change touches `packages/db`, a table, column, index, constraint, `jsonb` column, grant, migration or seed |
+| `pp-testing` | A change adds or edits a `*.test.ts`, `*.prop.test.ts` or `*.int.test.ts`, the Vitest config, a harness, a fake, an arbitrary, or `sim/` |
+| `pp-infra` | A change touches `infra/`, a script that calls it, or adds a Lambda, queue, secret, schedule, alarm or log group |
+| `pp-cli` | A change touches `apps/cli` |
+| `pp-mcp` | A change touches `apps/mcp` |
 | `wf-before-propose` | Before proposing a slice: writes the decision-complete pre-proposal in `.ai/pre-proposals/` |
 | `wf-before-propose-check` | Right after `wf-before-propose`: verifies and repairs the pre-proposal |
 | `opsx:propose` | Creates the slice's OpenSpec change from the checked pre-proposal |

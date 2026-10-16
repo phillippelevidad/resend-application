@@ -72,7 +72,7 @@ Every finding here is a **divergence between two things that were supposed to ag
 | [findings.md](references/findings.md) | Passes 2, 3 and 5 — the seven finding classes, each with its tell, what it costs after archive, and how it closes; plus the doc-duty ledger |
 | [diff-review.md](references/diff-review.md) | Pass 4 — the per-surface correctness and security checklists, and the brief to hand each helper reader verbatim |
 
-Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill, always. Load [`pp-database`](../pp-database/SKILL.md) and [`pp-backend`](../pp-backend/SKILL.md) **for every surface the diff touches** — that is not optional, it is what pass 4 checks against. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for the `.ai/` anchors; use it rather than re-deriving them.
+Load [`pp-workflow`](../pp-workflow/SKILL.md) and [`pp-general`](../pp-general/SKILL.md) alongside this skill, always. Load every skill [pp-workflow's routing table](../pp-workflow/SKILL.md#which-skill-answers-a-code-question) names **for every surface the diff touches** — that is not optional, it is what pass 4 checks against. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for the `.ai/` anchors; use it rather than re-deriving them.
 
 ## Pipeline
 
@@ -113,7 +113,7 @@ It also builds **five worklists**, and this is where the expensive defects hide:
 - **`undeclared`** — files in the diff that no task names. Either scope crept or a task's text is wrong; both matter.
 - **`duties`** — each doc obligation with its verdict, so the ones that are genuinely discharged stop costing you reading.
 - **`unconfirmed`** — the bullets `REVIEW.md` said it could not confirm, lifted verbatim. Every one of them is now checkable.
-- **`surfaces`** — the diff bucketed into schema / backend / sdk-cli-mcp / tests-docs, with line counts. This is the split you hand the helpers in pass 4.
+- **`surfaces`** — the diff bucketed into schema / backend / infra / sdk-cli-mcp / tests-docs, with line counts. This is the split you hand the helpers in pass 4.
 
 `BLOCK` items are wrong as written. `READ` items are for your judgement — the script says "this is the shape of a defect", not "this is one". **A clean run is not a finished slice.** It means the cheap defects are gone and the reading can start.
 

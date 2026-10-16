@@ -71,7 +71,7 @@ Outbox event types and their payload shape · SQS consumers and their idempotenc
 
 Per surface the card's `UI surfaces` line names: the operation it calls, from [`api-contract.md`](../api-contract.md) · the SDK method · the CLI command and its flags, `--json` included · the MCP tool and its input schema · actor and scope (what a `read` token sees vs. an `operate` one) · what the human and `--json` output carry, timestamps and masks included · **every error code it raises**, from [the registry](../api-contract.md#error-codes), with its `message` and `hint` in the [error shape](../../AGENTS.md#error-shape).
 
-Surface wording is [`pp-backend`](../../.agents/skills/pp-backend/SKILL.md#surfaces--sdk-cli-mcp)'s domain. **Write each `message` and `hint` out, do not describe it** — a hint left for implementation is a hint invented at 2am. A new error code, or a changed command, flag or tool, is a public-contract change: flag it Ask-first.
+Surface wording is [`pp-backend`](../../.agents/skills/pp-backend/SKILL.md#surfaces--sdk-cli-mcp)'s domain for the SDK and the shared rules, [`pp-cli`](../../.agents/skills/pp-cli/SKILL.md#output-and-exit-codes)'s for the CLI and [`pp-mcp`](../../.agents/skills/pp-mcp/SKILL.md#tool-registration-and-least-privilege)'s for the MCP server. **Write each `message` and `hint` out, do not describe it** — a hint left for implementation is a hint invented at 2am. A new error code, or a changed command, flag or tool, is a public-contract change: flag it Ask-first.
 
 ### 13. Recovery paths — redrive, replay, reconcile
 

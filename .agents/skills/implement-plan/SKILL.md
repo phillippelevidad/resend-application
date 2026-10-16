@@ -27,9 +27,10 @@ tooling change with a plan file behind it. It sits beside the slice workflow, no
 
 Say which bullet triggered the stop, and do nothing else.
 
-**Load alongside:** [`pp-workflow`](../pp-workflow/SKILL.md) always; [`pp-backend`](../pp-backend/SKILL.md)
-when the plan touches `apps/` or `packages/`; [`pp-database`](../pp-database/SKILL.md) when it touches
-a table, column, index, constraint or seed. Their duties and `Never` lists bind every implementer and
+**Load alongside:** [`pp-workflow`](../pp-workflow/SKILL.md) always; [`pp-general`](../pp-general/SKILL.md)
+whenever the plan touches TypeScript; and every skill
+[pp-workflow → Which skill answers a code question](../pp-workflow/SKILL.md#which-skill-answers-a-code-question)
+names for the paths the plan touches. Their duties and `Never` lists bind every implementer and
 verifier prompt. Ask-first changes ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions))
 stop for the owner's approval even inside an approved plan.
 

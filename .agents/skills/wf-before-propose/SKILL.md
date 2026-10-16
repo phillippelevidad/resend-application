@@ -24,7 +24,7 @@ So the failure this skill prevents is not "the proposal asked a question" — it
 | [doc-map.md](references/doc-map.md) | Phases 1–3 — which `.ai/` anchor holds which fact, the `Slices:` index trick, and the repo reality-check recipes |
 | [template.md](references/template.md) | Phase 5 — the pre-proposal's sections, what each must carry, and the write gate |
 
-Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill (read order, slice scoping, definition of done). Load [`pp-database`](../pp-database/SKILL.md) and [`pp-backend`](../pp-backend/SKILL.md) **when the slice touches their surface** — their wording is what the pre-proposal's rules must be consistent with. Where they collide, the [decision lens tie-break](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) settles it: correctness of event handling (no loss, no duplicate effects, order-independent state) outranks everything else.
+Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill (read order, slice scoping, definition of done), and [`pp-general`](../pp-general/SKILL.md) whenever the slice writes TypeScript. Load every skill [pp-workflow's routing table](../pp-workflow/SKILL.md#which-skill-answers-a-code-question) names **for the surfaces the slice touches** — their wording is what the pre-proposal's rules must be consistent with. Where they collide, the [decision lens tie-break](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) settles it: correctness of event handling (no loss, no duplicate effects, order-independent state) outranks everything else.
 
 ## Output
 

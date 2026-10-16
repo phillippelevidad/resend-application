@@ -57,7 +57,7 @@ Work down. Stop at the first rung that settles it.
 | [findings.md](references/findings.md) | Passes 2, 4 and 5 — the eight finding classes, each with its tell, what it costs at build time, and how it closes; plus the per-artifact conformance table |
 | [tech-review.md](references/tech-review.md) | Pass 3 — how to review a design document against skills written to review a diff: the routing map, the `Never` lists that matter most, and the schema / backend / surfaces checklists |
 
-Load [`pp-workflow`](../pp-workflow/SKILL.md) alongside this skill, always. Load the task-relevant `pp-*` skills **for every surface the change touches** — that is not optional here, it is the whole of pass 3. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for both the `.ai/` anchors and the repo reality-check recipes; use it rather than re-deriving them.
+Load [`pp-workflow`](../pp-workflow/SKILL.md) and [`pp-general`](../pp-general/SKILL.md) alongside this skill, always. Load every skill [pp-workflow's routing table](../pp-workflow/SKILL.md#which-skill-answers-a-code-question) names **for every surface the change touches** — that is not optional here, it is the whole of pass 3. [`wf-before-propose`'s doc-map](../wf-before-propose/references/doc-map.md) is the navigation aid for both the `.ai/` anchors and the repo reality-check recipes; use it rather than re-deriving them.
 
 ## Pipeline
 

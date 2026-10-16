@@ -27,7 +27,7 @@ So: **count them, name them in one line, and read none of them.**
 
 ## Splitting the work
 
-The script's `surfaces` worklist buckets the readable diff four ways. Hand each helper **one bucket and one section of this file**, verbatim, in a single wave. Under ~800 readable lines, skip the helpers and read it yourself — the coordination costs more than the reading.
+The script's `surfaces` worklist buckets the readable diff five ways. Hand each helper **one bucket and one section of this file**, verbatim, in a single wave. Under ~800 readable lines, skip the helpers and read it yourself — the coordination costs more than the reading.
 
 ### The brief to hand each helper
 
@@ -37,7 +37,7 @@ Paste this, filling the three slots. Do not paraphrase it; the constraints are w
 You are reviewing one surface of an implemented change in this repo.
 Read-only: do not edit, do not commit, do not run the test suite.
 
-Surface: <schema | backend | sdk-cli-mcp | tests-docs>
+Surface: <schema | backend | infra | sdk-cli-mcp | tests-docs>
 Files:   <the file list from the `surfaces` worklist — these only, nothing else>
 Base:    git diff <base>...HEAD -- <those paths>
 
@@ -59,7 +59,7 @@ coordinator holds those and their exact wording is what binds.
 
 ---
 
-## Schema — `packages/db/**` (the Drizzle `pgTable` schema, migrations under `drizzle/` or `migrations/`, seeds)
+## Schema — `packages/db/**` (the Drizzle `pgTable` schema, migrations under `packages/db/drizzle/`, seeds)
 
 Load [`pp-database`](../../pp-database/SKILL.md). Its [new-table recipe](../../pp-database/SKILL.md#new-table-recipe) is the checklist the schema and migration either satisfy or do not; its [`Never` list](../../pp-database/SKILL.md#never) and [data-modeling.md → Anti-patterns](../../../../.ai/data-modeling.md#anti-patterns-must-not) are the hard edges.
 
@@ -95,9 +95,9 @@ Load [`pp-database`](../../pp-database/SKILL.md). Its [new-table recipe](../../p
 
 ---
 
-## Backend — `apps/**`, `packages/**`, `infra/`, `sim/`, `scripts/` (minus `packages/db`, `packages/sdk`, `apps/cli`, `apps/mcp`)
+## Backend — `apps/**`, `packages/**`, `scripts/` (minus `packages/db`, `packages/sdk`, `apps/cli`, `apps/mcp`)
 
-Load [`pp-backend`](../../pp-backend/SKILL.md).
+Load [`pp-backend`](../../pp-backend/SKILL.md) for `apps/**` and `packages/**`; root `scripts/` is [`pp-general`](../../pp-general/SKILL.md)'s alone.
 
 ### Correctness
 
@@ -131,9 +131,15 @@ Load [`pp-backend`](../../pp-backend/SKILL.md).
 
 ---
 
+## Infra — `infra/**`
+
+Load [`pp-infra`](../../pp-infra/SKILL.md). Walk its [`Never` list](../../pp-infra/SKILL.md#never) and its gate against the diff, and check every property in [Cost brake in code](../../pp-infra/SKILL.md#cost-brake-in-code) still has its `Template` assertion. A cost-brake property with no assertion is a [budget-alarm-class gap](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) (lens clause 6), not polish. Creating or deploying an AWS resource is Ask-first.
+
+---
+
 ## Surfaces — SDK, CLI, MCP — `packages/sdk/**`, `apps/cli/**`, `apps/mcp/**`
 
-Load [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp). [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions) binds every surface, and the [error-code registry](../../../../.ai/api-contract.md#error-codes) is the only list of codes.
+Load [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp) for the SDK and the shared rules, [`pp-cli`](../../pp-cli/SKILL.md) for `apps/cli/**`, and [`pp-mcp`](../../pp-mcp/SKILL.md) for `apps/mcp/**`. [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions) binds every surface, and the [error-code registry](../../../../.ai/api-contract.md#error-codes) is the only list of codes.
 
 ### Correctness
 
@@ -157,13 +163,15 @@ Load [`pp-backend` → Surfaces](../../pp-backend/SKILL.md#surfaces--sdk-cli-mcp
 
 ---
 
-## Tests, docs and config — `**/*.spec.ts`, `.ai/**`, `*.md`, `.env.example`, CI
+## Tests, docs and config — `**/*.test.ts`, `sim/**`, `.ai/**`, `*.md`, `.env.example`, CI
+
+Load [`pp-testing`](../../pp-testing/SKILL.md) for the tests and `sim/`: file and tier naming, the Postgres harness, fakes at the port, arbitraries and invariant checkers.
 
 ### Correctness
 
 | Read for | The bug when it is absent |
 | --- | --- |
-| An **integration test against real Postgres** for every mandatory-tier surface the diff touched | Idempotency on `svix_id` and the outbox `dedupe_key`, order-independent projections, outbox delivery, reconcile and replay, DLQ redrive, migrations, auth boundaries (bearer-token scopes `read` / `operate`). [`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) owns the tier; nothing else is negotiable |
+| The **mandatory-tier test** for every mandatory surface the diff touched | Against real Postgres (`*.int.test.ts`): idempotency on `svix_id` and the outbox `dedupe_key`, order-independent projections, outbox delivery, reconcile and replay, DLQ redrive, migrations, auth boundaries (bearer-token scopes `read` / `operate`). Plus: a forged, stale or unsigned request never reaching the queue port ([ADR-001](../../../../.ai/architecture.md#adr-001--verify-then-enqueue)), and every MCP tool's actual output carrying masks only (slice 5). [`pp-workflow` → Test tiers](../../pp-workflow/SKILL.md#test-tiers) owns the tier; nothing else is negotiable |
 | An idempotency test that would **fail** if the dedupe were dropped — it must assert one row and one effect after a duplicate delivery, not just that the insert runs | The test that passes against a table with no unique constraint |
 | A test per spec `#### Scenario:` — the WHEN/THEN is the test | A requirement with no failing test ships unbuilt and green |
 | Assertions on the **refusal**, not only the happy path | Half of these findings are a refusal that returns 200 |

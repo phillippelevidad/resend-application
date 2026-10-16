@@ -280,16 +280,18 @@ const noisePaths = allPaths.filter((p) => NOISE.test(p));
 const readable = allPaths.filter((p) => !NOISE.test(p));
 
 const bucketOf = (p) => {
-  if (TEST_FILE.test(p)) return "tests-docs";
+  if (TEST_FILE.test(p) || /^sim\//.test(p)) return "tests-docs";
   if (/^packages\/db\//.test(p)) return "schema";
   if (/^(apps\/(cli|mcp)|packages\/sdk)\//.test(p)) return "sdk-cli-mcp";
-  if (/^(apps|packages|infra|sim|scripts)\//.test(p)) return "backend";
+  if (/^infra\//.test(p)) return "infra";
+  if (/^(apps|packages|scripts)\//.test(p)) return "backend";
   return "tests-docs";
 };
 
 const buckets = {
   schema: [],
   backend: [],
+  infra: [],
   "sdk-cli-mcp": [],
   "tests-docs": [],
 };
