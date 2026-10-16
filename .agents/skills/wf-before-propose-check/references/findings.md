@@ -165,7 +165,7 @@ Read with [wf-before-propose's template](../../wf-before-propose/references/temp
 | 18 | Providers, env vars, secrets, owner ops | An owner op recorded as an open question. It is a work item with an owner |
 | 19 | The self-service test and the cost brake, in writing | F6 — run it, do not read it |
 | 20 | What proves each requirement, by tier; what `pnpm verify` cannot see | A requirement with no test that would fail if the mechanism were removed |
-| 21 | One numbered path per role in `UI surfaces`, with URLs | A role the card claims that no path can walk — a finding against the slice, not the walkthrough |
+| 21 | Every `UI surfaces` entry reached by a numbered path, a persona per path, a command or request and expected output per step, Ask-first steps marked ([format](../../rsa-manual-test/references/walkthrough-format.md)) | A surface the card claims that no path can walk — a finding against the slice, not the walkthrough. A live Resend or AWS write with no `**Ask-first:**` marker |
 | 22 | Every doc edit the change owes, including corrections this run found | An `.ai/` correction applied here instead of recorded. **Never edit `.ai/` from this skill** |
 | 23 | Capability paths with `ADDED`/`MODIFIED`, requirements per delta, ordered task groups | Script-checked for the verdicts. Judge the ordering and the Ask-first flags |
 | 24 | Risks with likelihood, cost, and the cheapest early catch | A risk with no catch, which is a worry rather than a risk |

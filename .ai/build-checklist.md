@@ -30,10 +30,16 @@ restate. Milestones carry no dates ([about.md → Milestones](about.md#milestone
   Experiments that write to a live Resend account and every AWS deploy are Ask-first: the card's
   `Ops` line lists them.
 - **The walkthrough a slice owes.** Every slice's change folder (`openspec/changes/slice-<id>-<kebab>/`)
-  MUST contain a `WALKTHROUGH.md` before its `Status` is ticked: numbered steps, one path per surface
-  the card's `UI surfaces` line names, each with the exact CLI command, API request or simulator run
-  and its expected output. A step that cannot be completed today MUST name the slice that covers it,
-  inline. A surface the card claims but no step reaches is a finding against this slice.
+  MUST contain a `WALKTHROUGH.md` before its `Status` is ticked: numbered steps in paths that reach
+  every surface the card's `UI surfaces` line names (a path MAY group surfaces walked together),
+  each with the exact CLI command, API request or simulator run and its expected output. A step
+  that cannot be completed today MUST name the slice that covers it, inline. A surface the card
+  claims but no step reaches is a finding against this slice. Each path names the persona walking
+  it, setup MUST be non-destructive, and every step that writes to a live Resend account or AWS
+  MUST carry an `**Ask-first:**` marker; the format is
+  [rsa-manual-test → walkthrough-format.md](../.agents/skills/rsa-manual-test/references/walkthrough-format.md).
+  `rsa-manual-test` executes the walk after `wf-after-apply-check` and records `WALKTHROUGH-RUN.md`
+  in the change folder before `opsx:archive`.
 - **Ships are capability-level.** Explode them into tasks when the slice starts (OpenSpec
   `tasks.md`), not up front. The propose gates compare Ships text verbatim, so a reworded bullet is
   a scope change: edit the card first.

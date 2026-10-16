@@ -121,7 +121,7 @@ The concrete test, per artifact `opsx:propose` must write:
 | `design.md` | §7, §8, §9, §10, §11, §15, §19 | Decisions with authority, and a reader who never has to re-derive one |
 | `tasks.md` | §23's task groups, §20, §21 | Ordered, independently verifiable, Ask-first flagged, `pnpm verify` last |
 
-Then §12's error codes with their `message` and `hint` written out per surface, §13's recovery path, §17's PII answer, and §21's one path per role.
+Then §12's error codes with their `message` and `hint` written out per surface, §13's recovery path, §17's PII answer, and §21's paths, every `UI surfaces` entry reached.
 
 **Run §19's self-service test yourself rather than reading the document's answer.** It is the sharpest detector in the repo and the document grades its own homework: walk [`deploy → connect the webhook → ingest → query → recover → tear down`](../../../.ai/about.md#guiding-principles) for the stages this slice touches and ask, at each step, *who on the owner's side has to do something by hand for this to work?* An owner script, a SQL query to find a row id, a console click, an unbounded wait — each is a human on the adopter's path, and each is the lens's admitted-fallback case whether or not §19 admits it. The cheapest removal usually already exists: a read that loads the row anyway can return its id, and an operation that exists needs only a CLI command.
 

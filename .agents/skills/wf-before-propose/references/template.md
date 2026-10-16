@@ -112,7 +112,7 @@ What proves each requirement: unit tier, integration tier (duplicate and out-of-
 
 ### 21. Walkthrough plan
 
-The owner hand-exercises every finished slice, so the change owes a `WALKTHROUGH.md`. Sketch it here: **one numbered path per role the card's `UI surfaces` line names**, in the order a person meets them, with the URL or command for each step. Any step that cannot be completed today names the slice that covers it, inline. A flow the card claims but no role can reach is a finding against this slice.
+Every finished slice is walked by hand (`rsa-manual-test` executes it; the owner approves or walks the Ask-first steps), so the change owes a `WALKTHROUGH.md` in [the walkthrough format](../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). Sketch it here: **every surface the card's `UI surfaces` line names reached by a numbered path** (a path MAY group surfaces walked together), in the order a person meets them, each path naming the persona walking it, each step with its command or request and its expected output where known. Mark every step that writes to a live Resend account or AWS `**Ask-first:**`. Any step that cannot be completed today names the slice that covers it, inline. A surface the card claims but no path reaches is a finding against this slice.
 
 ### 22. Docs to update
 

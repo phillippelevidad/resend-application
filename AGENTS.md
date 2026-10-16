@@ -306,7 +306,8 @@ routes them. The `pp-*` skills bind every implementer and reviewer.
 | `opsx:propose` | Creates the slice's OpenSpec change from the checked pre-proposal |
 | `wf-after-propose-check` | Right after `opsx:propose`, before `opsx:apply`: verifies and repairs the change |
 | `opsx:apply` | Builds the change's tasks |
-| `wf-after-apply-check` | Right after `opsx:apply`, before `opsx:archive`: verifies the code, runs `pnpm verify`, walks `WALKTHROUGH.md` |
+| `wf-after-apply-check` | Right after `opsx:apply`, before `opsx:archive`: verifies the code, runs `pnpm verify`, desk-checks `WALKTHROUGH.md` against the code |
+| `rsa-manual-test` | Right after `wf-after-apply-check`, before `opsx:archive`, or whenever asked to walk, smoke-test or reproduce something: executes the slice's `WALKTHROUGH.md` or a free-form check, report only |
 | `opsx:archive` | Archives a verified change |
 | `opsx:explore`, `opsx:update`, `opsx:sync` | Thinking a change through; revising its artifacts; syncing delta specs without archiving |
 | `implement-plan` | A tweak too small for an OpenSpec change, from a plan file. Never a slice, a public contract or a migration |
@@ -315,6 +316,6 @@ routes them. The `pp-*` skills bind every implementer and reviewer.
 | `wf-create-pr` | Only when asked to open or rewrite a PR |
 
 A slice runs `wf-before-propose` → `wf-before-propose-check` → `opsx:propose` →
-`wf-after-propose-check` → `opsx:apply` → `wf-after-apply-check` → `opsx:archive`. The
-`openspec-*` skills are OpenSpec's generated twins of the `/opsx:*` commands (see
+`wf-after-propose-check` → `opsx:apply` → `wf-after-apply-check` → `rsa-manual-test` →
+`opsx:archive`. The `openspec-*` skills are OpenSpec's generated twins of the `/opsx:*` commands (see
 [Commands](#commands)).

@@ -36,5 +36,6 @@ Every file below is ratified and binding. [docs/idea.md](../docs/idea.md) is a f
 | [build-checklist.md](build-checklist.md) | Per-slice execution tracker the `wf-*` skills parse | Required — planning, proposing, status |
 | [check-before-launch.md](check-before-launch.md) | Homeless pre-deploy and pre-demo checks | Required — before a deploy or publishing the demo |
 | [pre-proposals/](pre-proposals/) | One decision-complete brief per slice, written by `wf-before-propose` | When proposing a slice |
+| `testing/` | Free-form manual-test runs, one file per run, written by `rsa-manual-test` | Never — unless auditing a run |
 | [reviews/](reviews/) | One folder per docs verification run: its decisions log. A historical record, **not binding**: the fixes live in the docs above | Never — unless auditing a past review |
 | [commands/](commands/AGENTS.md) | Ready-made prompts the owner pastes by hand. **Not context, never auto-invoked** | **Never — unless asked for a command by name** |

@@ -49,6 +49,7 @@ duty below that the change triggers is discharged in the same diff. Until slice 
 | Lands a table in the schema and a migration | The ticked `Modeled` box in [data-modeling.md → Model index](../../../.ai/data-modeling.md#model-index) |
 | Adds, removes or repurposes a project folder | The [root AGENTS.md → Projects](../../../AGENTS.md#projects) table |
 | Lands a command | Its line in [root AGENTS.md → Commands](../../../AGENTS.md#commands) |
+| Lands or changes how a surface starts (a command, a port, an environment variable name) | [rsa-manual-test → environment.md](../rsa-manual-test/references/environment.md) updated |
 | Completes or advances a slice | The card's `Status` line and `Ships` boxes, updated in place ([Legend](../../../.ai/build-checklist.md#legend)) |
 | Ships a slice | `WALKTHROUGH.md` in the change folder before `Status` is ticked ([build-checklist](../../../.ai/build-checklist.md#how-to-work-this-checklist)) |
 | Lands the evidence for a row of [What this project must demonstrate](../../../.ai/about.md#what-this-project-must-demonstrate) | That row's evidence column, linked |

@@ -7,7 +7,7 @@ description: Adversarially verifies the code `opsx:apply` actually wrote — fir
 
 **Owns:** verifying the diff against the change, the ratified `.ai/` docs and the binding `pp-*` skills · the correctness and security hunt over the diff · the `pnpm verify` gate and its honest result · repairing what those settle, one commit per fix · the doc duties the change owes · `VERIFICATION.md` · the owner round · the done-or-not verdict.
 
-**Does not own:** implementing a task nobody built (→ `opsx:apply`) · verifying the change artifacts before code exists (→ [`wf-after-propose-check`](../wf-after-propose-check/SKILL.md), which already ran) · archiving (→ `opsx:archive`) · ratifying a new or superseding decision into `.ai/` (→ record it under [about.md → Open questions](../../../.ai/about.md#open-questions) tagged `[Unverified]` and put it to the owner in the owner-decision round) · writing the code-level rules (→ the [`pp-*` skills](../../../AGENTS.md#patterns-and-practices), which this skill only enforces).
+**Does not own:** implementing a task nobody built (→ `opsx:apply`) · verifying the change artifacts before code exists (→ [`wf-after-propose-check`](../wf-after-propose-check/SKILL.md), which already ran) · executing the walk (→ [`rsa-manual-test`](../rsa-manual-test/SKILL.md), which runs next) · archiving (→ `opsx:archive`) · ratifying a new or superseding decision into `.ai/` (→ record it under [about.md → Open questions](../../../.ai/about.md#open-questions) tagged `[Unverified]` and put it to the owner in the owner-decision round) · writing the code-level rules (→ the [`pp-*` skills](../../../AGENTS.md#patterns-and-practices), which this skill only enforces).
 
 **Precedence:** a ratified `.ai/` decision and a binding `pp-*` rule both outrank anything the change or the code says, and correctness of event handling (no loss, no duplicate effects, order-independent state) outranks everything else ([decision lens → Tie-break](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized)). The [decision lens](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) and the [risk appetite](../../../.ai/about.md#risk-appetite) outrank this skill's own reasoning. The slice card's `Ships` list is still the scope contract — repairs may complete it, never widen it.
 
@@ -152,12 +152,13 @@ The finding that matters most is the one `pnpm verify` structurally cannot see: 
 
 ### Pass 5 — The walk: can the owner actually use this?
 
-[`WALKTHROUGH.md`](../../../.ai/build-checklist.md#how-to-work-this-checklist) is the slice's own acceptance script, and this is the last chance to find out it does not work. Read it against the code, step by step:
+[`WALKTHROUGH.md`](../../../.ai/build-checklist.md#how-to-work-this-checklist) is the slice's own acceptance script, and this is the last chance to find out it does not work before it is run. This pass is a **desk check**: read it against the code, step by step; [`rsa-manual-test`](../rsa-manual-test/SKILL.md) executes it after this gate.
 
 - **Does each step's mechanism exist and connect?** The CLI command exists, it calls the SDK method, the SDK reaches a routed operation, the operation returns what the step expects, and the fixture or simulator scenario the step names exists. The failure shape is a capability that exists in the API and is unreachable from the CLI.
 - **Does the output on the step match the output in the code?** A walkthrough quoting a CLI message, an error `code` or a `hint` the code does not contain means one of them moved, and the owner will find out mid-walk.
 - **Does every step that cannot be completed today name the slice that carries it, inline?** That rule has teeth: an unwalkable step with no destination *is* the slice not being done, and `pnpm verify` cannot see it.
 - **Does every surface the card claims have a path?** A claimed flow no command, route or simulator run can reach is [a finding against this slice](../../../.ai/build-checklist.md#how-to-work-this-checklist), not a note for a later one.
+- **Is it in the format?** [walkthrough-format.md](../rsa-manual-test/references/walkthrough-format.md): `## Path` headings, numbered steps, an `Expect:` on every step, and every live Resend or AWS write marked `**Ask-first:**`. A walkthrough the runner cannot parse is one nobody executes.
 
 Where the walkthrough is wrong and the code is right, fix the walkthrough. Where the code cannot support the walk, that is a rung-1 code fix — or, if it is real unbuilt scope, the slice is not done and you say so.
 
@@ -175,7 +176,7 @@ Then write **`VERIFICATION.md`** in the change directory — at most ~30 lines, 
 ```markdown
 # Verification — <date>
 
-**Verdict:** done, ready for `opsx:archive` · or · not done — <what is open>
+**Verdict:** done, ready for `rsa-manual-test`, then `opsx:archive` · or · not done — <what is open>
 **Gate:** `pnpm verify` exit 0, every stage run · or · <the stage that failed, or why it did not run>
 **Read:** `<base>...<head>` — <n> files, <n> lines · the four change artifacts · <the .ai docs checked> · <the pp-* skills loaded>
 **Fixed:** <n>, one commit each — <sha list>
@@ -225,11 +226,11 @@ Your call (<n>, ideally 0)
 What I could not check
 - <the live-deploy step, the failed lookup, the pass you cut, the thing only you know>
 
-Done. Run `opsx:archive`.  ·or·  <what is still open and what closes it>
+Done. Run `rsa-manual-test` on the WALKTHROUGH.md, then `opsx:archive`.  ·or·  <what is still open and what closes it>
 ```
 
 **"Worth your eyes" is the tier that keeps this skill usable.** A judgement made under rungs 1–4 is settled and the owner is not being asked to re-decide it — but where it commits the product to something they might feel differently about, say what you decided, why you judged it fine, and what one sentence would change it. Do not inflate it: a fix the docs plainly dictate belongs in the table, not here.
 
-Give the archive hand-off **only when the slice is actually done** — the gate green with every stage run, no unticked task, no rung-5 item open, the doc duties discharged, and the walkthrough walkable end to end. Otherwise say plainly what is open and what closes it.
+Give the archive hand-off **only when the slice is actually done** — the gate green with every stage run, no unticked task, no rung-5 item open, the doc duties discharged, and the walkthrough walkable end to end on the desk check. Otherwise say plainly what is open and what closes it.
 
-Do not paste the diff back. Do not archive the change — that is `opsx:archive`, and it is the owner's call to make once they have read the table.
+Do not paste the diff back. Do not execute the walk — that is `rsa-manual-test`. Do not archive the change — that is `opsx:archive`, and it is the owner's call to make once they have read the table.

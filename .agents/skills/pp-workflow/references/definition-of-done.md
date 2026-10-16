@@ -39,10 +39,12 @@ follow-up. The places mistakes hide:
 - **Status and `Ships`:** the marker on the `Status` line in backticks, never in the heading; no
   `[x]` over an unticked `Ships` box; no changelog or dated note
   ([Legend](../../../../.ai/build-checklist.md#legend)).
-- **`WALKTHROUGH.md`:** one numbered path per surface the card's `UI surfaces` line names, each with
-  the exact command, request or simulator run and its expected output; a step that cannot run today
-  names the slice that covers it, inline
-  ([How to work this checklist](../../../../.ai/build-checklist.md#how-to-work-this-checklist)).
+- **`WALKTHROUGH.md`:** every surface the card's `UI surfaces` line names reached by a numbered
+  path, each path naming the persona walking it, each step with the exact command, request or
+  simulator run and its expected output; every live Resend or AWS write marked `**Ask-first:**`; a
+  step that cannot run today names the slice that covers it, inline
+  ([How to work this checklist](../../../../.ai/build-checklist.md#how-to-work-this-checklist),
+  format in [walkthrough-format.md](../../rsa-manual-test/references/walkthrough-format.md)).
 - **Correct a fact, never ratify a decision.** A column list, a `Modeled` box, a status line or a
   Projects row is a correction and belongs in the change. A decision changing (a new or superseded
   ADR, an open question answered) is prepared, named and put to the owner.

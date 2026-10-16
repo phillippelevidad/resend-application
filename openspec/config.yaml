@@ -33,5 +33,5 @@ rules:
     - Respect the module boundaries in root AGENTS.md and the cost brake (no always-on AWS resource without a measured reason in an ADR).
   tasks:
     - Explode the card's Ships bullets into tasks; every Ships bullet maps to at least one task that produces its named evidence.
-    - Include the doc duties the change triggers (pp-workflow -> Definition of done), the card's Status and Ships boxes, and a task to write WALKTHROUGH.md in the change folder before Status is ticked.
+    - Include the doc duties the change triggers (pp-workflow -> Definition of done), the card's Status and Ships boxes, and a task to write WALKTHROUGH.md in the change folder, in the format of .agents/skills/rsa-manual-test/references/walkthrough-format.md, before Status is ticked.
     - The last task runs pnpm verify to exit 0.

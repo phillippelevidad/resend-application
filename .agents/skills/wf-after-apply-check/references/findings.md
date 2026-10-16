@@ -129,7 +129,7 @@ Every other security class in this codebase is downstream of the ingest edge. An
 
 ## B7 — The slice cannot be walked
 
-Every finished slice [MUST still be hand-walkable through the CLI, the API or the simulator](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), because the walk is how the slice is verified at all. An unwalkable slice is not done even though no adopter is watching. `WALKTHROUGH.md` is numbered steps, each with the exact CLI command, API request or `pnpm sim` run and its expected output ([build-checklist.md → How to work this checklist](../../../../.ai/build-checklist.md#how-to-work-this-checklist)).
+Every finished slice [MUST still be hand-walkable through the CLI, the API or the simulator](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), because the walk is how the slice is verified at all. An unwalkable slice is not done even though no adopter is watching. `WALKTHROUGH.md` is numbered steps, each with the exact CLI command, API request or `pnpm sim` run and its expected output ([build-checklist.md → How to work this checklist](../../../../.ai/build-checklist.md#how-to-work-this-checklist)), in [the walkthrough format](../../rsa-manual-test/references/walkthrough-format.md).
 
 **The tell.** Read `WALKTHROUGH.md` against the code:
 
