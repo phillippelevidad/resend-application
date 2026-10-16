@@ -33,10 +33,7 @@ jobs:
           node-version-file: package.json
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
-
-      # Docker is preinstalled on the runner: the docker stage checks it, Testcontainers (slice 1)
-      # and gitleaks (slice 0) use it.
+      # No separate install step: verify's first stage is `pnpm install --frozen-lockfile`, so the
+      # run here is stage for stage the run on a laptop. Docker is preinstalled on the runner: the
+      # docker stage checks it, Testcontainers (slice 1) and gitleaks (slice 0) use it.
       - run: pnpm verify
-        env:
-          VERIFY_SKIP_INSTALL: '1'

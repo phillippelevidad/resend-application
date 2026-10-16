@@ -6,20 +6,15 @@
 //   pnpm verify --from <stage>   resume from a stage after a fix (a partial run, not the gate)
 //
 // Exit 0 with `VERIFY PASSED` means every stage ran and passed. A partial run ends in
-// `VERIFY PARTIAL`, never `VERIFY PASSED`. `VERIFY_SKIP_INSTALL=1` skips the install stage only
-// because CI installs in its own step just before; the summary reports it as skipped.
+// `VERIFY PARTIAL`, never `VERIFY PASSED`. No stage can be skipped: this file needs only Node
+// built-ins, so CI runs it before anything is installed and the install stage runs everywhere.
 import { spawnSync } from 'node:child_process';
 
-const skipInstall = process.env.VERIFY_SKIP_INSTALL === '1';
-
-// Later slices add a stage by adding one entry here: gitleaks and the README link check
-// (slice 0), OpenAPI and SDK drift (slice 1), migration lint (slice 2).
+// Later slices add a stage by adding one entry here, each when it has something to check:
+// gitleaks and the README link check (slice 0), the `int` tier with its first Testcontainers
+// test and OpenAPI and SDK drift (slice 1), migration lint (slice 2).
 const STAGES = [
-  {
-    name: 'install',
-    command: 'pnpm install --frozen-lockfile',
-    skip: skipInstall ? 'VERIFY_SKIP_INSTALL=1' : undefined,
-  },
+  { name: 'install', command: 'pnpm install --frozen-lockfile' },
   {
     name: 'docker',
     command: 'docker info',
@@ -30,7 +25,6 @@ const STAGES = [
   { name: 'typecheck', command: 'pnpm typecheck' },
   { name: 'unit', command: 'pnpm test' },
   { name: 'synth', command: 'pnpm --filter @ledger/infra synth' },
-  { name: 'int', command: 'pnpm exec vitest run --project int --passWithNoTests' },
   { name: 'e2e', command: 'pnpm test:e2e' },
 ];
 
@@ -61,12 +55,6 @@ for (const [index, stage] of STAGES.entries()) {
     results.set(stage.name, { status: 'not run', note: `after ${failed} failed` });
     continue;
   }
-  if (stage.skip) {
-    console.log(`\n[verify] - ${stage.name} skipped (${stage.skip})`);
-    results.set(stage.name, { status: 'skipped', note: stage.skip });
-    continue;
-  }
-
   console.log(`\n[verify] ▶ ${stage.name}\n$ ${stage.command}`);
   const startedAt = Date.now();
   const { status, error } = spawnSync(stage.command, {
