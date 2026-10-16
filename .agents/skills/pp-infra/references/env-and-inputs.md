@@ -15,11 +15,8 @@ Set by CDK on a Lambda, owned by `infra`, not a public contract (S-02,
 - **Values are ARNs, URLs, names and ids.** Never a secret value
   ([CBL-01](../../../../.ai/check-before-launch.md#deploy-configuration)); the value is read at
   runtime through `packages/aws` ([config-and-env.md → Secrets](../../pp-general/references/config-and-env.md#secrets)).
-- **Never a reserved key.** "The keys for these environment variables are *reserved* and cannot be
-  set in your function configuration": `AWS_REGION`, `AWS_DEFAULT_REGION`,
-  `AWS_LAMBDA_FUNCTION_NAME`, `AWS_LAMBDA_LOG_GROUP_NAME`, `AWS_ACCESS_KEY_ID`, `_HANDLER`, and
-  the rest of the list; all variables together stay within 4 KB
-  ([Lambda env vars](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html), read 2026-10-16).
+- **Never a reserved key** (`AWS_REGION`, `AWS_LAMBDA_FUNCTION_NAME`, `_HANDLER`, …), and all
+  variables together within 4 KB ([AWS-56](../../../../.ai/aws.md#lambda)).
 - **Not in `.env.example`**, which lists public variables only.
 
 Each name is fixed by the slice that introduces it and written into this table in the same change.
@@ -60,8 +57,9 @@ stack-prefixed.
 - **Physical names are stack-prefixed**, because the kill switch finds its targets by name
   (item 1). The scheme is slice 2's. A named resource cannot take a replacing update, so a change
   that replaces one renames it ([CFN `QueueName`](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-sqs-queue.html)).
-- **No account id anywhere.** Stacks declare no account; ARNs use `Aws.ACCOUNT_ID` and
-  `Aws.REGION`, resolved at deploy time, so neither code nor template holds the id
+- **No account id anywhere.** Stacks declare no account; ARNs come from
+  `Stack.of(this).formatArn({ service, resource, resourceName })`, whose partition, region and
+  account are pseudo-parameters resolved at deploy time, so neither code nor template holds the id
   ([CBL-10](../../../../.ai/check-before-launch.md#public-repo-hygiene)).
 - **No `fromLookup`.** A lookup caches account-scoped values in `cdk.context.json` (CBL-10).
 - **Region** comes from the deploying credentials; aws.md is researched for us-east-2. AWS-U01's

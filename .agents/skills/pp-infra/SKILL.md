@@ -30,17 +30,17 @@ pp-general; where it is silent, pp-general applies.
 | --- | --- |
 | [cdk-app.md](references/cdk-app.md) | Creating or changing a stack, a function, its bundling or its configuration |
 | [env-and-inputs.md](references/env-and-inputs.md) | Adding an environment variable, a deploy input or a physical name; touching account or region |
-| [cost-brake-assertions.md](references/cost-brake-assertions.md) | Writing or reviewing a CDK `Template` test; adding a resource a cost-brake property covers |
+| [cost-brake-assertions.md](references/cost-brake-assertions.md) | Writing or reviewing a CDK `Template` test; adding a resource a cost-brake property covers; reviewing an `infra/` diff (the review greps) |
 | [scripts.md](references/scripts.md) | Writing the deploy, teardown, re-arm or trip-drill command, or any script that calls AWS |
 
 ## Always
 
-- Every function is a `NodejsFunction` bundled by **local esbuild** (never Docker, AWS-39) into ES
+- Every function is a `NodejsFunction` bundled by **local esbuild** (never Docker, AWS-55) into ES
   modules, target `node24`, `Runtime.NODEJS_24_X` on `Architecture.ARM_64` (AWS-54, AWS-20), the
   AWS SDK bundled from the lockfile (`bundleAwsSDK: true`); entry `apps/<fn>/src/<fn>.handler.ts`
   exporting `handler` ([bundling](references/cdk-app.md#bundling)).
 - Every function logs to an explicit `logs.LogGroup` with the AWS-29 retention and
-  `RemovalPolicy.DESTROY`; every secret sets `DESTROY` (AWS-38, AWS-40, ADR-010).
+  `RemovalPolicy.DESTROY`; every secret sets `DESTROY` (AWS-38, ADR-010).
 - A Lambda receives secret **ARNs**, never values, with IAM read on its own secrets alone
   ([Secrets layout](../../../.ai/integrations.md#secrets-layout), [CBL-01](../../../.ai/check-before-launch.md#deploy-configuration)).
 - Internal variable names live in one module in `infra` and in
@@ -58,7 +58,8 @@ pp-general; where it is silent, pp-general applies.
   [deploy](references/scripts.md#deploy)). Teardown is one command (lens clause 7).
 - Deploying, creating AWS resources and running a script against AWS are Ask-first
   ([Permissions](../../../AGENTS.md#permissions)). `cdk synth` and the `Template` tests need no
-  credentials; nothing else runs unapproved.
+  credentials (`[Unverified]` until slice 2's first synth, [names](references/env-and-inputs.md#names-account-and-region));
+  nothing else runs unapproved.
 
 ## Cost brake in code
 
@@ -80,6 +81,7 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
 | The guardrails template holds no `Fn::ImportValue` | [Budget alarms](../../../.ai/aws.md#budget-alarms) item 1 |
 | Every Postgres-touching schedule on the one hourly cron, window `OFF`, explicit retry policy | AWS-10, [Cadence](../../../.ai/integrations.md#cadence-and-the-database) |
 | Standard alarms within the free count, no composite alarm | AWS-28 |
+| The guardrails stack holds the budget (`IncludeCredit: false`), its notifications, the trip topic with the kill switch subscribed and its `Errors` alarm, and the default-route throttle | ADR-010, [Budget alarms](../../../.ai/aws.md#budget-alarms) items 2–4, 7, 8, AWS-52 |
 
 ## Case-by-case
 
@@ -98,7 +100,7 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
 ## Never
 
 - **Docker bundling, a container image function or `nodeModules`** → `NodejsFunction` with esbuild
-  in the root `package.json` (AWS-39; ADR-010 rejects containers; [bundling](references/cdk-app.md#bundling)).
+  in the root `package.json` (AWS-55; ADR-010 rejects container functions; [bundling](references/cdk-app.md#bundling)).
 - **`@aws-sdk/*` taken from the runtime** (listed in `externalModules`) → `bundleAwsSDK: true`.
 - **The default or `NODEJS_LATEST` runtime, or x86** → `Runtime.NODEJS_24_X`, `Architecture.ARM_64`.
 - **A VPC, NAT gateway or VPC endpoint** → no VPC (AWS-13; [decision-lens-suite case 9](../../../.ai/decision-lens-suite.md)).
@@ -118,7 +120,7 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
   `secretValue`, `{{resolve:secretsmanager…}}`, a deploy input passed through) → the ARN, read at
   runtime through `packages/aws` (CBL-01).
 - **A Lambda-reserved key (`AWS_REGION`, …) set as a variable** → read the one the runtime sets
-  ([internal variables](references/env-and-inputs.md#internal-environment-variables)).
+  (AWS-56, [internal variables](references/env-and-inputs.md#internal-environment-variables)).
 - **An account id, ARN literal or `fromLookup`** → pseudo-parameters, no lookups (CBL-10).
 - **A deploy input in `cdk.json` or any tracked file** → context from the deploy command (CBL-10, CBL-19).
 - **A root script named `deploy`, or any pnpm built-in** → a name no built-in shadows
@@ -139,15 +141,8 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
 infra `*.test.ts`); after it, `pnpm verify` exits 0 with every stage run
 ([Definition of done](../pp-workflow/SKILL.md#definition-of-done)). The report names what ran.
 
-**Then read the diff.** From the repo root, each prints nothing:
-`git grep -nE "DockerImage|forceDockerBundling: *true|nodeModules:" -- infra` ·
-`git grep -n "logRetention" -- infra` · `git grep -nE "NODEJS_(LATEST|[0-9]+_X)" -- infra | grep -v NODEJS_24_X` ·
-`git grep -nE "fromLookup|AwsCustomResource|custom_resources|CustomResource" -- infra` ·
-`git grep -nE "unsafePlainText|secretValue|resolve:secretsmanager" -- infra` ·
-`git grep -nE "reservedConcurrentExecutions|provisionedConcurrentExecutions" -- infra` ·
-`git grep -nE "\bvpc\b|ec2\.|kms\.|encryptionKey" -- infra` · `git grep -n "@aws-sdk/" -- infra` ·
-`git grep -nE "\b[0-9]{12}\b|arn:aws:" -- infra` · `git grep -nE "exec(Sync)?\(|shell: *true" -- infra/scripts` ·
-`git grep -n "process\.env" -- infra ':!infra/src/main.ts' ':!infra/scripts'`. Then: every new
+**Then read the diff.** Each [review grep](references/cost-brake-assertions.md#review-greps)
+prints nothing. Then: every new
 function uses the shared shape · every new cost-brake property has its assertion, citing its id
 and paired with a count · every new internal variable is in the names module and the
 [table](references/env-and-inputs.md#internal-environment-variables), set only where it is read · no

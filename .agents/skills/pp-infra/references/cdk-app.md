@@ -63,7 +63,7 @@ and [BundlingOptions](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aw
   In a monorepo "the `esbuild` dependency needs to be installed in the 'root' `package.json`
   file". So `esbuild` is a root devDependency (Ask-first, slice 2), and a missing one falls back to
   Docker **silently**. Evidence: an infra test that resolves `esbuild` from the repo root, so the
-  fallback fails `pnpm verify` instead of pulling an image (AWS-39: Ledger ships no Docker assets).
+  fallback fails `pnpm verify` instead of silently bundling in Docker (AWS-55).
   `forceDockerBundling` stays `false`; `nodeModules` is never set: those modules "are installed …
   only when bundling runs in Docker".
 - **Runtime and architecture are explicit.** The runtime default is `NODEJS_LATEST` behind a

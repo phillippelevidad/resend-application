@@ -67,26 +67,23 @@ Real Postgres, because the integration tier exists for what the database enforce
 - **Each test file gets a fresh clone** (`CREATE DATABASE … TEMPLATE …`): files run in parallel,
   never see each other's rows, never truncate.
 - **Tests connect as the runtime role**, so a missing grant fails a test; the owner connection
-  only injects faults.
+  only injects faults and watches locks.
 
 ## Fakes at the port
 
 A fake implements a [named port](../pp-general/references/adding-things.md#add-an-interface), the
-client `resend-client` exports, or the SDK client in CLI and MCP tests; nothing else is faked
-([fakes-and-doubles.md](references/fakes-and-doubles.md)). The in-process queue is real, not a
-fake (ADR-013); time comes from the fake clock; `resend-client`'s consumers get a fake client, and
-`resend-client` itself, plus every claim crossing its limiter, runs the real client against a
-local `node:http` fake Resend API passed as the SDK's `baseUrl`. A `packages/aws` adapter is tested
-against its port's contract, its SDK client stubbed;
-[DLQ redrive](references/fakes-and-doubles.md#dlq-redrive) runs through SQS, not Postgres.
+client `resend-client` exports, or the SDK client in CLI and MCP tests; everything else runs for
+real, the in-process queue included (ADR-013). `resend-client` itself runs against a local fake
+Resend API, a `packages/aws` adapter against a stubbed SDK client, and
+[DLQ redrive](references/fakes-and-doubles.md#dlq-redrive) through SQS. Which double per seam:
+[fakes-and-doubles.md](references/fakes-and-doubles.md).
 
 ## Properties and the simulator
 
-Arbitraries live in `packages/core`, exported through `@ledger/core/testing` and shared with `sim`;
-a failing property's seed and path go into the regression that locks it
-([properties-and-arbitraries.md](references/properties-and-arbitraries.md)). `sim/` signs with
-Svix's scheme on `node:crypto`, proven by a round trip through `webhooks.verify`, runs one checker
-per invariant number and prints its seed first ([simulator.md](references/simulator.md)).
+Arbitraries live in `@ledger/core/testing`, shared with `sim`; a failing seed becomes a named
+regression ([properties-and-arbitraries.md](references/properties-and-arbitraries.md)). `sim/`
+signs on `node:crypto`, prints its seed first and runs one checker per invariant number
+([simulator.md](references/simulator.md)).
 
 ## Always
 
@@ -98,8 +95,6 @@ per invariant number and prints its seed first ([simulator.md](references/simula
 - Generate ids fresh per test, so tests in one file share a database without depending on order.
 - Use Resend test addresses only (`delivered@resend.dev`, `bounced@resend.dev`, `+label` forms)
   ([integrations.md → Locked rules](../../../.ai/integrations.md#locked-rules-must)).
-- Read the installed Vitest, fast-check and Testcontainers docs before writing against them
-  ([version rule](../pp-general/SKILL.md#check-the-installed-version-not-memory)).
 
 ## Case-by-case
 
@@ -120,7 +115,7 @@ per invariant number and prints its seed first ([simulator.md](references/simula
   the integration tier** → the [harness](#postgres-harness) ([Test tiers](../pp-workflow/SKILL.md#test-tiers)).
 - **`TRUNCATE` or cleanup between tests, or rows shared across files** → a fresh clone per file,
   fresh ids per test ([harness](references/postgres-harness.md#per-test-file)).
-- **A test connecting as the owner, or a test database migrated another way (`drizzle-kit push`,
+- **A test asserting or writing through the owner connection, or a test database migrated another way (`drizzle-kit push`,
   hand-run SQL)** → the runtime role; the deploy command's migrate path
   ([lifecycle](references/postgres-harness.md#lifecycle-one-run)).
 - **Stopping or breaking the shared container** → the outage test's own container
@@ -140,9 +135,9 @@ per invariant number and prints its seed first ([simulator.md](references/simula
 - **A sleep waiting for time or a lock** → the fake clock; poll the observable condition with a bound.
 - **`Math.random`, `Date.now` or `randomUUID` in a generated history** → derive it from the run's
   seed ([determinism](references/simulator.md#seed-and-determinism)).
-- **A real address, or a `svix_id` captured from a live delivery, in a fixture or sim run** → a
-  `@resend.dev` address, a fresh id ([ADR-016](../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)).
-- **The simulator signing with a Resend webhook secret** → `LEDGER_SIMULATOR_SECRET` only (ADR-016).
+- **A real address, a `svix_id` captured from a live delivery, or a Resend webhook secret in a
+  fixture or sim run** → a `@resend.dev` address, a fresh id, `LEDGER_SIMULATOR_SECRET`
+  ([ADR-016](../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)).
 - **One checker covering two invariants, or a sim check reading Postgres outside `packages/db`** →
   one checker per number, through `packages/db` ([simulator.md](references/simulator.md#invariant-checkers)).
 - **A coverage threshold as a gate** → the tier policy ([Test tiers](../pp-workflow/SKILL.md#test-tiers)).
@@ -150,7 +145,8 @@ per invariant number and prints its seed first ([simulator.md](references/simula
 ## Gate — then read the diff
 
 **Gate.** Until slice 0 lands `pnpm verify`: run the affected project (`pnpm exec vitest run
---project unit`, and `--project int` when an `*.int.test.ts` or `packages/db` changed) and report
+--project unit`, and `--project int` when the diff touches `packages/db`, an `*.int.test.ts`, or a package or app
+that has one) and report
 its actual result. After it: `pnpm verify` exits 0 with every stage run
 ([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)).
 
@@ -158,7 +154,8 @@ its actual result. After it: `pnpm verify` exits 0 with every stage run
 new test files end `.test.ts`, `.prop.test.ts` or `.int.test.ts`, beside their subject · no
 `.spec.`, `.integration.`, `__tests__/` or `test/` folder · no `vi.mock(` · no `TRUNCATE` · no
 `.only(` or `.skip(` · `testcontainers` imported only by `packages/db`'s harness · no
-`Math.random` or `Date.now` in `sim/` or an arbitrary · every mandatory-tier surface touched has its
+`Math.random`, `Date.now` or `randomUUID` in generated data (grep 6 names the two allowed
+wall-clock reads) · every mandatory-tier surface touched has its
 [test](../pp-workflow/SKILL.md#test-tiers) · each `toHaveBeenCalled*` sits at an outbound vendor seam
 or beside a consequence assertion · every new invariant checker's number is in
 [Simulator invariants](../../../.ai/architecture.md#simulator-invariants) · every property regression

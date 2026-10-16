@@ -114,6 +114,5 @@ run is slice 2's evidence and settles AWS-U01, AWS-U02 and AWS-U09
 
 ## Gap script
 
-[Slice 4](../../../../.ai/build-checklist.md#4--recovery): lower the ingest route throttle, make one
-Ask-first send to `delivered@resend.dev` through `@ledger/resend-client`, restore the throttle, then
-run the reconcile walk. Same shape and rules as the others.
+The [slice 4](../../../../.ai/build-checklist.md#4--recovery) Ships bullet is the script's spec,
+read there. Same shape and rules as the others; its one send goes through `@ledger/resend-client`.

@@ -10,8 +10,9 @@ owns the config, the names inside a file, the shared suites and the review greps
 `vitest.config.ts` at the repo root (a tool-named file, exempt from the suffix rule). Vitest's
 `test.projects` runs several project configs "within a single Vitest process"; `vitest.workspace` is
 "deprecated since 3.2 and replaced with the `projects` configuration"
-([Vitest → Projects](https://vitest.dev/guide/projects)). A project's own `globalSetup` is honored;
-the root's is not inherited by projects (same page). Written against vitest.dev as read on
+([Vitest → Projects](https://vitest.dev/guide/projects)). The root's `globalSetup` is not inherited
+by projects (same page); that a project's own one runs is `[Unverified]` (slice 1's first
+`--project int` run settles it). Written against vitest.dev as read on
 2026-10-16: check the installed version's docs before writing it
 ([version rule](../../pp-general/SKILL.md#check-the-installed-version-not-memory)).
 
@@ -119,7 +120,8 @@ Run from the repo root. Expected: no output, unless the entry names what is allo
    ```sh
    git grep -nE "Math\.random|Date\.now\(|randomUUID\(" -- sim packages/core/src/testing
    ```
-   Allowed: the `svix-timestamp` the signer reads from the wall clock ([simulator.md](simulator.md#signing)).
+   Allowed: the `svix-timestamp` the signer reads from the wall clock ([simulator.md](simulator.md#signing)),
+   and `sim/src/main.ts` picking a seed when none is given ([seed](simulator.md#seed-and-determinism)).
 7. A call assertion, each read by hand for a consequence beside it or an outbound vendor seam:
    ```sh
    git grep -nE "toHaveBeenCalled(With|Times)?\(" -- '*.test.ts'

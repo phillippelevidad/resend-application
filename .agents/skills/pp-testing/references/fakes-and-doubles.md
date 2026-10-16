@@ -41,7 +41,7 @@ against a local HTTP server standing in for Resend's API.
   a test passes the fake's URL (no trailing slash). Re-check against the version slice 4 installs.
 - **The server** is `node:http` on `127.0.0.1`, port `0` (the OS picks), closed in `afterAll`,
   exported from `@ledger/resend-client/testing`. It answers the routes the client's named methods
-  call (slice 4: List Events, Retrieve Webhook, Replay Event; slice 6: Send Email), from a scripted
+  call (List Events, Retrieve Webhook and Replay Event from slice 4; Send Email from the slice whose test first calls it), from a scripted
   queue of responses: status, the RS-22 error body `{ name, statusCode, message }`, and the
   `ratelimit-*` and `retry-after` headers.
 - **It records what it received**: method, path, the `User-Agent` and `Idempotency-Key` headers,

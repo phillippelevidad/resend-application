@@ -57,6 +57,7 @@ Run against both stacks unless the row says otherwise.
 | Guardrails import nothing | guardrails only: `expect(JSON.stringify(template.toJSON())).not.toContain('Fn::ImportValue')` | [Budget alarms](../../../../.ai/aws.md#budget-alarms) item 1 |
 | One hourly cron, window off, explicit retries | `allResourcesProperties('AWS::Scheduler::Schedule', { ScheduleExpression: HOURLY_CRON, FlexibleTimeWindow: { Mode: 'OFF' }, Target: Match.objectLike({ RetryPolicy: Match.anyValue() }) })` for every Postgres-touching schedule | AWS-10, [Cadence](../../../../.ai/integrations.md#cadence-and-the-database) |
 | Alarms within the free count | standard alarms across both stacks ≤ the AWS-28 constant; `resourceCountIs('AWS::CloudWatch::CompositeAlarm', 0)` | AWS-28 |
+| Budget and kill switch wired | guardrails only: one `AWS::Budgets::Budget` with `CostTypes.IncludeCredit: false` and item 3's notifications, within AWS-33's limit; the trip topic without `KmsMasterKeyId`, with a policy letting `budgets.amazonaws.com` `SNS:Publish`; the kill switch subscribed to it; an alarm on the kill switch's `Errors` (item 4); the HTTP API stage's default-route throttle set (item 7; the value is slice 2's) | [Budget alarms](../../../../.ai/aws.md#budget-alarms) items 2–4, 7, 8, AWS-52, AWS-33, AWS-35, AWS-53 |
 | No secret value reaches a function | `JSON.stringify(template.toJSON())` contains no `resolve:secretsmanager`; every `Environment.Variables` value is a `Ref`, `Fn::GetAtt`, `Fn::Join` of those, or a plain non-secret string | CBL-01 |
 
 ## Wiring the slices owe
@@ -71,12 +72,6 @@ Not cost-brake properties, but the same mechanics. Each lands with the `Ships` b
 - **Secrets least privilege** (slice 2): for each function, the secrets named in its role's
   `secretsmanager:GetSecretValue` statements equal its "Read by" rows in the
   [Secrets layout](../../../../.ai/integrations.md#secrets-layout), no more.
-- **Budget and kill switch** (slice 2, [Budget alarms](../../../../.ai/aws.md#budget-alarms)
-  item 8): one `AWS::Budgets::Budget` with `CostTypes.IncludeCredit: false` (AWS-52) and item 3's
-  notifications, within AWS-33's limit; the trip topic without `KmsMasterKeyId` and with a policy
-  letting `budgets.amazonaws.com` `SNS:Publish` (AWS-35); the kill switch subscribed to it; an
-  alarm on the kill switch's `Errors` (item 4, AWS-53).
-- **Default-route throttle** (slice 2, item 7): the HTTP API stage sets it; the value is slice 2's.
 - **Flags, synthesized both ways**: the kill-switch flag (item 5; what "armed" looks like in the
   template is slice 2's, [CBL-16](../../../../.ai/check-before-launch.md#deploy-configuration)), and
   the simulator flag (slice 3, [ADR-016](../../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret):
@@ -88,3 +83,25 @@ These are deploy-time evidence, owed by slice 2 and re-checked by
 [check-before-launch.md](../../../../.ai/check-before-launch.md): the trip drill (AWS-U01, AWS-U02),
 the post-destroy listing ([aws.md → Teardown](../../../../.ai/aws.md#teardown)), the secret grep over
 `cdk.out/` and the deployed environment (CBL-01), and the idle bill (CBL-18).
+
+## Review greps
+
+Run from the repo root. Expected: no output.
+
+1. Docker bundling or `nodeModules` (AWS-55):
+   `git grep -nE "DockerImage|forceDockerBundling: *true|nodeModules:" -- infra`
+2. `logRetention` (AWS-40): `git grep -n "logRetention" -- infra`
+3. A runtime other than Node 24 (AWS-54):
+   `git grep -nE "NODEJS_(LATEST|[0-9]+_X)" -- infra | grep -v NODEJS_24_X`
+4. A lookup or custom resource (CBL-10, AWS-40):
+   `git grep -nE "fromLookup|AwsCustomResource|custom_resources|CustomResource" -- infra`
+5. A secret value in the template (CBL-01):
+   `git grep -nE "unsafePlainText|secretValue|resolve:secretsmanager" -- infra`
+6. Reserved or provisioned concurrency (AWS-16):
+   `git grep -nE "reservedConcurrentExecutions|provisionedConcurrentExecutions" -- infra`
+7. A VPC or KMS key (AWS-13, AWS-25): `git grep -nE "\bvpc\b|ec2\.|kms\.|encryptionKey" -- infra`
+8. The AWS SDK under `infra/`: `git grep -n "@aws-sdk/" -- infra`
+9. An account id or ARN literal (CBL-10): `git grep -nE "\b[0-9]{12}\b|arn:aws:" -- infra`
+10. A shell-string command: `git grep -nE "exec(Sync)?\(|shell: *true" -- infra/scripts`
+11. `process.env` outside a composition root:
+    `git grep -n "process\.env" -- infra ':!infra/src/main.ts' ':!infra/scripts'`
