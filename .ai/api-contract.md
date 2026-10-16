@@ -19,10 +19,17 @@ differs, this file wins. It differs on four points: path params are written `{pa
 lookup moved to a request body; redaction is always on; and the simulator is `pnpm sim`, not a
 `ledger` command ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)).
 
-- **Public contract (MUST).** Routes, error codes, CLI commands and flags, environment variables and
-  MCP tool names are a public contract. Changing or removing one is **Ask-first**
+- **Public contract (MUST).** Routes, error codes, CLI commands and flags, public environment
+  variables and MCP tool names are a public contract. Changing or removing one is **Ask-first**
   ([AGENTS.md → Permissions](../AGENTS.md#permissions)). Adding an operation, an optional field or an
   error code is additive, but it is still Ask-first because it extends the contract.
+  - **Public environment variables** are the ones a user sets, in the shell or `.env.local`, for the
+    CLI, SDK, MCP server, simulator, or the deploy and setup commands: `LEDGER_URL`,
+    `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`,
+    `AWS_PROFILE`, and any such variable added later.
+  - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
+    mapping UUID, queue URLs). `infra` owns them, declared in the CDK construct of the function
+    that reads them; they are not a public contract.
 - **Base URL.** The read API is served from the same HTTP API as ingest
   ([ADR-010](architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack)),
   and locally by the dev server running the same code (ADR-011). Paths are unversioned.

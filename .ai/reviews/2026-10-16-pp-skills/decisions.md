@@ -32,6 +32,10 @@ the resolution now lives.
 
 ## Open for the owner at the Phase 1 checkpoint
 
+**Outcome (2026-10-16):** the owner approved the recommended option for O-01 to O-04, and all four
+are applied. S-02 is committed, the slice 5 bullet is removed, the slice 1 drift-stage bullet is
+added, and the local `AGENTS.local.md` carries the `.env.example` exception.
+
 | ID | Question | Recommended |
 | --- | --- | --- |
 | O-01 | Approve S-02, a public-contract convention edit | Approve it. Without it, every CDK-set variable would be Ask-first |

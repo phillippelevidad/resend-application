@@ -11,9 +11,9 @@ git-ignored.
 | Phase | Status | Output |
 | --- | --- | --- |
 | 0 — research and tracker | done | `stages/research-*.md` (four reports), this file, [decisions.md](decisions.md) |
-| 1 — decision docs: ADR-019, ADR-013 amendment, doc tensions | done — ADR-019 added; ADR-011, ADR-013 and ADR-018 amended; S-01 to S-11 settled | `stages/PHASE-1-BRIEF.md`; edits to `.ai/` and root `AGENTS.md`. The S-02 hunks in `api-contract.md` are held uncommitted (Ask-first) |
-| 1b — owner checkpoint | waiting on owner | O-01 to O-04 in [decisions.md](decisions.md#open-for-the-owner-at-the-phase-1-checkpoint) |
-| 2 — `pp-general`, `pp-workflow` | pending | Two skills in parallel; every other skill links them |
+| 1 — decision docs: ADR-019, ADR-013 amendment, doc tensions | done — ADR-019 added; ADR-011, ADR-013 and ADR-018 amended; S-01 to S-11 settled | `stages/PHASE-1-BRIEF.md`; edits to `.ai/` and root `AGENTS.md` |
+| 1b — owner checkpoint | done — O-01 to O-04 approved as recommended and applied | [decisions.md](decisions.md#open-for-the-owner-at-the-phase-1-checkpoint) |
+| 2 — `pp-general`, `pp-workflow` | **next** — write `stages/PHASE-2-BRIEF.md` from the research files first | Two skills in parallel; every other skill links them |
 | 3 — `pp-backend`, `pp-database`, `pp-testing`, `pp-infra`, `pp-cli` + `pp-mcp` | pending | Five agents in parallel, on disjoint folders |
 | 4 — consumer routing | pending | Skill-name lists in root `AGENTS.md`, `wf-*`, `implement-plan`, `openspec/config.yaml` and the `check.mjs` strings; anchor and link check |
 | 5 — adversarial review and fixes | pending | Reviewers check each skill against `.ai/` (the doc wins), then fixes |

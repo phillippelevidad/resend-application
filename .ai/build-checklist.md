@@ -90,6 +90,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [ ] Unknown and non-email event types, and schema-failing payloads of known types, stored raw, projection skipped, metric emitted; evidence: unit test.
   - [ ] The shared logger emits only the fields in [data-modeling.md → Log fields](data-modeling.md#log-fields), never a payload or an error's `message` / `detail` from parsing or Postgres; evidence: unit test feeding a failing message with a test address and a `CHECK` violation, asserting no log line holds the address or subject.
   - [ ] Minimal read API (OpenAPI, Zod), SDK, `ledger email <email_id>` and `ledger recipient <address>` with `--json` in the error shape, auth skipped only on loopback; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
+  - [ ] `pnpm openapi:export` writes the committed `packages/sdk/openapi.json`, and a `pnpm verify` stage fails when it or the generated SDK types drift ([ADR-011](architecture.md#adr-011--one-contract-many-surfaces)); evidence: the stage fails on a stale fixture.
   - [ ] `pnpm sim --duplicates 0.2 --shuffle` against the local process (`apps/local`) passes invariants 1 and 2.
   - [ ] RS-U21 settled by the Ask-first two-recipient send to `delivered@resend.dev` and `bounced@resend.dev`, observed through `resend webhooks listen`, with the result in resend.md.
   - [ ] RS-U15 recorded from the Ask-first test-address sends, with simulator fixtures mirroring the observed sequences; RS-U18 checked by a read-only `GET /webhooks` after an interrupted `listen` session.
@@ -195,7 +196,6 @@ simulator evidence.
   - [ ] Every tool's output carries masks only, no secrets, no payload and no free-text payload field; evidence: redaction tests, including a fixture whose `failed.reason` and `tags` carry an instruction string.
   - [ ] Every code in api-contract.md → Error codes exists in code, and no other; evidence: error-registry mirror test.
   - [ ] SDK retries idempotent reads and never `token.create`; evidence: SDK unit tests.
-  - [ ] The about.md question on the MCP SDK line and tool annotations closed when the package is picked.
 - **UI surfaces:** MCP `get_email_status` · `explain_delivery` · `get_recipient_status` · `list_gaps` · `inspect_dlq` · `reconcile` · `redrive_dlq` · `ledger explain <email_id>`.
 - **Ops:** owner approves the MCP SDK dependency (Ask-first); an MCP client to walk J6.
 - **Deferred tail:** SDK and CLI on npm ([slice 8](#8--npm-release)).
