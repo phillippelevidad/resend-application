@@ -19,7 +19,7 @@ infra/
     app.stack.ts                AppStack
     guardrails.stack.ts         GuardrailsStack
     ledger-function.construct.ts  the shared function shape
-    function-env.ts             internal variable names, one `as const` object
+    function-env.ts             internal variable values, keyed by the names from `@ledger/shared`
     *.test.ts                   Template assertions, beside the stack they test
   scripts/
     <name>.ts                   AWS-facing commands (scripts.md)
@@ -33,8 +33,10 @@ infra/
   function. Every cost-brake property MUST be identical on every function, and a copy that misses
   one is a cost or teardown defect, not a style issue; that is why this path does not wait for the
   third duplicate (owner, O-15; [adding-things.md](../../pp-general/references/adding-things.md#extract-an-abstraction)).
-- **Stacks import only `aws-cdk-lib` and `constructs`.** A handler is referenced by its entry
-  path, never imported. Scripts import workspace packages ([scripts.md](scripts.md)).
+- **Stacks import only `aws-cdk-lib`, `constructs` and the internal-variable names from
+  `@ledger/shared`** ([env-and-inputs.md](env-and-inputs.md#internal-environment-variables)). A
+  handler is referenced by its entry path, never imported. Scripts import workspace packages
+  ([scripts.md](scripts.md)).
 - **The CDK app runs under Node 24 type stripping**, no build step
   ([imports-and-tsconfig.md](../../pp-general/references/imports-and-tsconfig.md#node-24-runs-ts-directly)).
 
@@ -118,6 +120,11 @@ under Node 24 and assert `handler` is a function):
   `/routes/*` if the kill switch updates routes) in the stack's region: a wider grant the stack
   comments. That ARN shape is `[Unverified]` ([AWS-U11](../../../../.ai/aws.md#unverified)).
 - **The worker's event source mapping** carries ADR-008's settings; `maxReceiveCount` is AWS-09's.
+- **The reconciler's async invoke config sets `retryAttempts: 0`** (`MaximumRetryAttempts: 0`,
+  slice 4). Async invoke is at-least-once ([AWS-53](../../../../.ai/aws.md#lambda)), so a run's
+  claim on its [`reconcile_runs`](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)
+  row stops a duplicate ([ADR-007](../../../../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest));
+  no retry means a lost invoke reads abandoned and the next hourly run covers it.
 
 ## The guardrails stack
 

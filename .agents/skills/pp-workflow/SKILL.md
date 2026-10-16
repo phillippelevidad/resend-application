@@ -57,12 +57,14 @@ duty below that the change triggers is discharged in the same diff. Until slice 
 | Settles an `RS-UNN`, `AWS-UNN` or `PG-UNN` row | That row updated in [resend.md](../../../.ai/resend.md#unverified), [aws.md](../../../.ai/aws.md#unverified) or [integrations.md](../../../.ai/integrations.md#unverified) |
 | Settles a library-behavior bullet in [about.md → Open questions](../../../.ai/about.md#open-questions) | The bullet moved to Resolved with what was found, and the skill's `[Unverified]` replaced by the verified fact or its fallback |
 | Relies on a Resend behavior | The `RS-NN` fact it rests on, cited ([resend.md](../../../.ai/resend.md)) |
-| Introduces an environment variable | A public one ([Conventions](../../../.ai/api-contract.md#conventions)): its `.env.example` line (names only, never values). An internal, CDK-set one: `infra` only, never `.env.example` ([pp-infra](../pp-infra/SKILL.md)). Either: a boot-time assertion if it is required ([pp-general](../pp-general/SKILL.md)) |
+| Introduces an environment variable | A public one ([Conventions](../../../.ai/api-contract.md#conventions)): its `.env.example` line (names only, never values). An internal, CDK-set one: its name in `packages/shared/src/function-env.ts`, its value set by `infra` on its reader only, never `.env.example` ([pp-infra → env-and-inputs.md](../pp-infra/references/env-and-inputs.md#internal-environment-variables)). Either: a boot-time assertion if it is required ([pp-general](../pp-general/SKILL.md)) |
 | Touches a mandatory-tier surface | An integration test against real Postgres, or the named test for the other Mandatory rows ([Test tiers](#test-tiers)) |
 | Introduces a code-level convention no doc owns | The owning pp-* skill updated in the same change ([routing](#which-skill-answers-a-code-question)) |
 
 **Permission check.** Every Ask-first item the change crosses is named, and the owner approved it
-([Permissions](../../../AGENTS.md#permissions)); an unapproved one waits uncommitted.
+([Permissions](../../../AGENTS.md#permissions)): one at a time, or on an itemized one-round list
+that names it exactly ([definition-of-done.md → 3](references/definition-of-done.md#3--permission-check));
+an unapproved one waits uncommitted.
 **Report honesty.** Name the command and its actual outcome; a skipped stage is reported as
 skipped, with why. Do not hedge a verified result, and do not upgrade an unverified one.
 Mechanics: [definition-of-done.md](references/definition-of-done.md).
@@ -153,8 +155,9 @@ not hold.
 - **An operation that appears nowhere in `.ai/api-contract.md`** → name it there first, with its
   surfaces, scope and errors, get the Ask-first approval, then implement against it
   ([Conventions](../../../.ai/api-contract.md#conventions)).
-- **An Ask-first change made alone** (a dependency, a pushed migration, CI, a public contract, an AWS
-  resource or deploy, a write to a live Resend account) → leave it uncommitted and ask
+- **An Ask-first change made alone** (a dependency, a frozen migration changed, CI, a public
+  contract, an AWS resource or deploy, a write to a live Resend account) not on the owner's
+  itemized approval list → leave it uncommitted and ask
   ([Permissions](../../../AGENTS.md#permissions)).
 - **A failing gate disabled to make CI green** → fix the cause, or stop and report the failure with
   its output ([Permissions](../../../AGENTS.md#permissions)).
@@ -180,8 +183,8 @@ lands it, the cheap checks for what was touched, each named in the report. Then 
 Each `Ships` bullet the change advances has its named evidence in the diff (the test, property,
 invariant run, measured number or command) · every duty row the diff triggers is discharged in the
 same diff · no Ask-first item lands unapproved (a new third-party `package.json` dependency, not a
-`workspace:*` entry; an edited pushed
-migration, `.github/**`, a public-contract change, an AWS resource, a live Resend write) · every
+`workspace:*` entry; an edited migration that is merged to `main` or applied to a kept
+database, `.github/**`, a public-contract change, an AWS resource, a live Resend write) · every
 operation the diff names is in `.ai/api-contract.md` · every mandatory-tier surface touched has its
 [test](#test-tiers) · no reliability claim in a doc or the README lacks a pointer to its evidence · no
 `docs/idea.md` link cited as the rule · no `[x]` over an unticked `Ships` box and no marker in a

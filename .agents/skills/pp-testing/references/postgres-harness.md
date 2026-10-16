@@ -24,7 +24,12 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
    template's name, never `postgres` ([Testcontainers → PostgreSQL](https://node.testcontainers.org/modules/postgresql/)).
    The container's user is the owner role.
 2. **Ensure the runtime role**, through the same function the deploy command calls (S-05), with a
-   password the harness generates for the run. Roles are cluster-wide, so every clone sees it.
+   password the harness generates for the run. That function also applies the deploy command's
+   role-level `idle_in_transaction_session_timeout` and `lock_timeout`
+   ([pp-database → Grants](../../pp-database/references/migrations-and-grants.md#grants)); the
+   harness passes short test values (seconds, the idle one below `lock_timeout`, both above the
+   longest lock wait a [concurrency test](#faults-and-concurrency) polls for). Without them the
+   idle-holder test passes for the wrong reason. Roles are cluster-wide, so every clone sees it.
 3. **Migrate the template** as the owner, through the one migrate entry point the deploy command
    and the local setup command also call
    ([pp-database → Running migrations](../../pp-database/references/migrations-and-grants.md#running-migrations)).
@@ -96,8 +101,30 @@ afterAll(async () => { await t.drop(); });
   ([ADR-005](../../../../.ai/architecture.md#adr-005--postgres-only)). Interleave by observation, not
   by sleeping: hold transaction A open, start B, poll `pg_stat_activity` from `t.owner` until B's
   `wait_event_type` is `Lock`, then commit A, and assert the final rows.
+- **An idle lock holder** (slice 2, the role-level timeouts of
+  [pp-database → Grants](../../pp-database/references/migrations-and-grants.md#grants)): a role
+  setting applies at connect, to that role's sessions only, so the holder is a fresh client **as
+  the runtime role**, never `t.owner`, and the timeouts are the ones [step 2](#lifecycle-one-run)
+  applied, never a session `SET`. The holder locks the email's `email_state` row and goes idle;
+  run a message for that email; assert the holder's session is terminated and the worker's
+  transaction commits one row of everything. A second test reads the runtime role's `rolconfig`
+  and asserts both settings are present, which is what proves the role-ensure path sets them.
 - **Never** a mocked client, a stubbed repository or a `vi.mock` of `pg` to fake a failure: the
   failure has to come from Postgres for the test to prove what Postgres does.
+
+## Payloads Postgres cannot store
+
+`jsonb` rejects `\u0000` (`22P05`) and a lone surrogate (`22P02`), and only Postgres says so, so
+proving the sanitizer prevents them is integration tier (slice 1, where the ledger insert lands).
+Feed a verified event of a known type whose payload holds each through the real worker transaction
+and assert: no throw (never dead-lettered), one `webhook_events` row whose payload carries U+FFFD in
+their place, the event **projected** (its `email_state` row reflects it), and one `worker.payload_sanitized`
+emitted (a recording double of the [metrics helper's interface](../../pp-backend/references/composition.md) captures it)
+([ADR-004](../../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message);
+the rule is [pp-database](../../pp-database/references/schema-and-repositories.md#unstorable-characters)'s).
+A redelivery of the same event is a duplicate, not a second row. The pure sanitizer gets its own
+unit or property test in `packages/core`: it replaces `\u0000`, a lone high and a lone low
+surrogate with U+FFFD, and leaves a valid surrogate pair intact.
 
 ## Outage tests
 

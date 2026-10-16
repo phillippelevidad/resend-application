@@ -81,6 +81,7 @@ command twice on the same input MUST leave one row and one effect.
 | `outbox.dedupe_key` | A worker retry re-emitting a reaction | Its unique constraint, `ON CONFLICT DO NOTHING` |
 | Projection PKs plus row locks | Concurrent workers on one key | `ON CONFLICT DO NOTHING`, then `FOR UPDATE` |
 | A run's advisory lock | Two `reconcile.start` calls | `pg_advisory_xact_lock`, then the check, then the insert ([reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)) |
+| `reconcile_runs.claimed_at` | One run's async invoke delivered twice (AWS-53) | `UPDATE … SET claimed_at = now() WHERE id = $1 AND claimed_at IS NULL`; zero rows exits ([reconciler](reactions-and-recovery.md#reconciler)) |
 
 - **Never a read-then-write guard** (select, then insert if absent). Two workers both read "absent".
   The unique constraint or the lock is the guard; the insert reports what happened.

@@ -23,7 +23,7 @@ tooling change with a plan file behind it. It sits beside the slice workflow, no
 - ships or advances a `Ships` bullet of a slice in [build-checklist.md](../../../.ai/build-checklist.md);
 - adds or changes a public contract (an operation, route, error code, CLI command or flag, MCP tool —
   [api-contract.md](../../../.ai/api-contract.md));
-- adds a table or a migration, or changes a pushed one.
+- adds a table or a migration, or changes one merged to `main` or applied to a kept database.
 
 Say which bullet triggered the stop, and do nothing else.
 
@@ -32,7 +32,10 @@ whenever the plan touches TypeScript; and every skill
 [pp-workflow → Which skill answers a code question](../pp-workflow/SKILL.md#which-skill-answers-a-code-question)
 names for the paths the plan touches. Their duties and `Never` lists bind every implementer and
 verifier prompt. Ask-first changes ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions))
-stop for the owner's approval even inside an approved plan.
+stop for the owner's approval even inside an approved plan, unless the owner approved them on an
+itemized list recorded in the plan file: the exact package and version range, workflow file or
+resource. Anything off that list, or outside its range, still stops
+([pp-workflow → definition-of-done.md → 3](../pp-workflow/references/definition-of-done.md#3--permission-check)).
 
 ## Orchestrator mandate (non-negotiable)
 

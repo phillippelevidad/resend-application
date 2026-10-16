@@ -73,6 +73,12 @@ slice 4.
   check for an unfinished run inside its time budget (a statement issued after the lock), then the
   insert. A refused start is `reconcile_in_progress`. The Resend calls run **after** that
   transaction commits, never inside it.
+- **The reconciler claims its run before any Resend call:** `UPDATE reconcile_runs SET claimed_at
+  = now() WHERE id = $1 AND claimed_at IS NULL`; zero rows means a duplicate async invoke (AWS-53),
+  which exits without work. Runs never overlap only through this claim
+  ([ADR-007](../../../../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)).
+  The invoke retries nothing (`retryAttempts: 0`, [pp-infra](../../pp-infra/SKILL.md)): a lost
+  invoke reads abandoned and the next hourly run covers it.
 - **Then, in order:** read the configured webhook's `status` and stop with `webhook_disabled` if it
   is disabled (RS-11); page List Events newest first (RS-14); skip events younger than the grace
   window; stop at the lookback horizon; diff ids against `webhook_events`; replay the missing ones
@@ -80,10 +86,16 @@ slice 4.
   write path that inserts fetched payloads directly.
 - **One failed replay never aborts a run**; it counts in `failed`.
 - **A time budget below the Lambda timeout** (AWS-03). A run that reaches it stops; the next run
-  re-diffs from newest (forward-only pagination, RS-14).
+  re-diffs from newest (forward-only pagination, RS-14). The budget is one constant, shared by the
+  start check and the abandoned derivation below.
 - **Its outcome is a registered code in `reconcile_runs.error_code`** (`webhook_disabled`,
   `rate_limited`, `resend_auth_failed`, `resend_unavailable`), never a throw that loses the row
   ([one mapping per surface](../../pp-general/references/errors.md#one-mapping-per-surface)).
+- **`run_abandoned` is derived, never written.** A run with no `finished_at` past its time budget
+  (crashed, or its invoke lost) will not finish; the `reconcile.getRun` and `gaps.list` readers in
+  `packages/api` return it as that run's outcome
+  ([Error codes](../../../../.ai/api-contract.md#error-codes),
+  [reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)).
 - **Every Resend call goes through `resend-client`** and its limiter ([resend-client.md](resend-client.md)).
 - How `reconcile.start` opens its run and invokes the reconciler, how the reconciler reads the
   source queue's age for the grace window, and the hourly tick's shape are the slice 4

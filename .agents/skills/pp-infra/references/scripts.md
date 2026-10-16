@@ -27,9 +27,10 @@ of them against AWS or a live Resend account is Ask-first ([Permissions](../../.
 - **Logic a script shares lives in its package**, the script only sequences: the role-then-migrate
   path the Postgres harness also runs ([pp-testing → Postgres harness](../../pp-testing/SKILL.md#postgres-harness),
   [pp-database](../../pp-database/SKILL.md)), the token mint, and the trip and restore steps the
-  kill switch and the re-arm share (home: slice 2).
+  kill switch, the re-arm and the burst's throttle raise share (home: slice 2;
+  [the burst](../../pp-testing/references/simulator.md#the-burst-and-the-throttle)).
 - **Fail closed.** A failed step exits non-zero and nothing after it runs, except
-  [deploy step 8](#deploy). Every step that changes
+  [deploy step 9](#deploy). Every step that changes
   state reads it first, so a re-run is safe.
 
 ## Root package.json scripts
@@ -68,17 +69,32 @@ The order is fixed by S-05, [ADR-018](../../../../.ai/architecture.md#adr-018--m
 
 1. Refuse while the kill switch is tripped (the worker's reserved concurrency reads `0`) unless
    running as the re-arm, and record whether the worker's event source mapping is paused.
-2. Ensure the DML-only runtime role exists, through the direct URL.
-3. Run the migrations through the direct URL, by the same code path the harness runs.
-4. Refuse an address-hash key whose `key_id` differs from a stored hash's prefix, before the key is
+2. Refuse a contract step whose object deployed code may still use: read the app stack's
+   `DeployedCommit` output through `@ledger/aws`, and for each pending migration carrying a
+   [`contract-step: <SHA>` marker](../../pp-database/references/migrations-and-grants.md#the-contract-step-marker)
+   (`replace:` markers carry none) spawn `git merge-base --is-ancestor <SHA> <DeployedCommit>`;
+   any exit but 0 (not an ancestor, an unknown commit, a shallow clone) refuses before anything
+   migrates. With no app stack yet (no `DeployedCommit` output) the check is skipped: no previous
+   Lambdas run to break, and refusing would block a fresh deploy of a repo that already holds
+   contract steps. This is ADR-018's evidence, with a deploy-command test over a throwaway repo.
+3. Ensure the DML-only runtime role exists and set its server-side timeouts
+   (`ALTER ROLE … SET idle_in_transaction_session_timeout`, `lock_timeout`, both below the worker
+   timeout, re-run every deploy), through the direct URL
+   ([pp-database → Grants](../../pp-database/references/migrations-and-grants.md#grants);
+   whether the pooler honors them is [PG-U06](../../../../.ai/integrations.md#unverified)).
+4. Run the migrations through the direct URL, by the same code path the harness runs.
+5. Refuse an address-hash key whose `key_id` differs from a stored hash's prefix, before the key is
    written anywhere.
-5. `cdk deploy` the guardrails stack, then the app stack (guardrails first:
-   [Budget alarms](../../../../.ai/aws.md#budget-alarms) item 1).
-6. Place the `ledger/database` value (data-modeling.md: the deploy command places the key). Where
-   this falls relative to step 5 is slice 2's; the value never passes through CDK (CBL-01).
-7. Insert the first `operate` token through the direct URL (`bootstrap`, `ON CONFLICT DO NOTHING`)
+6. `cdk deploy` the guardrails stack, then the app stack (guardrails first:
+   [Budget alarms](../../../../.ai/aws.md#budget-alarms) item 1), passing the commit being
+   deployed as context so the app stack exports it as `DeployedCommit`.
+7. Place the `ledger/database` value (data-modeling.md: the deploy command places the key) into
+   the secret whose ARN the app stack outputs (secrets have no physical name,
+   [names](env-and-inputs.md#names-account-and-region)), so on a first deploy it follows step 6;
+   otherwise where it falls is slice 2's. The value never passes through CDK (CBL-01).
+8. Insert the first `operate` token through the direct URL (`bootstrap`, `ON CONFLICT DO NOTHING`)
    and print it once, only when inserted; `--issue-operate-token <name>` mints a replacement.
-8. Restore a pause recorded in step 1 (AWS-U09). It runs whenever step 5 started, also when step 5
+9. Restore a pause recorded in step 1 (AWS-U09). It runs whenever step 6 started, also when step 6
    failed: a rolled-back update may re-apply `Enabled: true` too.
 
 Recommended for slice 2, because each recurs per deploy (lens clause 1): run
@@ -88,6 +104,11 @@ fail loudly ([CBL-16](../../../../.ai/check-before-launch.md#deploy-configuratio
 
 ## Teardown
 
+- **Refuse while events are queued.** First read the source queue's and the DLQ's depth (visible
+  plus in flight) through `@ledger/aws`, and refuse when either is non-zero unless
+  `--discard-queued` is passed: a queued event is not in `webhook_events` yet, so destroying the
+  queue loses it ([aws.md → Teardown](../../../../.ai/aws.md#teardown)). The flag is public
+  contract, documented with the command.
 - **One command, owner-triggered:** `cdk destroy` the app stack, then the guardrails stack only
   when the app stack's destroy succeeded (the stacks declare no dependency, so `--all` does not
   guarantee the order and could leave a `DELETE_FAILED` app stack without guardrails: a budget-alarm gap, [Budget alarms](../../../../.ai/aws.md#budget-alarms)

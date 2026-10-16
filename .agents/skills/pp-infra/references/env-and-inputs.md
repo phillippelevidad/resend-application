@@ -8,10 +8,15 @@ resources are named so the kill switch can find them and no account id is publis
 Set by CDK on a Lambda, owned by `infra`, not a public contract (S-02,
 [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions)).
 
-- **Names live in `infra/src/function-env.ts`**, one `as const` object. Each variable is set only
-  on the function that reads it. That function's `.config.ts` schema parses the same key at boot
-  and fails naming it ([config-and-env.md](../../pp-general/references/config-and-env.md#parse-once-at-the-composition-root)),
-  which is what catches a drift between the two spellings on the first invocation.
+- **Names live in `packages/shared/src/function-env.ts`**, one `as const` object of names per
+  function. `infra/src/function-env.ts` imports it and sets each value only on the function that
+  reads it; that function's `apps/*` `.config.ts` imports the same object for its schema keys
+  ([config-and-env.md](../../pp-general/references/config-and-env.md#parse-once-at-the-composition-root)).
+  One spelling, so the two sides cannot drift; a drift found at init would fail on live traffic,
+  and for the worker every failed receive drains toward the DLQ without an ADR-015 pause.
+- **Proven on the template:** one `Template` assertion per function, its environment carrying
+  exactly the keys its names object lists
+  ([cost-brake-assertions.md → Wiring](cost-brake-assertions.md#wiring-the-slices-owe)).
 - **Values are ARNs, URLs, names and ids.** Never a secret value
   ([CBL-01](../../../../.ai/check-before-launch.md#deploy-configuration)); the value is read at
   runtime through `packages/aws` ([config-and-env.md → Secrets](../../pp-general/references/config-and-env.md#secrets)).
@@ -34,14 +39,16 @@ Each name is fixed by the slice that introduces it and written into this table i
 | kill switch | the stack prefix it resolves targets from; the topic it reports to | 2 |
 
 The `ledger/…` names are the logical names of the
-[Secrets layout](../../../../.ai/integrations.md#secrets-layout); the physical ones are
-stack-prefixed.
+[Secrets layout](../../../../.ai/integrations.md#secrets-layout). A secret takes no physical name
+([names](#names-account-and-region)); the function gets its ARN.
 
 ## Deploy inputs
 
 - **The set:** the budget cap and the alert address ([Budget alarms](../../../../.ai/aws.md#budget-alarms)
   items 2 and 3), the kill-switch flag (item 5), the simulator flag (ADR-016), the Resend webhook id
-  ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)). Their names are each slice's.
+  ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)), and the commit being deployed,
+  which the app stack exports as the `DeployedCommit` output
+  ([scripts.md → Deploy](scripts.md#deploy), ADR-018). Their names are each slice's.
 - **They arrive as CDK context** from the deploy command, as integrations.md already fixes for the
   webhook id; never in `cdk.json` or any tracked file (CBL-10). A local file holding them is
   git-ignored ([CBL-19](../../../../.ai/check-before-launch.md#public-repo-hygiene)).
@@ -54,9 +61,14 @@ stack-prefixed.
 
 ## Names, account and region
 
-- **Physical names are stack-prefixed**, because the kill switch finds its targets by name
-  (item 1). The scheme is slice 2's. A named resource cannot take a replacing update, so a change
-  that replaces one renames it ([CFN `QueueName`](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-sqs-queue.html)).
+- **Functions and the HTTP API take stack-prefixed physical names**, because the kill switch finds
+  its targets by name (item 1). The scheme is slice 2's. A named resource cannot take a replacing
+  update, so a change that replaces one renames it ([CFN `QueueName`](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-sqs-queue.html)).
+- **Secrets take no physical name** (no `secretName`): CloudFormation generates it, so a redeploy
+  after teardown never collides with a secret still in its recovery window
+  ([aws.md → Teardown](../../../../.ai/aws.md#teardown), AWS-U06). Functions get the ARN; a script
+  reads ARNs from the app stack's outputs. Prose keeps `ledger/database` and the others as the
+  logical names ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)).
 - **No account id anywhere.** Stacks declare no account; ARNs come from
   `Stack.of(this).formatArn({ service, resource, resourceName })`, whose partition, region and
   account are pseudo-parameters resolved at deploy time, so neither code nor template holds the id

@@ -90,6 +90,19 @@ its `svix_id`, and `+label`
   knob's mechanism, and the seed flag's name, are its slice's pre-proposal's; a new knob lands
   with the Ships bullet that needs it.
 
+## The burst and the throttle
+
+`--burst` (slice 3) raises the steady default-route throttle for its run only
+([Budget alarms](../../../../.ai/aws.md#budget-alarms) item 7), through `@ledger/aws` and the same
+throttle steps the kill switch and re-arm use ([pp-infra → scripts.md](../../pp-infra/references/scripts.md#shape)):
+
+- **Refuse while the kill switch is tripped** (the worker's reserved concurrency reads `0`).
+- **Raise, then restore in `finally` only if the throttle still reads the value the burst set.** A
+  crash still restores; a trip mid-burst has lowered it to the stop value, and a blind restore would
+  re-open API Gateway. Its test: the value changes during the run, and `finally` leaves it.
+- **The usage trip admits one burst** (≈ 12k requests): slice 2 sizes the threshold and states it
+  in item 7, so the burst never trips it by itself.
+
 ## Invariant checkers
 
 - **One checker per number**, named by it: `invariant-2.ts` checks invariant 2 and nothing else. A

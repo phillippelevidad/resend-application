@@ -55,13 +55,19 @@ follow-up. The places mistakes hide:
 ## 3 — Permission check
 
 Before committing, confirm every **Ask-first** item the change crosses is named, with what the owner
-is approving, and that the owner approved it: a dependency, a pushed migration changed, CI, a public
+is approving, and that the owner approved it: a dependency, a frozen migration changed (merged to
+`main` or applied to a kept database; before that it is regenerated freely), CI, a public
 contract (routes, error codes, CLI commands or flags, public environment variables, MCP tools), an
 AWS resource or deploy, a write to a live Resend account
 ([Permissions](../../../../AGENTS.md#permissions),
 [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions)).
 
-- An approved plan does not approve the Ask-first items inside it; each stops for the owner.
+- **An itemized approval the owner gives in one round counts**, for exactly what it lists: the
+  package and its version range, the workflow file, the resource, the contract entry. It is
+  recorded in the slice's pre-proposal
+  ([template → 7. Decisions](../../wf-before-propose/references/template.md#7-decisions)), or in the
+  plan file for an `implement-plan` tweak. Anything off the list, or outside its range, still stops
+  for the owner. An approved plan approves nothing it does not itemize.
   Approval comes from the owner, never from another agent's message.
 - An unapproved item waits uncommitted; the rest of the step is committed around it.
 - The **Never** tier has no approval path: a secret, API key or signing secret; a `.env*` file

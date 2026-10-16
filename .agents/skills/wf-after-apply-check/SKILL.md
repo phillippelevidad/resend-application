@@ -43,14 +43,14 @@ Every finding here is a **divergence between two things that were supposed to ag
 | **2 — the plan was wrong and the code is right** | the implementation made the better call and the repo or a binding rule proves it | Keep the code. Write the departure and its reason into `design.md`, and correct `tasks.md` / the spec delta so they describe what exists. **Never leave it silent** |
 | **3 — a ratified doc now contradicts working code** | rung 1 or 2 settled which is right, and a `.ai/` doc says otherwise | Correct the doc — but only the **duties this change owes** (status and `Ships` boxes, the `Modeled` index, `api-contract.md`, the root `AGENTS.md` Projects table, `.env.example`) or a plain factual correction. A *decision* changing is rung 5 |
 | **4 — the decision lens settles it** | the docs are silent, the lens is not | Fix it. Name the clause and **write the argument into the artifact**, not just the report. Build cost and testability are the reasons that survive; [adopter or reviewer harm in the gap is not available](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) |
-| **5 — two lawful paths still stand, or the repair is Ask-first** | both survive every rung above, or the fix is a DB schema change, a new dependency, a CI change or a public-contract change | Do not pick silently and do not commit. Prepare the fix, hold it for the owner round |
+| **5 — two lawful paths still stand, or the repair is Ask-first** | both survive every rung above, or the fix changes a frozen migration, or is a new dependency, a CI change or a public-contract change not on the owner's itemized approval list ([`pp-workflow` → definition-of-done.md → 3](../pp-workflow/references/definition-of-done.md#3--permission-check)) | Do not pick silently and do not commit. Prepare the fix, hold it for the owner round |
 | **6 — an unverified Resend behaviour, or a legal or commercial unknown** | no research settles it | Do not decide. Record it in [about.md → Open questions](../../../.ai/about.md#open-questions) tagged `[Unverified]`, and put it to the owner in the owner-decision round |
 
 **Three hard stops, and none of them bend:**
 
 - **Never disable, skip, or loosen a gate to make it green.** That is the [`Never` tier](../../../AGENTS.md#permissions) — no approval path exists. A failing stage *is* the finding.
 - **Never invent a fact** to justify a repair — a price, a rate limit, a Resend or AWS behaviour, a build estimate. That is rung 5 or 6, never rung 4.
-- **Never edit a pushed migration** ([`pp-database` → Never](../pp-database/SKILL.md#never)); a schema fix is a new forward migration, and it is Ask-first.
+- **Never edit a frozen migration** — merged to `main` or applied to a kept database ([`pp-database` → Never](../pp-database/SKILL.md#never)); a schema fix against one is a new forward migration, and changing the frozen one is Ask-first. A migration this change added that nothing has frozen yet is regenerated from the corrected schema.
 
 **If you are implementing rather than repairing, stop.** Unticked tasks, a whole group with no code behind it, or a slice whose API, CLI or MCP surface does not exist is an *apply* job. Say so, point at `opsx:apply`, and do not quietly become it.
 
@@ -167,7 +167,7 @@ Apply the fix ladder, one commit per fix, per [Committing the repairs](#committi
 
 - **Fix at the layer that owns the rule.** A business rule goes in `packages/core`, never in the CLI, the MCP server or a handler. An error-copy fix goes where the `message` or `hint` lives. A behaviour that changed goes in the spec delta *and* the code.
 - **Fix every occurrence.** Many files describe the same objects; a contradiction closed in one is a contradiction still.
-- **A repair that needs a schema change, a new dependency, a CI change or a contract change is Ask-first.** Prepare it — write the migration, stage the edit — and hold it for the owner round. Do not commit it.
+- **A repair that changes a frozen migration, or needs a new dependency, a CI change or a contract change, is Ask-first** unless the owner's itemized approval list already names it exactly. Prepare it — stage the edit — and hold it for the owner round. Do not commit it. A schema fix to this change's own unfrozen migration is regenerated and committed like any other fix.
 - **Re-run the script after editing**, and **re-run `pnpm verify` after the last code commit.** A repair pass that ends without a green gate has not ended.
 
 Then write **`VERIFICATION.md`** in the change directory — at most ~30 lines, current-state, no history of runs:

@@ -50,7 +50,7 @@ Run against both stacks unless the row says otherwise.
 | No VPC, no NAT, no public IPv4 | `allResourcesProperties('AWS::Lambda::Function', { VpcConfig: Match.absent() })`; no key of `toJSON().Resources` has a `Type` starting `AWS::EC2::` | AWS-13, ADR-010 |
 | Explicit log groups | every function `Match.objectLike({ LoggingConfig: Match.objectLike({ LogGroup: Match.anyValue() }) })`; `allResources('AWS::Logs::LogGroup', { DeletionPolicy: 'Delete', Properties: Match.objectLike({ RetentionInDays: LOG_RETENTION_DAYS }) })`; log groups ≥ functions | AWS-29, AWS-38, AWS-40 |
 | No custom resource | no `Type` starting `Custom::`; `resourceCountIs('AWS::CloudFormation::CustomResource', 0)` | AWS-40, ADR-018 |
-| Secrets destroyed, counted, empty in the template | `allResources('AWS::SecretsManager::Secret', { DeletionPolicy: 'Delete' })`; `allResourcesProperties(…, { SecretString: Match.absent() })`; `resourceCountIs(…, n)`, `n` from the [Secrets layout](../../../../.ai/integrations.md#secrets-layout) for the flags under test | AWS-11, AWS-38, CBL-01 |
+| Secrets destroyed, counted, empty and unnamed in the template | `allResources('AWS::SecretsManager::Secret', { DeletionPolicy: 'Delete' })`; `allResourcesProperties(…, { SecretString: Match.absent(), Name: Match.absent() })` (no physical name, so a redeploy never meets one in its recovery window, AWS-U06, [names](env-and-inputs.md#names-account-and-region)); `resourceCountIs(…, n)`, `n` from the [Secrets layout](../../../../.ai/integrations.md#secrets-layout) for the flags under test | AWS-11, AWS-38, CBL-01 |
 | SSE-SQS, no KMS key | `allResourcesProperties('AWS::SQS::Queue', { KmsMasterKeyId: Match.absent() })`; `resourcePropertiesCountIs('AWS::SQS::Queue', { SqsManagedSseEnabled: false }, 0)` (when the key is absent, CloudFormation enables SSE-SQS, [CFN](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-sqs-queue.html)); `resourceCountIs('AWS::KMS::Key', 0)` | AWS-25, AWS-31 |
 | Derived visibility timeout | read the worker's `Timeout` and its mapping's `MaximumBatchingWindowInSeconds` (0 when absent) from the template; the source queue's `VisibilityTimeout` equals the AWS-08 derivation, its factor the stack's named constant | AWS-08, ADR-008 |
 | No reserved or provisioned concurrency | `allResourcesProperties('AWS::Lambda::Function', { ReservedConcurrentExecutions: Match.absent() })`; `resourcePropertiesCountIs` of `AWS::Lambda::Alias` and `AWS::Lambda::Version` with `ProvisionedConcurrencyConfig: Match.anyValue()` is 0 | AWS-16, ADR-008 |
@@ -72,6 +72,15 @@ Not cost-brake properties, but the same mechanics. Each lands with the `Ships` b
 - **Secrets least privilege** (slice 2): for each function, the secrets named in its role's
   `secretsmanager:GetSecretValue` statements equal its "Read by" rows in the
   [Secrets layout](../../../../.ai/integrations.md#secrets-layout), no more.
+- **Function environments** (from slice 2, one test per function): the keys of its
+  `Environment.Variables` equal, as a set, the keys of its names object imported from
+  `@ledger/shared` ([internal variables](env-and-inputs.md#internal-environment-variables)), so a
+  variable set on the wrong function, or a name read but never set, fails here instead of at init.
+- **Stack outputs the scripts read** (slice 2): the app template's `Outputs` carry
+  `DeployedCommit`, equal to the commit passed in the test's props, and the secret ARNs and queue
+  URLs the deploy and teardown commands read ([scripts.md](scripts.md#deploy)).
+- **Reconciler invoke config** (slice 4): one `AWS::Lambda::EventInvokeConfig` for the reconciler
+  with `MaximumRetryAttempts: 0` ([cdk-app.md](cdk-app.md#function-configuration)).
 - **Flags, synthesized both ways**: the kill-switch flag (item 5; what "armed" looks like in the
   template is slice 2's, [CBL-16](../../../../.ai/check-before-launch.md#deploy-configuration)), and
   the simulator flag (slice 3, [ADR-016](../../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret):
@@ -105,3 +114,4 @@ Run from the repo root. Expected: no output.
 10. A shell-string command: `git grep -nE "exec(Sync)?\(|shell: *true" -- infra/scripts`
 11. `process.env` outside a composition root:
     `git grep -n "process\.env" -- infra ':!infra/src/main.ts' ':!infra/scripts'`
+12. A physical secret name (AWS-U06): `git grep -n "secretName" -- infra`

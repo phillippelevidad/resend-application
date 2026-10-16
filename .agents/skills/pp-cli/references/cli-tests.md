@@ -59,8 +59,12 @@ For `ledger reconcile` (slice 4), with `sleep` injected so no test waits in real
   polls in order.
 - A finished run carrying `error`: exit `1`, stdout under `--json` is that error in the error shape.
 - `--no-wait`: one `reconcile.start` call, no `getRun` call, exit `0`, stdout is the `202` result.
-- A run that never finishes: the wait stops at its bound (the slice 4 pre-proposal fixes the bound
-  and the output), and the test asserts it stops.
+- An abandoned run: `reconcile.getRun` answers running, then the run with no `finished_at` and its
+  `error` set to [`run_abandoned`](../../../../.ai/api-contract.md#error-codes): exit `1`, stdout
+  under `--json` is that error in the error shape, and no poll follows it.
+- A run that stays running past the backstop (the API's derivation failed): the wait stops at the
+  backstop bound (the slice 4 pre-proposal fixes the bound and the output), and the test asserts
+  it stops.
 
 ## Never
 

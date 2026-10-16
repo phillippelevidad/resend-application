@@ -10,7 +10,7 @@ Check every Drizzle call below against the installed version's `.d.ts` before wr
 ```text
 packages/db/
   drizzle.config.ts          # dialect postgresql, schema ./src/schema, out ./drizzle
-  drizzle/                   # migrations, as drizzle-kit writes them; never edited after push
+  drizzle/                   # migrations, as drizzle-kit writes them; never edited once frozen
   src/
     index.ts                 # the one public surface: schema, repositories, Executor, classifier
     schema/<kebab>.ts        # one table per file, at data-modeling's `_Schema:_` path
@@ -86,6 +86,20 @@ export const webhookEventsRepository = {
 - **Reads parse `jsonb`** with its Zod schema before it leaves the repository
   ([jsonb](indexes-and-jsonb.md#jsonb)). The wire shape and its masks are the caller's mapper.
 
+### Unstorable characters
+
+`jsonb` rejects `\u0000` (`22P05`) and lone UTF-16 surrogates (`22P02`), which JSON allows.
+Otherwise a verified event fails every receive and every redrive. So the payload never reaches the
+insert holding one: before the insert, the worker runs a pure `packages/core` sanitizer that
+replaces each, in every string of the parsed payload, with U+FFFD, and counts the event as
+sanitized; the sanitized event then takes the ordinary path, projected when it passes its type's
+schema, stored raw and counted when it does not
+([ADR-004](../../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).
+The repository writes what it is given: no retry, no savepoint, and every insert error throws
+unchanged. Evidence: an integration test feeding a NUL payload stores one row and projects it, and
+a sanitizer property test (slice 1;
+[pp-testing](../../pp-testing/references/postgres-harness.md#payloads-postgres-cannot-store)).
+
 ## Transactions and locks
 
 The caller opens the transaction and passes `tx` down ([pp-backend](../../pp-backend/SKILL.md)); a
@@ -123,6 +137,9 @@ One factory, called once at module scope by a composition root with typed config
   which PgBouncer rejects by default ([`ignore_startup_parameters`](https://www.pgbouncer.org/config.html))
   and Neon's pooler page does not address; never `SET` either (pooler-safe SQL). The values, and
   whether a `Query read timeout` error is connection-class, are the slice 2 pre-proposal's.
+  These bound only a live client. A frozen or killed Lambda's open transaction is bounded
+  server-side by the runtime role's `idle_in_transaction_session_timeout` and `lock_timeout`,
+  set by the role-ensure step ([grants](migrations-and-grants.md#grants), PG-U06).
 - **`pool.on('error')` is registered**, logging the error's name and SQLSTATE only. An idle client
   dropped by the backend (a Neon suspend, PG-U04) emits on the pool, which has already removed it;
   with no listener, Node raises an uncaught error that kills the process ([Pool](https://node-postgres.com/apis/pool)).
@@ -147,6 +164,7 @@ and `pg-pool` attaches the connect error as `cause` on its timeout. A match anyw
 | `57P01` `admin_shutdown`, `57P02` `crash_shutdown`, `57P03` `cannot_connect_now` | same |
 | Node socket codes: `ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`, `EPIPE`, `ENOTFOUND`, `EAI_AGAIN`, `EHOSTUNREACH`, `ENETUNREACH` | Node system errors |
 | `pg` errors with no `code`, by exact message: `Connection terminated unexpectedly`, `Connection terminated due to connection timeout`, `Client has encountered a connection error and is not queryable` | [pg client](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js), [pg-pool](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg-pool/index.js) |
+| Neon's storage-limit error on a Free project at its cap (likely `53100` `disk_full`; the SQLSTATE and how `pg` surfaces it are PG-U07, `[Unverified]`). Not a connection error: classified here so the worker pauses and the queue holds instead of draining to the DLQ | [ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) |
 
 Never pg-pool's `timeout exceeded when trying to connect`: it is raised, with no `cause`, when no
 pooled client frees up in time, which on a size-1 pool is a leaked checkout or a `db` call inside a
@@ -154,5 +172,6 @@ pooled client frees up in time, which on a size-1 pool is a leaked checkout or a
 
 The lists are constants in `connection-error.ts`. The message matches are `[Unverified]` against
 the installed `pg`; the slice 2 classification unit test (ADR-015's evidence) pins each row, and
-what a Neon suspend actually raises is PG-U04's ([integrations.md → \[Unverified\]](../../../../.ai/integrations.md#unverified)).
+what a Neon suspend actually raises is PG-U04's, the storage-limit row PG-U07's
+([integrations.md → \[Unverified\]](../../../../.ai/integrations.md#unverified)).
 Never log a `DrizzleQueryError`'s message: it embeds the query's `params`, which can hold an address.

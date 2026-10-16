@@ -3,8 +3,8 @@
 One boot assertion per process, zero dependencies. Which variables are public and which are
 internal is [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions): public
 ones (`LEDGER_URL`, `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `RESEND_API_KEY`, `DATABASE_URL`,
-`AWS_REGION`, `AWS_PROFILE`, and any a user sets later) are a public contract; internal ones are set
-by CDK on a Lambda and owned by `infra`. This file owns how code reads them.
+`AWS_REGION`, `AWS_PROFILE`, and any a user sets later) are a public contract; internal ones are named
+in `packages/shared/src/function-env.ts` and set by CDK on a Lambda. This file owns how code reads them.
 
 ## Parse once, at the composition root
 
@@ -16,7 +16,10 @@ by CDK on a Lambda and owned by `infra`. This file owns how code reads them.
 - **Packages receive typed config objects and never read `process.env`.** A factory takes its
   config as a parameter, so a test passes a literal and nothing reads the environment by surprise.
 - The schema lives in `src/<app>.config.ts` beside `main.ts`
-  ([coding-standards.md](coding-standards.md#role-suffixes)).
+  ([coding-standards.md](coding-standards.md#role-suffixes)). A Lambda's schema takes its internal
+  variable names from its function's object in `packages/shared/src/function-env.ts`, the module
+  `infra` sets the values from, never a string literal
+  ([pp-infra → env-and-inputs.md](../../pp-infra/references/env-and-inputs.md#internal-environment-variables)).
 
 ```ts
 // apps/worker/src/main.ts
@@ -63,7 +66,9 @@ node --env-file-if-exists=.env.local apps/local/src/main.ts
 - **Never invent a variable name a slice has not introduced.** A name comes from a slice card or
   from api-contract.md.
 - A new **public** variable is Ask-first and is added to api-contract.md's list in the same change.
-- A new **internal** variable is declared in the CDK construct of the function that reads it
-  ([pp-infra](../../pp-infra/SKILL.md)).
+- A new **internal** variable's name is added to its reader's object in
+  `packages/shared/src/function-env.ts`; `infra` sets its value on that function only, and the
+  function's stack assertion lists it
+  ([pp-infra → env-and-inputs.md](../../pp-infra/references/env-and-inputs.md#internal-environment-variables)).
 - Every new variable owes its [Definition of done](../../pp-workflow/SKILL.md#definition-of-done)
   row (`.env.example`, and the boot-time assertion when it is required).

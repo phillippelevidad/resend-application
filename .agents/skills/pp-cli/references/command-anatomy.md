@@ -168,9 +168,11 @@ calls `process.exit()`.
 
 - **`--no-wait`** prints the `202` result and exits `0`. A finished run with an `error` exits `1`
   with it in the error shape.
-- **Bounded.** A run with no `finished_at` past its time budget is crashed, never running
-  ([reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)); how
-  the CLI learns that budget and what it prints then is the slice 4 pre-proposal's.
+- **Ends on finished or abandoned.** A run with no `finished_at` past its time budget is abandoned,
+  never running ([reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)).
+  The API derives that on read and returns the run with its `error` set to
+  [`run_abandoned`](../../../../.ai/api-contract.md#error-codes), a run outcome: exit `1` with it in
+  the error shape, like any run outcome. The CLI never learns or computes the budget.
 - **Ctrl-C stops the wait, not the run.** So before waiting, both modes print the run id to stderr
   through `notice` and point at `ledger gaps` (stdout stays one document under `--json`), so a
   script whose wait is interrupted or ends on a poll's error still holds the run id; no signal
@@ -189,9 +191,12 @@ export const RUN_POLL_INTERVAL_MS = /* slice 4 */;
   sets it `false` ([README](https://github.com/tj/commander.js), "Other option types, negatable
   boolean"; commander 15 keeps that default for a lone `--no-*` option,
   [CHANGELOG](https://github.com/tj/commander.js/blob/master/CHANGELOG.md) 15.0.0).
-- The loop calls `reconcile.getRun` until `finished_at` is set, and stops at the run's time
-  budget otherwise (slice 4 settles how the budget is known). Each poll unwraps through
-  `runOperation`'s rules: an `error` from `getRun` ends the wait with exit `1`.
+- The loop calls `reconcile.getRun` until `finished_at` is set or the run carries an `error` (an
+  abandoned run has `run_abandoned` and no `finished_at`), so it tests the field, never a `code`
+  literal. A run outcome ends the wait with exit `1`. Each poll unwraps through `runOperation`'s
+  rules: an `error` from `getRun` itself ends the wait with exit `1`.
+- **The wait's own bound is a backstop** (one constant above the run's budget, value and output
+  from the slice 4 pre-proposal): it fires only if the API's derivation does not.
 - Progress lines, if any, go to stderr through `notice`. Under `--json`, stdout gets only the final
   run, or the run's `error` in the error shape.
 - `sleep` is injected in tests, so a wait test runs without real time

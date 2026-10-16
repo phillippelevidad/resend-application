@@ -81,7 +81,9 @@ data-modeling change first.
   the Zod output: Zod objects strip unknown keys by default, and the ledger keeps every field
   Resend sent. Never pass a pre-serialized string either; the column would hold a JSON string, not
   the object. `jsonb` itself normalizes key order and whitespace, which is why a stored row is never
-  re-verified ([Immutable ledger](../../../../.ai/data-modeling.md#immutable-ledger)).
+  re-verified ([Immutable ledger](../../../../.ai/data-modeling.md#immutable-ledger)). The one
+  change is what `jsonb` cannot store: the worker replaces `\u0000` and lone surrogates with U+FFFD
+  before the insert ([unstorable characters](schema-and-repositories.md#unstorable-characters)).
 - **Never raw PII in `outbox.payload`**: ids, hashes and masks only, and never a third-party
   response body ([PII & retention](../../../../.ai/data-modeling.md#pii--retention)).
 - **Retention rewrites `webhook_events.payload` only**, through the slice 7 job, by the rule in

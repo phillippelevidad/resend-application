@@ -116,7 +116,7 @@ The script helps with the first shape only, listing every backticked identifier 
 
 - A backfill before the expand migration it writes into, or a contract step shipped in the same deploy as its expand (a `replace:` marker is not one) ([ADR-018](../../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)) — the migration blocks mid-apply, which is the most expensive place to find anything.
 - A route before the handler it exposes, an SDK method or CLI command before the `api-contract.md` entry it implements.
-- An Ask-first task not flagged — a change to a pushed migration, a new dependency, a CI change, a public-contract change, an AWS deploy or a live Resend write that apply would commit without the owner.
+- An Ask-first task not flagged — a change to a frozen migration (merged to `main` or applied to a kept database), a new dependency, a CI change, a public-contract change, an AWS deploy or a live Resend write that apply would commit without the owner. A flagged task the owner already approved on the pre-proposal's itemized list cites that entry, exactly as listed (package and version range, workflow file, resource); anything wider still pauses ([`pp-workflow` → definition-of-done.md → 3](../../pp-workflow/references/definition-of-done.md#3--permission-check)).
 - `pnpm verify` not last, or absent. Exit 0 with every stage run is the only definition of done.
 - A task bundling three independent things, so it cannot fail cleanly or land as one PR.
 - The [doc-update duties `pp-workflow` owes](../../pp-workflow/SKILL.md#definition-of-done) missing entirely: the build-checklist `Status` line and `Ships` boxes in place, the data-modeling **Model index** `Modeled` checkbox, `api-contract.md`, the root `AGENTS.md` **Projects** table and **Commands** line, `.env.example`, and the owning `pp-*` skill for a code-level convention no doc owns.
@@ -189,7 +189,7 @@ Read with the OpenSpec templates (`openspec instructions <artifact> --change <na
 | `- [ ] N.M` checkboxes, all unticked | Script-checked. A ticked box means this is not a pre-apply state |
 | Each task independently verifiable, with the check in the task | A6 |
 | Dependency order | A7 |
-| Ask-first tasks flagged and named | A7 — flagged but vague is nearly as bad; say what the owner is approving |
+| Ask-first tasks flagged and named | A7 — flagged but vague is nearly as bad; say what the owner is approving, and cite the itemized pre-approval where one covers it |
 | The `pp-workflow` doc duties | A7 |
 | `pnpm verify` last, reported honestly | "Run the tests" standing in for the gate |
 | A `WALKTHROUGH.md` task | The slice cannot be ticked without one, and it is what proves what `pnpm verify` structurally cannot see |

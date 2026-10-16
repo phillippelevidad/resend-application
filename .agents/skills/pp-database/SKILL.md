@@ -1,12 +1,12 @@
 ---
 name: pp-database
-description: Ledger's database conventions — the Drizzle `pgTable` schema in `packages/db` (one table per file, constraints and indexes in the table), repositories as executor-first functions with the caller's transaction passed down, `drizzle-kit` migrations that are expand/contract and never edited after push, the runtime role's per-table grants, indexes that serve a named query, `jsonb` in its three allowed places parsed with Zod, the connection-error classifier behind `database_unavailable`, and the new-table recipe. Load it before writing or reviewing anything under `packages/db/**`, and whenever a change adds or alters a table, column, closed set, constraint, index, `jsonb` column, grant, migration or seed — "add a table", "add a column", "store X", "write a repository", "write a migration", "drop this column", "why permission denied", "index this query". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
+description: Ledger's database conventions — the Drizzle `pgTable` schema in `packages/db` (one table per file, constraints and indexes in the table), repositories as executor-first functions with the caller's transaction passed down, `drizzle-kit` migrations that are expand/contract and never edited once merged to `main` or applied to a kept database, the runtime role's per-table grants, indexes that serve a named query, `jsonb` in its three allowed places parsed with Zod, the connection-error classifier behind `database_unavailable`, and the new-table recipe. Load it before writing or reviewing anything under `packages/db/**`, and whenever a change adds or alters a table, column, closed set, constraint, index, `jsonb` column, grant, migration or seed — "add a table", "add a column", "store X", "write a repository", "write a migration", "drop this column", "why permission denied", "index this query". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
 ---
 
 # pp-database — schema, repositories, migrations
 
-A pushed migration is never edited, so a wrong key, a missing grant or a stray cascade costs a
-forward migration against live rows. What a table means is [data-modeling.md](../../../.ai/data-modeling.md);
+A frozen migration (merged to `main` or applied to a kept database) is never edited, so a wrong
+key, a missing grant or a stray cascade costs a forward migration against live rows. What a table means is [data-modeling.md](../../../.ai/data-modeling.md);
 once `packages/db` exists, its schema owns columns, types and indexes
 ([split rule](../../../.ai/data-modeling.md#how-to-use)). This skill owns the mechanics between them.
 
@@ -66,10 +66,11 @@ Mechanics and the checklist: [new-table-recipe.md](references/new-table-recipe.m
   identity `bigint` surrogates; `timestamptz` ([conventions](../../../.ai/data-modeling.md#modeling-conventions-canonical)).
 - An address as `address_hash` plus `address_masked`, both from core ([PII & retention](../../../.ai/data-modeling.md#pii--retention)).
 - `jsonb` only in its three places, parsed with its Zod schema on read, the payload stored as
-  received ([jsonb](references/indexes-and-jsonb.md#jsonb)).
+  received, minus what `jsonb` cannot store, which the worker sanitizes before the insert, never by
+  retrying it ([jsonb](references/indexes-and-jsonb.md#jsonb), [unstorable characters](references/schema-and-repositories.md#unstorable-characters)).
 - Each index serves a query named in the same change ([indexes](references/indexes-and-jsonb.md#indexes)).
-- Connection-class errors classified once, in `packages/db`, into the `database_unavailable`
-  subclass ([classifier](references/schema-and-repositories.md#connection-error-classification)).
+- Connection-class errors, and Neon's storage-limit error (ADR-015), classified once, in
+  `packages/db`, into the `database_unavailable` subclass ([classifier](references/schema-and-repositories.md#connection-error-classification)).
 
 ## Case-by-case
 
@@ -79,7 +80,7 @@ Mechanics and the checklist: [new-table-recipe.md](references/new-table-recipe.m
 | Make an index partial | Every query it serves carries the same predicate over a small slice (the outbox sweep) |
 | Make a unique key partial | Uniqueness holds for a subset of rows only (`api_tokens.bootstrap`) |
 | Write a custom migration | The change needs SQL `drizzle-kit generate` cannot emit: a grant, or a statement with no schema counterpart |
-| Mark a migration `-- contract-step:` | It contains `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` (the slice 2 lint's list). A true contract step also needs the code deployed before it to no longer touch what it removes; a same-name replace (a closed set's `CHECK`, an index) or `DROP NOT NULL` starts its reason with `replace:` and ships with its code |
+| Mark a migration `-- contract-step:` | It contains `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` (the slice 2 lint's list). A true contract step names the commit that stopped using the object, which must be deployed first ([marker](references/migrations-and-grants.md#the-contract-step-marker)); a same-name replace (a closed set's `CHECK`, an index) or `DROP NOT NULL` starts its reason with `replace:` and ships with its code |
 | Add a `NOT NULL` column to a table with rows | It has a default; otherwise nullable now, backfill, `SET NOT NULL` as a later contract step |
 | Add a repository function | A command or reader in the same diff calls it |
 
@@ -88,7 +89,8 @@ Mechanics and the checklist: [new-table-recipe.md](references/new-table-recipe.m
 Each entry names its alternative. The full modeling list:
 [data-modeling.md → Anti-patterns](../../../.ai/data-modeling.md#anti-patterns-must-not).
 
-- **Editing a pushed migration** → a new forward migration, Ask-first ([Permissions](../../../AGENTS.md#permissions)).
+- **Editing a frozen migration** → a new forward migration, Ask-first ([Permissions](../../../AGENTS.md#permissions));
+  before it freezes, regenerate it ([generating](references/migrations-and-grants.md#generating)).
 - **A `pgEnum`** → `text` + `CHECK`, mirrored by a core Zod enum ([conventions](../../../.ai/data-modeling.md#modeling-conventions-canonical)).
 - **Business logic in a trigger or function (stored procedure)** → `packages/core`, called by a
   command; no trigger at all, `updated_at` included ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)).
@@ -109,7 +111,8 @@ Each entry names its alternative. The full modeling list:
 - **Session-level SQL over the pooled URL** (session advisory lock, `SET`, `LISTEN`/`NOTIFY`, SQL
   `PREPARE`) → `pg_advisory_xact_lock` or a row lock in one transaction ([integrations.md](../../../.ai/integrations.md#decision--neon)).
   The one exception is the migrate connection's `lock_timeout`, on the direct URL
-  ([running migrations](references/migrations-and-grants.md#running-migrations)).
+  ([running migrations](references/migrations-and-grants.md#running-migrations)); runtime timeouts
+  are role-level ([grants](references/migrations-and-grants.md#grants)).
 - **`sql.raw` with a runtime value** → the `sql` template, which binds parameters.
 - **`jsonb` for anything a query filters on or a projection reads** → a typed column.
 - **`$type<T>()` or `as` on a `jsonb` read, or the Zod output stored as `payload`** → parse on read;
@@ -138,8 +141,9 @@ the core tuple's members, no `pgEnum(` · a key or unique constraint behind ever
 with its duplicate-insert test · each index serving a query named in the diff · no `.references(`
 or `cascade` reaching `webhook_events` or a projection · **the runtime role's grants on every new
 table** (`GRANT … ON <table> … TO`, the narrowest DML, never `DELETE` on `webhook_events`) · a
-migration for every schema change, generated, and none modified
+migration for every schema change, generated, and none on `main` modified
 (`git diff --name-status main -- 'packages/db/drizzle/*.sql'` shows only `A`) · `DROP`,
-`RENAME`, `ALTER … TYPE` or `SET NOT NULL` only under a `-- contract-step:` first line · `jsonb`
+`RENAME`, `ALTER … TYPE` or `SET NOT NULL` only under a `-- contract-step: <commit SHA>` (the
+commit that stopped using it) or `-- contract-step: replace: …` first line · `jsonb`
 only in its three places, no `$type<` and no `as` on a row field · no `sql.raw(` fed a variable · no
 session-level SQL · the `Modeled` box ticked ([Definition of done](../pp-workflow/SKILL.md#definition-of-done)).

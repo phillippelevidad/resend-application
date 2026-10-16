@@ -39,8 +39,8 @@ Time comes from the clock port and waiting from an injected sleep, so the limite
 a fake clock.
 
 1. **Rate:** at most 2 requests per second per instance by default (configurable), by spacing
-   request starts. Every caller is single-flight (the reconciler by non-overlapping runs, the
-   dispatcher by its lock), so Ledger's total stays at or below 2 × 2 req/s of the team's 10 (RS-19,
+   request starts. Every caller is single-flight (the reconciler by non-overlapping runs and its
+   run claim, [reactions-and-recovery.md](reactions-and-recovery.md#reconciler); the dispatcher by its lock), so Ledger's total stays at or below 2 × 2 req/s of the team's 10 (RS-19,
    RS-20).
 2. **Headroom:** after each response, read `ratelimit-remaining` and `ratelimit-limit` from the
    response headers (the SDK returns them, RS-23). When `remaining` is below half of `limit`, wait
@@ -48,7 +48,8 @@ a fake clock.
 3. **`429`:** wait `retry-after`, then retry. Before any wait, compare it with the caller's deadline
    (the run's time budget): a wait that would pass it stops the call with `rate_limited` instead.
    A `429` named `daily_quota_exceeded` or `monthly_quota_exceeded` (RS-22), or one without
-   `retry-after`, is never retried: it ends the call with `rate_limited`.
+   `retry-after`, is never retried: it ends the call with `rate_limited`, whose registry Meaning
+   covers both cases ([Error codes](../../../../.ai/api-contract.md#error-codes)).
 4. **No limiter shared across functions** through a table or a service: single-flight callers make
    it unnecessary (ADR-012's rejected option).
 

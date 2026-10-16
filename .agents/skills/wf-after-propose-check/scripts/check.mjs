@@ -973,8 +973,8 @@ const shipsBullets = (() => {
     const all = artifacts.map((a) => a.text).join("\n");
     const triggers = [
       [
-        /(?:edit|chang|modif|rewrit)\w*[^.\n]{0,40}(?:applied|pushed|existing) migration/i,
-        "change to an already-pushed migration",
+        /(?:edit|chang|modif|rewrit)\w*[^.\n]{0,40}(?:applied|pushed|existing|frozen|merged) migration/i,
+        "change to a frozen migration (merged to main or applied to a kept database)",
       ],
       [
         /package\.json|new dependency|add(?:ing)? a dependency/i,
@@ -1004,7 +1004,7 @@ const shipsBullets = (() => {
       record(
         "tasks",
         "READ",
-        `${flagged} Ask-first marker(s) in tasks.md — check each names what the owner is approving, not just that they must approve`,
+        `${flagged} Ask-first marker(s) in tasks.md — check each names what the owner is approving, not just that they must approve, and whether the pre-proposal's itemized approval list already covers it exactly`,
       );
 
     // Doc-update duties pp-workflow owes. Only asked for where the change earns them.

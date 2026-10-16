@@ -120,7 +120,7 @@ later contract step. A new column needs no new grant (table-level grants cover i
 - [ ] `jsonb` only in its three places, each with its Zod schema
 - [ ] Each index named and serving a query in this diff
 - [ ] No foreign key, no cascade, no trigger, no view
-- [ ] The migration is generated, read, and expand-only; no existing migration modified
+- [ ] The migration is generated, read, and expand-only; no frozen migration modified
 - [ ] A custom migration grants the runtime role the narrowest DML; no `DELETE` on `webhook_events`
 - [ ] Duplicate-insert and closed-set integration tests pass as the runtime role
 - [ ] `Modeled` ticked; any column drift between the schema and the entry corrected in the doc

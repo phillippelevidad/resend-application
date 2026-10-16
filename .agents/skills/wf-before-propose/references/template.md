@@ -45,11 +45,13 @@ One row per contradiction found in phase 3: what the two sources say (quoted, an
 
 `D1`, `D2`, … Each one: the decision in a sentence, why, the authority (`doc.md#anchor`, lens clause, or `owner-ruled <date>`), and what it rules out. This is the section `design.md` is written from, so a decision that a reader would have to re-derive is a failed section. Decisions the owner ruled in this run are marked as such, distinct from decisions the docs already carried.
 
+Open the section, before `D1`, with an **Ask-first approvals** table: one row per Ask-first item the slice crosses ([Permissions](../../AGENTS.md#permissions)) — the exact package and version range, workflow file, resource, contract entry or frozen migration — its status (`owner-approved <date>` in the owner round, or `held`) and the task group that uses it. An itemized approval counts for exactly what the row names; anything off the table, or outside its range, still stops at apply ([`pp-workflow` → definition-of-done.md → 3](../../.agents/skills/pp-workflow/references/definition-of-done.md#3--permission-check)). `None — the slice crosses no Ask-first item` is a complete answer where it is true.
+
 ### 8. Data model
 
 For each table added or changed: purpose · every column with its type and nullability · enums with every member and what each means · uniqueness constraints (including `NULLS NOT DISTINCT` where it matters) · indexes and the query each serves · FKs and which are ownership keys · which `jsonb` buckets exist and their code-owned contract · the base fields · the unique key every write is idempotent on (`svix_id`, the outbox `dedupe_key`) and what a duplicate insert does · migration order, expand/contract, and any backfill.
 
-State the [schema authority](../data-modeling.md) explicitly: the Drizzle schema in `packages/db` owns table and column shape, and its migrations are expand/contract only. Flag the whole section **Ask-first** — a schema change pauses for owner approval at apply time.
+State the [schema authority](../data-modeling.md) explicitly: the Drizzle schema in `packages/db` owns table and column shape, and its migrations are expand/contract only. Flag the whole section **Ask-first** — a schema change pauses for owner approval at apply time, unless section 7's Ask-first approvals table names it as approved.
 
 `Not touched — no schema change` is a complete answer where it is true.
 
@@ -142,7 +144,7 @@ Before handing off, check and **report the actual result**:
 1. **No unresolved markers.** `grep -niE 'TBD|TODO|to be decided|open question|\?\?|decide later|unclear' <file>` returns nothing outside sections 3, 6, 22 and 25, where the words appear legitimately (a named deferral, a recorded contradiction, an `about.md` open question the slice depends on). Read every hit; do not just count them.
 2. **Every `Ships` bullet** appears verbatim in section 2, has a verdict in section 5, and has a home in one of sections 8–13.
 3. **Every table** has columns, types, constraints, indexes and an idempotency-key decision. **Every operation** has a kind, auth scope and an idempotency answer. **Every surface** names its operation, its `--json` output, and each error code it raises with the `message` and `hint` written out.
-4. **Every decision** carries an authority. **Every deferral** carries a countable threshold or a named observable event.
+4. **Every decision** carries an authority. **Every deferral** carries a countable threshold or a named observable event. **Every Ask-first item** the document names has its row in section 7's approvals table.
 5. **The self-service test is answered in writing** for the stages the slice touches.
 6. **Every capability path** in section 23 is marked `ADDED` or `MODIFIED` against what `openspec/specs/` actually holds.
 7. **Every section is present**, with `Not touched — <why>` where it does not apply.

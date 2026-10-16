@@ -56,7 +56,9 @@ migrations, grants → [pp-database](../pp-database/SKILL.md) · tests, fakes, `
   ([ADR-008](../../../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq));
   on a database outage the worker pauses its own event source
   ([ADR-015](../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
-- Recovery by id diff, replayed through ingest ([ADR-007](../../../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)).
+- Recovery by id diff, replayed through ingest, each run claimed before its first Resend call
+  ([ADR-007](../../../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest);
+  [reconciler](references/reactions-and-recovery.md#reconciler)).
 - Every Resend API call through `packages/resend-client`, the sole caller: its limiter, status-then-name
   mapping and `User-Agent` ([ADR-012](../../../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)).
 - Each route: one `createRoute` per api-contract entry, one command or reader, one mapper that
@@ -137,7 +139,9 @@ pp-general [review greps](../pp-general/references/boundaries.md#review-greps) 5
 each `db.transaction(` passes `tx` down and holds no Resend, SQS, invoke or `fetch` call (the
 dispatcher's batch excepted) · every side effect an outbox row ·
 every insert on a key in [Idempotency keys](../../../.ai/data-modeling.md#idempotency-keys) uses `ON CONFLICT` on it (`git grep -n "onConflict" -- packages/db`, read each) ·
-the worker returns `batchItemFailures` built from per-message results · idempotency proven by an
+the worker returns `batchItemFailures` built from per-message results · the reconciler's
+`claimed_at IS NULL` claim precedes its first Resend call, and `run_abandoned` is derived on read,
+never written · idempotency proven by an
 integration test against real Postgres · `git grep -niE "redis|bullmq|ioredis" -- packages apps` ·
 no projection input read from `received_at` (`git grep -nE "receivedAt|received_at" -- 'packages/core/**/*.projection.ts' 'packages/core/**/*.rule.ts'`) ·
 every route through `createRoute` (`git grep -nE "\.(get|post|put|patch|delete)\(['\"]/" -- packages/api`) ·

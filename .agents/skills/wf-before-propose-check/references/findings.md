@@ -151,7 +151,7 @@ Read with [wf-before-propose's template](../../wf-before-propose/references/temp
 | 4 | Prerequisites, blocking vs lagging | A dependency slice assumed done that is not |
 | 5 | A verdict per `Ships` item | F4 — re-verify, do not read |
 | 6 | Contradictions, each resolved or ruled | Empty with no "having checked: …" list |
-| 7 | Decisions with authority | F2, F8. Every `D<n>` cited elsewhere must exist here |
+| 7 | Decisions with authority; the Ask-first approvals table | F2, F8. Every `D<n>` cited elsewhere must exist here. An Ask-first item named anywhere in the document with no approvals row, or a row vaguer than one package and range, workflow file or resource |
 | 8 | Columns, types, nullability, enums, constraints, indexes, FKs, idempotency keys, migration order | A nullable never stated; a write with no unique key to be idempotent on; a migration that is not expand/contract; backfill order |
 | 9 | States, transitions, guards, log writes, outbox dispatch | A mutation that is not a transition |
 | 10 | Operations: kind, semantics, auth, scope, idempotency, new-or-existing | An invented endpoint path — [`api-contract.md`](../../../../.ai/api-contract.md) is the only place operations are named |

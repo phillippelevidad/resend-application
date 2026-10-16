@@ -47,12 +47,16 @@ the bytes and the three `svix-*` headers to the function `packages/ingest` built
 
 One `RecordEventCommand`-shaped transaction per message ([commands-and-readers.md](commands-and-readers.md)):
 
-1. Parse the envelope (Zod, from `packages/core`).
+1. Parse the envelope (Zod, from `packages/core`). Replace each `\u0000` and lone surrogate in the
+   parsed payload with U+FFFD (the pure `packages/core` sanitizer) and count the event as sanitized (`worker.payload_sanitized`, ADR-004)
+   when any was replaced; the sanitized event follows the ordinary path below
+   ([pp-database → unstorable characters](../../pp-database/references/schema-and-repositories.md#unstorable-characters)).
 2. `INSERT … ON CONFLICT (svix_id) DO NOTHING` into `webhook_events`, typed columns extracted once.
    On conflict: commit as a duplicate, emit `worker.duplicates`, done.
 3. Unknown or non-email type, or a payload that fails its type's schema: stored raw (typed columns
    null where unreadable), projection skipped, `projection.unknown_event_type` emitted. A verified
-   event is **never** dead-lettered for its content (ADR-004, RS-25).
+   event is **never** dead-lettered for its content (ADR-004, RS-25), a payload `jsonb` cannot
+   store included: step 1 sanitized it, and it is stored raw here only if it still fails its schema.
 4. Otherwise lock the email row, then the recipient rows in sorted `address_hash` order; load the
    email's full event set after the locks.
 5. Recompute with `projectEmail` and `projectRecipient` from `packages/core` (ADR-003) and write the
@@ -79,8 +83,11 @@ One `RecordEventCommand`-shaped transaction per message ([commands-and-readers.m
 
 ## Database outage (ADR-015)
 
-- `packages/db` classifies a connection-class error and raises the shared subclass for it
-  ([pp-database](../../pp-database/SKILL.md)). The worker branches on that subclass only.
+- `packages/db` classifies a connection-class error, or Neon's storage-limit error (PG-U07), and
+  raises the shared subclass for it ([classifier](../../pp-database/references/schema-and-repositories.md#connection-error-classification)).
+  The worker branches on that subclass only, so a full database pauses like an unreachable one.
+- A Lambda frozen or killed mid-transaction holds its locks until the runtime role's server-side
+  timeouts end it ([pp-database → grants](../../pp-database/references/migrations-and-grants.md#grants)).
 - **Retry once on a fresh connection** (a Neon suspend can drop one, PG-U04). If that fails too,
   report **every** message in the batch failed and disable the worker's own ESM through the event
   source control port (`Enabled: false`, AWS-18). Messages wait in the queue (AWS-07).
@@ -88,6 +95,9 @@ One `RecordEventCommand`-shaped transaction per message ([commands-and-readers.m
 - **Resume:** a resume event (hourly cron, or `worker.resumeEventSource` through the API) checks the
   ESM state; only while paused does it probe Postgres and re-enable on success. A healthy stack never
   probes, so no idle database wake ([Cadence](../../../../.ai/integrations.md#cadence-and-the-database)).
+  The probe also reads storage used and fails while it is at the storage budget's limit: a
+  read-only probe succeeds on a full database, which would re-enable, fail and re-pause hourly,
+  spending receives until the queue drained ([ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
 - The resume event's shape, and how the worker learns its own ESM UUID (an internal variable CDK
   sets, or a lookup), are the pre-proposal of the slice that ships the pause and resume (slice 2).
 

@@ -20,7 +20,7 @@ A large share of any diff in this repo is byproduct — a file that changed *bec
 **But do not drop them silently — they are evidence.** Their *presence or absence* answers duty questions the reading cannot:
 
 - Drizzle `meta/` changed while the `packages/db` schema changed → a migration was generated; read its SQL. Schema changed and no migration was added → [B4](findings.md), and the script raises it as a BLOCK. A `meta/` change with no schema change → someone ran the generator by hand or edited a snapshot; find out which.
-- `pnpm-lock.yaml` changed → a dependency moved. That is **Ask-first**; confirm it was approved, and read the `package.json` line, not the lock.
+- `pnpm-lock.yaml` changed → a dependency moved. That is **Ask-first**; confirm it was approved (one at a time, or named with its version range on the pre-proposal's itemized list), and read the `package.json` line, not the lock.
 - A new binary asset appeared → check where it is served from and whether it belongs in the repo at all.
 
 So: **count them, name them in one line, and read none of them.**
@@ -91,7 +91,7 @@ Load [`pp-database`](../../pp-database/SKILL.md). Its [new-table recipe](../../p
 | No business logic in a trigger or stored procedure, and no view used as an API | Logic that the pure core and its property tests never see |
 | No secret, API key or real recipient address in a table, seed, fixture or migration — Resend test addresses only | A credential or a real person's address in a public repo's history |
 | All SQL pooler-safe ([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)) | A session-level feature that works against a direct connection and breaks behind the pooler |
-| No edit to a migration that has already been applied | A forward migration is the only fix, and it is Ask-first. The script raises an edited migration as a BLOCK |
+| No edit to a frozen migration: merged to `main` or applied to a kept database ([`pp-database` → Never](../../pp-database/SKILL.md#never)) | A forward migration is the only fix; changing the frozen one is Ask-first. The script raises an edited migration already on the diff base as a BLOCK; one this change added is regenerated freely |
 
 ---
 

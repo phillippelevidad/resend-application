@@ -345,7 +345,7 @@ for (const [name, list] of Object.entries(buckets))
     record(
       "generated",
       "BLOCK",
-      `existing migration(s) edited: ${editedMigrations.join(" ")} — a pushed migration is never edited; the fix is a new forward migration, Ask-first (pp-database → Never)`,
+      `existing migration(s) edited: ${editedMigrations.join(" ")} — a migration already on the diff base is frozen (merged to main or applied to a kept database) and never edited; the fix is a new forward migration, and changing the frozen one is Ask-first (pp-database → Never)`,
     );
 }
 
@@ -389,7 +389,7 @@ if (tasks) {
     record(
       "tasks",
       "READ",
-      `${askFirst.length} Ask-first task(s) ticked: ${askFirst.map((t) => t.id ?? `L${t.idx + 1}`).join(", ")} — confirm the owner actually approved each before it was committed`,
+      `${askFirst.length} Ask-first task(s) ticked: ${askFirst.map((t) => t.id ?? `L${t.idx + 1}`).join(", ")} — confirm the owner actually approved each before it was committed, one at a time or named exactly on the pre-proposal's itemized list`,
     );
 
   // A task stating no check is a task whose completion nothing proves.

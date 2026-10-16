@@ -84,7 +84,9 @@ Exactly [api-contract.md → Conventions](../../../.ai/api-contract.md#conventio
 
 A command waits when its Surfaces line names `--no-wait`: today only `ledger reconcile`
 ([reconcile.start](../../../.ai/api-contract.md#reconcilestart)), polling `reconcile.getRun` through
-one interval constant, bounded by the run's time budget; Ctrl-C stops the wait, not the run. Rules
+one interval constant until the run is finished or abandoned (the API derives
+[`run_abandoned`](../../../.ai/api-contract.md#error-codes), a run outcome: exit `1`); the CLI's own
+wait bound is only a backstop. Ctrl-C stops the wait, not the run. Rules
 and mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#waiting).
 
 ## Always
@@ -130,7 +132,8 @@ and mechanics: [command-anatomy.md → Waiting](references/command-anatomy.md#wa
 - **Domain validation in the CLI** (duration, id format, range) → pass it through; the API decides.
 - **`addCommand()`, or a root setting applied after subcommands exist** → `.command()` on the
   configured root; `addCommand()` copies no inherited setting.
-- **An unbounded wait, or a poll interval inline** → the one constant, bounded by the run's budget.
+- **An unbounded wait, a poll interval inline, or the Lambda's time budget computed in the CLI** →
+  the one constant, ending on a finished or abandoned run, with a backstop bound.
 - **An exception's text, stack or `cause` printed** → the constant defect line
   ([writing a message](../pp-general/references/errors.md#writing-message-and-hint)).
 - **A CLI test against a live API or database** → the fake SDK; the SDK ↔ API chain is the

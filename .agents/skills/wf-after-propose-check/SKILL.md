@@ -136,7 +136,7 @@ Two questions, not one.
 | `proposal.md` | someone deciding whether this is still the right change | Why, the scope verbatim, what is out with a trigger, the self-service answer, and the risks |
 | `specs/<capability>/spec.md` | the test author, and every future reader of that capability | **Every requirement survives as behaviour with a WHEN/THEN scenario that could fail.** A requirement naming a class, a file or an endpoint is at the wrong altitude — rewrite it as behaviour |
 | `design.md` | the builder, at 2am | Every decision with its authority and its rejected alternative, so nothing gets re-derived. A decision the builder would reverse is one that did not explain itself |
-| `tasks.md` | the builder, in order | Each task independently verifiable **with the check stated in the task**, ordered so nothing depends on a later one, Ask-first flagged, doc duties present, `pnpm verify` last |
+| `tasks.md` | the builder, in order | Each task independently verifiable **with the check stated in the task**, ordered so nothing depends on a later one, Ask-first flagged — citing, in the task, the owner's itemized pre-approval where one covers it exactly, since apply never reads the pre-proposal — doc duties present, `pnpm verify` last |
 
 Then the ordering, which is the defect a reading pass catches and nothing else does: **a backfill before the expand migration it writes into, a contract step in the same deploy as its expand, a route before the handler it exposes, an SDK method or CLI command before the `api-contract.md` entry it implements.** An ordering constraint recorded only in prose is one that gets lost. Put it in the task, in order, with the reason inline.
 
@@ -204,7 +204,7 @@ Your call (<n>, ideally 0)
 What I could not check
 - <the lookup that failed, the pass you cut, the thing only you know>
 
-Ready. Run `opsx:apply` — it will pause at the <n> Ask-first task(s): <name them>.
+Ready. Run `opsx:apply` — it will pause at the <n> Ask-first task(s) the itemized pre-approval does not cover: <name them>.
 ```
 
 **"Worth your eyes" is the tier that keeps this skill usable.** A judgement made under rungs 1–4 is settled and the owner is not being asked to re-decide it — but where it commits the product to something they might feel differently about, say what you decided, why you judged it fine, and what one sentence from them would change it. That is not a question; it costs them five seconds and nothing if they agree. Do not inflate it: a fix the docs plainly dictate belongs in the fixed list, not here.

@@ -43,19 +43,22 @@ pp-general; where it is silent, pp-general applies.
   `RemovalPolicy.DESTROY`; every secret sets `DESTROY` (AWS-38, ADR-010).
 - A Lambda receives secret **ARNs**, never values, with IAM read on its own secrets alone
   ([Secrets layout](../../../.ai/integrations.md#secrets-layout), [CBL-01](../../../.ai/check-before-launch.md#deploy-configuration)).
-- Internal variable names live in one module in `infra` and in
-  [the table](references/env-and-inputs.md#internal-environment-variables); each is set only on the
-  function that reads it ([api-contract.md → Conventions](../../../.ai/api-contract.md#conventions)).
+- Internal variable names live in `packages/shared/src/function-env.ts`, imported by `infra` and
+  each reader's `.config.ts`, and in [the table](references/env-and-inputs.md#internal-environment-variables);
+  each is set only on the function that reads it, checked by one `Template` assertion per function
+  ([api-contract.md → Conventions](../../../.ai/api-contract.md#conventions)).
 - Deploy inputs reach the CDK app as context, parsed once with Zod in `infra/src/main.ts`; stacks
   take typed props ([deploy inputs](references/env-and-inputs.md#deploy-inputs)).
-- No account id, ARN literal or context lookup; physical names are stack-prefixed
-  ([names](references/env-and-inputs.md#names-account-and-region), CBL-10).
+- No account id, ARN literal or context lookup; functions and the HTTP API take stack-prefixed
+  physical names, secrets none ([names](references/env-and-inputs.md#names-account-and-region), CBL-10).
 - Each [cost-brake property](#cost-brake-in-code) has one `Template` assertion citing its id.
 - A script's AWS calls go through `@ledger/aws`, its database work through `@ledger/db`
   ([module boundaries](../../../AGENTS.md#module-boundaries)).
-- Deploy order is S-05: ensure the runtime role, migrate, then `cdk deploy`
+- Deploy order is S-05: refuse an unsafe contract step, ensure the runtime role and its
+  timeouts, migrate, then `cdk deploy`
   ([ADR-018](../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them),
-  [deploy](references/scripts.md#deploy)). Teardown is one command (lens clause 7).
+  [deploy](references/scripts.md#deploy)). Teardown is one command, refusing while events are
+  queued ([teardown](references/scripts.md#teardown), lens clause 7).
 - Deploying, creating AWS resources and running a script against AWS are Ask-first
   ([Permissions](../../../AGENTS.md#permissions)). `cdk synth` and the `Template` tests need no
   credentials (`[Unverified]` until slice 2's first synth, [names](references/env-and-inputs.md#names-account-and-region));
@@ -122,6 +125,8 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
 - **A Lambda-reserved key (`AWS_REGION`, …) set as a variable** → read the one the runtime sets
   (AWS-56, [internal variables](references/env-and-inputs.md#internal-environment-variables)).
 - **An account id, ARN literal or `fromLookup`** → pseudo-parameters, no lookups (CBL-10).
+- **A physical secret name (`secretName`)** → none; the ARN, from a stack output in scripts
+  (AWS-U06, [names](references/env-and-inputs.md#names-account-and-region)).
 - **A deploy input in `cdk.json` or any tracked file** → context from the deploy command (CBL-10, CBL-19).
 - **A root script named `deploy`, or any pnpm built-in** → a name no built-in shadows
   ([scripts.md](references/scripts.md#root-packagejson-scripts)).
@@ -144,8 +149,9 @@ infra `*.test.ts`); after it, `pnpm verify` exits 0 with every stage run
 **Then read the diff.** Each [review grep](references/cost-brake-assertions.md#review-greps)
 prints nothing. Then: every new
 function uses the shared shape · every new cost-brake property has its assertion, citing its id
-and paired with a count · every new internal variable is in the names module and the
-[table](references/env-and-inputs.md#internal-environment-variables), set only where it is read · no
+and paired with a count · every new internal variable is in its function's names object in
+`@ledger/shared` and the [table](references/env-and-inputs.md#internal-environment-variables), set
+only where it is read, and that function's key-set assertion passes · no
 root script shadows a pnpm built-in · `cdk.out/` is git-ignored
 ([CBL-19](../../../.ai/check-before-launch.md#public-repo-hygiene)) · each new dependency
 (`aws-cdk-lib`, `constructs`, `aws-cdk`, `esbuild`), deploy, AWS resource and AWS-facing run was

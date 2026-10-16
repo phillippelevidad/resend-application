@@ -43,6 +43,8 @@ failure is locked.
   `+label` forms ([integrations.md → Locked rules](../../../../.ai/integrations.md#locked-rules-must)).
   The mask properties generate arbitrary local parts and labels under `@resend.dev`, so pp-general's
   [address grep](../../pp-general/references/boundaries.md#review-greps) stays empty.
+- **Control characters** (C0, DEL, C1) in every masked input, local parts, labels, display names
+  and subjects alike, so the no-control-character mask property is not vacuous.
 
 ## The properties slice 0 owes
 
@@ -56,7 +58,7 @@ properties 1–4 for `projectEmail` and `projectRecipient`, and the mask propert
 | 2 Idempotence | Repeating any events of the set gives an equal projection |
 | 3 Monotonicity | Adding events to a set never moves the projection out of a state ADR-003's precedence makes sticky (for `projectRecipient`, its sticky states) |
 | 4 Oracle agreement | The projection equals a deliberately naive reference written in the test file, never imported from production |
-| Masks | Idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token |
+| Masks | Idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token, a mask holds no control character (each maps to `*`) |
 | Two recipients | A bounce naming one recipient leaves the other's outcome unchanged |
 
 - One property per `it`, named for the property and its consequence
