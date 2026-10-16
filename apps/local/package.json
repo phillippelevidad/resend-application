@@ -4,6 +4,10 @@
   "type": "module",
   "description": "Local entry point: composes the package factories with @hono/node-server and the local queue",
   "license": "MIT",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../../.env.local src/main.ts",
+    "start": "node --env-file-if-exists=../../.env.local src/main.ts"
+  },
   "dependencies": {
     "@hono/node-server": "2.1.5",
     "@ledger/api": "workspace:*",
