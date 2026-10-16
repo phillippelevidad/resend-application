@@ -106,8 +106,10 @@ Each entry names its alternative. The full modeling list:
 - **A stateful repository class, a `BaseRepository` or a generic repository** → executor-first
   functions ([pp-general → Rejected patterns](../pp-general/references/adding-things.md#rejected-patterns)).
 - **A transaction opened inside a repository, or an ambient one** → the caller's `tx`, passed explicitly.
-- **Session-level SQL** (session advisory lock, `SET`, `LISTEN`/`NOTIFY`, SQL `PREPARE`) →
-  `pg_advisory_xact_lock` or a row lock in one transaction ([integrations.md](../../../.ai/integrations.md#decision--neon)).
+- **Session-level SQL over the pooled URL** (session advisory lock, `SET`, `LISTEN`/`NOTIFY`, SQL
+  `PREPARE`) → `pg_advisory_xact_lock` or a row lock in one transaction ([integrations.md](../../../.ai/integrations.md#decision--neon)).
+  The one exception is the migrate connection's `lock_timeout`, on the direct URL
+  ([running migrations](references/migrations-and-grants.md#running-migrations)).
 - **`sql.raw` with a runtime value** → the `sql` template, which binds parameters.
 - **`jsonb` for anything a query filters on or a projection reads** → a typed column.
 - **`$type<T>()` or `as` on a `jsonb` read, or the Zod output stored as `payload`** → parse on read;

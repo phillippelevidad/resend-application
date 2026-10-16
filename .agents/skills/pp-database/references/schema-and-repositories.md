@@ -15,7 +15,7 @@ packages/db/
     index.ts                 # the one public surface: schema, repositories, Executor, classifier
     schema/<kebab>.ts        # one table per file, at data-modeling's `_Schema:_` path
     <kebab>.repository.ts    # one per table
-    executor.ts              # the Executor type
+    executor.ts              # the Executor and Transaction types
     connection-error.ts      # the classifier
     postgres-queue.adapter.ts  # slice 2B: the queue port over local_queue_messages (ADR-013)
 ```
@@ -74,7 +74,8 @@ export const webhookEventsRepository = {
 - **`Executor`** is one exported type: the common supertype of the database object and a
   transaction, so the same function runs inside or outside one. Derive it from the installed
   `drizzle-orm` `.d.ts` (`[Unverified]`: whether the node-postgres transaction type extends the
-  database type, or a union is needed); slice 1 writes it once.
+  database type, or a union is needed); slice 1 writes it once. `Transaction`, exported beside it,
+  is the transaction type alone, for a function that is only correct inside one (a lock).
 - **They load and write rows.** A projection is computed by `packages/core` from the rows a
   repository loaded, and the result is written back by a repository
   ([Projections are derived](../../../../.ai/data-modeling.md#projections-are-derived)). A fold,
@@ -94,7 +95,13 @@ repository never opens one. On the `packages/db` side:
 - **ADR-004's lock order:** each projection row created with `INSERT … ON CONFLICT DO NOTHING`, then
   `SELECT … FOR UPDATE` on the email row, then the recipient rows in sorted `address_hash` order;
   inputs read after the locks ([ADR-004](../../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).
-  A function that locks says so in its name (`lockEmail`), so the order reads in the command.
+  The creating inserts follow the same order (the email row, then the recipient rows sorted by
+  `address_hash`): an insert that conflicts with an uncommitted one waits for it
+  ([unique checks](https://www.postgresql.org/docs/current/index-unique-checks.html)), so two emails
+  creating the same recipients in opposite `data.to` order deadlock (`40P01`).
+  A function that locks says so in its name (`lockEmail`), so the order reads in the command, and
+  takes a `Transaction`, never an `Executor`: outside a transaction its lock releases at the
+  statement's autocommit and serializes nothing.
 - **Transaction-scoped locks only:** `FOR UPDATE`, `FOR UPDATE SKIP LOCKED` (the local queue and
   dispatcher claims), `pg_advisory_xact_lock`, `pg_try_advisory_xact_lock` (ADR-007, ADR-017), each
   advisory key a named constant in `packages/db`. The pooler is in transaction mode
@@ -106,6 +113,19 @@ One factory, called once at module scope by a composition root with typed config
 `drizzle-orm/node-postgres` over one `pg` pool of size 1, the pooled URL with `sslmode=require`
 ([ADR-005](../../../../.ai/architecture.md#adr-005--postgres-only)). It never reads `process.env`
 ([pp-general → Config](../../pp-general/references/config-and-env.md)); its name lands in slice 1.
+
+- **Timeouts:** `connectionTimeoutMillis` and `query_timeout` in the pool config, both well below
+  the function timeout. Both default to none ([Pool](https://node-postgres.com/apis/pool),
+  [Client](https://node-postgres.com/apis/client)), so a blackholed connect ends as a Lambda timeout
+  the classifier never sees: ADR-015 never pauses and the batch drains to the DLQ. Never
+  `statement_timeout` or `lock_timeout` in this config: `pg` sends them as startup parameters
+  ([source](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js)),
+  which PgBouncer rejects by default ([`ignore_startup_parameters`](https://www.pgbouncer.org/config.html))
+  and Neon's pooler page does not address; never `SET` either (pooler-safe SQL). The values, and
+  whether a `Query read timeout` error is connection-class, are the slice 2 pre-proposal's.
+- **`pool.on('error')` is registered**, logging the error's name and SQLSTATE only. An idle client
+  dropped by the backend (a Neon suspend, PG-U04) emits on the pool, which has already removed it;
+  with no listener, Node raises an uncaught error that kills the process ([Pool](https://node-postgres.com/apis/pool)).
 
 ## Connection-error classification
 
@@ -126,7 +146,11 @@ and `pg-pool` attaches the connect error as `cause` on its timeout. A match anyw
 | SQLSTATE class `08` (`08000`, `08001`, `08003`, `08004`, `08006`, `08007`, `08P01`) | [Postgres errcodes](https://www.postgresql.org/docs/current/errcodes-appendix.html) |
 | `57P01` `admin_shutdown`, `57P02` `crash_shutdown`, `57P03` `cannot_connect_now` | same |
 | Node socket codes: `ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`, `EPIPE`, `ENOTFOUND`, `EAI_AGAIN`, `EHOSTUNREACH`, `ENETUNREACH` | Node system errors |
-| `pg` errors with no `code`, by exact message: `Connection terminated unexpectedly`, `Connection terminated due to connection timeout`, `timeout exceeded when trying to connect`, `Client has encountered a connection error and is not queryable` | [pg client](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js), [pg-pool](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg-pool/index.js) |
+| `pg` errors with no `code`, by exact message: `Connection terminated unexpectedly`, `Connection terminated due to connection timeout`, `Client has encountered a connection error and is not queryable` | [pg client](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js), [pg-pool](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg-pool/index.js) |
+
+Never pg-pool's `timeout exceeded when trying to connect`: it is raised, with no `cause`, when no
+pooled client frees up in time, which on a size-1 pool is a leaked checkout or a `db` call inside a
+`tx`. That is a bug, so it follows ADR-008 to the DLQ instead of pausing the worker.
 
 The lists are constants in `connection-error.ts`. The message matches are `[Unverified]` against
 the installed `pg`; the slice 2 classification unit test (ADR-015's evidence) pins each row, and
