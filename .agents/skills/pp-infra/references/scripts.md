@@ -101,9 +101,9 @@ fail loudly ([CBL-16](../../../../.ai/check-before-launch.md#deploy-configuratio
 throttles), warn when month-to-date spend is at or above the cap, then point at `ledger reconcile`.
 It runs the kill switch's steps in reverse, from the same implementation.
 
-**[Unverified]:** where month-to-date spend is read and what each read costs. No `AWS-NN` fact
-covers the Cost Explorer API's request charge; the budget's own spend figure may be the free
-source. Slice 2 adds the fact, or reads the budget.
+**[Unverified] ([AWS-U10](../../../../.ai/aws.md#unverified)):** where month-to-date spend is read
+and what each read costs. No `AWS-NN` fact covers the Cost Explorer API's request charge; the
+budget's own spend figure may be the free source. Slice 2 adds the fact, or reads the budget.
 
 ## Trip drill
 

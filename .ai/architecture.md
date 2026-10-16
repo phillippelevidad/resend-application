@@ -524,7 +524,7 @@ account are Ask-first.
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19 |
 | 1 | RS-U21, RS-U22 | RS-U15, RS-U18 |
-| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, PG-U04 |
+| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, PG-U04 |
 | 3 | — | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 6 | — | RS-U16 |
