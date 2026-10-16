@@ -137,6 +137,7 @@ Every finished slice [MUST still be hand-walkable through the CLI, the API or th
 - A step **quoting output the code does not produce** — a field, an error `code`, a `hint`, an exit code. One of the two moved, and the owner finds out mid-walk.
 - A step that **cannot be completed today and names no destination slice.** That rule is explicit and it has teeth: an unwalkable step with no named destination *is* the slice not being done.
 - A **self-service stage the card claims with no step** — `deploy → connect the webhook → ingest → query → recover → tear down`. A claimed stage no command reaches is a finding against this slice, not a note for a later one.
+- A **persona that reaches the slice with no path** — each finished slice is walked by hand in every role that reaches it ([about.md](../../../../.ai/about.md#target-personas)).
 
 **What it costs.** The owner loses the session they set aside to test the slice, and finds out the slice was never testable. That is the most expensive fifteen minutes in this workflow.
 

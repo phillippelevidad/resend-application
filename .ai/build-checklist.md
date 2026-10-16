@@ -35,8 +35,10 @@ restate. Milestones carry no dates ([about.md → Milestones](about.md#milestone
   each with the exact CLI command, API request or simulator run and its expected output. A step
   that cannot be completed today MUST name the slice that covers it, inline. A surface the card
   claims but no step reaches is a finding against this slice. Each path names the persona walking
-  it, setup MUST be non-destructive, and every step that writes to a live Resend account or AWS
-  MUST carry an `**Ask-first:**` marker; the format is
+  it, and every [persona](about.md#target-personas) that reaches the slice MUST walk at least one
+  path: a role that reaches the slice but walks no path is a finding against this slice too. Setup
+  MUST be non-destructive, and every step that writes to a live Resend account or AWS MUST carry
+  an `**Ask-first:**` marker; the format is
   [rsa-manual-test → walkthrough-format.md](../.agents/skills/rsa-manual-test/references/walkthrough-format.md).
   `rsa-manual-test` executes the walk after `wf-after-apply-check` and records `WALKTHROUGH-RUN.md`
   in the change folder before `opsx:archive`.

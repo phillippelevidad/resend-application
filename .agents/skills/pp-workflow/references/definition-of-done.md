@@ -40,7 +40,8 @@ follow-up. The places mistakes hide:
   `[x]` over an unticked `Ships` box; no changelog or dated note
   ([Legend](../../../../.ai/build-checklist.md#legend)).
 - **`WALKTHROUGH.md`:** every surface the card's `UI surfaces` line names reached by a numbered
-  path, each path naming the persona walking it, each step with the exact command, request or
+  path, each path naming the persona walking it, every persona that reaches the slice walking at
+  least one path, each step with the exact command, request or
   simulator run and its expected output; every live Resend or AWS write marked `**Ask-first:**`; a
   step that cannot run today names the slice that covers it, inline
   ([How to work this checklist](../../../../.ai/build-checklist.md#how-to-work-this-checklist),
