@@ -49,10 +49,10 @@ Event-specific objects SHALL be optional in every typed schema: `bounce { type, 
 - **THEN** it passes the typed schema
 
 ### Requirement: Bounce classification is an open string
-`bounce.type` and `bounce.subType` SHALL accept any string and SHALL NOT be restricted to a closed set, because RS-28's examples and RS-35's documented list disagree (RS-U12).
+`data.bounce.type` and `data.bounce.subType` SHALL accept any string and SHALL NOT be restricted to a closed set, because RS-28's examples and RS-35's documented list disagree (RS-U12).
 
 #### Scenario: Example-only and unknown values
-- **WHEN** an `email.bounced` payload carries `bounce.type` of `Temporary`, `Undetermined` or a value no page documents
+- **WHEN** an `email.bounced` payload carries `data.bounce.type` of `Temporary`, `Undetermined` or a value no page documents
 - **THEN** it passes the typed schema with the value preserved
 
 ### Requirement: New Resend fields never fail a parse

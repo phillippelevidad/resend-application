@@ -49,11 +49,11 @@ Status SHALL be the highest-precedence outcome present, low to high: `scheduled`
 - **THEN** status is `complained`
 
 ### Requirement: The deciding event
-The deciding event for a status SHALL be the outcome event with the highest `(precedence, bounce.type = Permanent)`, ties going to the earliest in event order. Status time, bounce type and bounce subtype SHALL come from it.
+The deciding event for a status SHALL be the outcome event with the highest `(precedence, bounce.type = Permanent)`, ties going to the earliest in event order. An email-recipient outcome's status time, bounce type and bounce subtype SHALL come from its deciding event.
 
 #### Scenario: Permanent bounce not displaced
-- **WHEN** an email has a `Permanent` bounce and a later `Transient` bounce
-- **THEN** the bounce type reported is `Permanent`, with the permanent bounce's time
+- **WHEN** a recipient's events on one email include a `Permanent` bounce and a later `Transient` bounce, in either arrival order
+- **THEN** that recipient's outcome reports bounce type `Permanent`, with the permanent bounce's time
 
 ### Requirement: Precedence monotonicity
 For event sets A ⊆ B, the precedence of B's status SHALL be at least that of A's. If A's deliverability for a recipient is sticky, B's SHALL be sticky with equal or higher sticky precedence.
@@ -85,11 +85,15 @@ A bounce SHALL count as hard only when `bounce.type` is exactly `Permanent` (RS-
 - **THEN** its deliverability is `hard_bounced`
 
 ### Requirement: Sticky deliverability
-A recipient's deliverability SHALL be one of `ok`, `soft_bouncing`, `hard_bounced`, `complained`, `suppressed`. If any of its outcomes carries a sticky signal, deliverability SHALL be the highest by `hard_bounced` > `suppressed` > `complained`, its time and cause email from the earliest such signal.
+A recipient's deliverability SHALL be one of `ok`, `soft_bouncing`, `hard_bounced`, `complained`, `suppressed`. If any of its outcomes carries a sticky signal, deliverability SHALL be the highest by `hard_bounced` > `suppressed` > `complained`, its time and cause email from the earliest signal of that highest value.
 
 #### Scenario: Sticky across emails
 - **WHEN** a recipient was `complained` on one email and later delivered on another
 - **THEN** its deliverability is `complained`
+
+#### Scenario: A stronger sticky signal later
+- **WHEN** a recipient was `complained` on one email and later hard-bounced on another
+- **THEN** its deliverability is `hard_bounced`, with the hard bounce's time and email as its time and cause
 
 ### Requirement: Soft bounces clear on a later delivery
 With no sticky signal, deliverability SHALL follow the latest soft signal across the recipient's outcomes by `(time, rank, svix_id)`: a delivery gives `ok`, a soft bounce gives `soft_bouncing`. With neither it SHALL be `ok`, with no time and no cause email.

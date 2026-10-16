@@ -20,10 +20,10 @@ The lint configuration the lint stage runs SHALL report a restricted-import erro
 - **THEN** lint reports no restricted-import error
 
 ### Requirement: The boundary is proven by a committed test
-A committed test SHALL run the repository's own Biome binary and committed `biome.json` over deliberate-violation fixtures outside the linted tree, and SHALL assert on the rule name in the diagnostics, not only the exit code. No violating file SHALL be committed into the linted tree.
+A committed test SHALL run the same linter version and the same committed lint configuration the lint stage runs over deliberate-violation fixtures outside the linted tree, and SHALL assert on the rule name in the diagnostics, not only the exit code. No violating file SHALL be committed into the linted tree.
 
 #### Scenario: The core override is deleted
-- **WHEN** the `packages/core` override is removed from `biome.json`
+- **WHEN** the `packages/core` override is removed from the lint configuration
 - **THEN** the boundary test fails
 
 ### Requirement: Override scoping is settled by test
