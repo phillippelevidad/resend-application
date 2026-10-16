@@ -4,7 +4,11 @@
   "type": "module",
   "description": "Simulation and chaos harness, run as pnpm sim",
   "license": "MIT",
+  "dependencies": {
+    "@ledger/core": "workspace:*"
+  },
   "devDependencies": {
+    "fast-check": "4.10.2",
     "vitest": "catalog:"
   }
 }
