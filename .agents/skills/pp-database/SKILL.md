@@ -79,17 +79,16 @@ Mechanics and the checklist: [new-table-recipe.md](references/new-table-recipe.m
 | Make an index partial | Every query it serves carries the same predicate over a small slice (the outbox sweep) |
 | Make a unique key partial | Uniqueness holds for a subset of rows only (`api_tokens.bootstrap`) |
 | Write a custom migration | The change needs SQL `drizzle-kit generate` cannot emit: a grant, or a statement with no schema counterpart |
-| Mark a contract step | It drops, renames, retypes or sets `NOT NULL`, **and** the code deployed before it no longer touches what it removes |
+| Mark a migration `-- contract-step:` | It contains `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` (the slice 2 lint's list). A true contract step also needs the code deployed before it to no longer touch what it removes; a same-name replace (a closed set's `CHECK`, an index) or `DROP NOT NULL` starts its reason with `replace:` and ships with its code |
 | Add a `NOT NULL` column to a table with rows | It has a default; otherwise nullable now, backfill, `SET NOT NULL` as a later contract step |
 | Add a repository function | A command or reader in the same diff calls it |
-| Grant `UPDATE` on `webhook_events` | It is the slice 7 retention job's column-level grant, and nothing else |
 
 ## Never
 
 Each entry names its alternative. The full modeling list:
 [data-modeling.md → Anti-patterns](../../../.ai/data-modeling.md#anti-patterns-must-not).
 
-- **Editing an applied migration** → a new forward migration, Ask-first ([Permissions](../../../AGENTS.md#permissions)).
+- **Editing a pushed migration** → a new forward migration, Ask-first ([Permissions](../../../AGENTS.md#permissions)).
 - **A `pgEnum`** → `text` + `CHECK`, mirrored by a core Zod enum ([conventions](../../../.ai/data-modeling.md#modeling-conventions-canonical)).
 - **Business logic in a trigger or function (stored procedure)** → `packages/core`, called by a
   command; no trigger at all, `updated_at` included ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)).
@@ -138,7 +137,7 @@ with its duplicate-insert test · each index serving a query named in the diff �
 or `cascade` reaching `webhook_events` or a projection · **the runtime role's grants on every new
 table** (`GRANT … ON <table> … TO`, the narrowest DML, never `DELETE` on `webhook_events`) · a
 migration for every schema change, generated, and none modified
-(`git diff --name-status main -- 'packages/db/drizzle/**/*.sql'` shows only `A`) · `DROP`,
+(`git diff --name-status main -- 'packages/db/drizzle/*.sql'` shows only `A`) · `DROP`,
 `RENAME`, `ALTER … TYPE` or `SET NOT NULL` only under a `-- contract-step:` first line · `jsonb`
 only in its three places, no `$type<` and no `as` on a row field · no `sql.raw(` fed a variable · no
 session-level SQL · the `Modeled` box ticked ([Definition of done](../pp-workflow/SKILL.md#definition-of-done)).

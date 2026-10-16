@@ -56,7 +56,7 @@ The [new-table recipe](../../pp-database/SKILL.md#new-table-recipe) is the check
 | FKs and `onDelete` behaviour | A cascade onto `webhook_events`, or any FK between the ledger and a projection |
 | The DML-only runtime role's grants for the new table (integrations.md → Runtime role) | Working locally as superuser, failing as the runtime role |
 | Backfill **failure** behaviour, stated | "Backfill from X" with no answer for a row where X is absent. It must fail loudly, not invent a value |
-| The Drizzle schema in `packages/db` as the source of truth, migrations expand/contract | A hand-edited generated migration, or a contract step that needs downtime |
+| The Drizzle schema in `packages/db` as the source of truth, migrations expand/contract | A hand-edited generated migration (beyond the `-- contract-step:` first line, [pp-database](../../pp-database/references/migrations-and-grants.md#the-contract-step-marker)), or a contract step that needs downtime |
 | The **Model index** `Modeled` checkbox as a task | The only place "is this table real yet?" is answerable |
 
 Then walk [`pp-database` → Never](../../pp-database/SKILL.md#never) entry by entry against the design. Read it there, never from a copy: the list is the binding text and it changes.

@@ -114,7 +114,7 @@ The script helps with the first shape only, listing every backticked identifier 
 
 **The tell.** `tasks.md` read as a sequence rather than a list. The recurring shapes:
 
-- A backfill before the expand migration it writes into, or a contract step shipped in the same deploy as its expand ([ADR-018](../../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)) — the migration blocks mid-apply, which is the most expensive place to find anything.
+- A backfill before the expand migration it writes into, or a contract step shipped in the same deploy as its expand (a `replace:` marker is not one) ([ADR-018](../../../../.ai/architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)) — the migration blocks mid-apply, which is the most expensive place to find anything.
 - A route before the handler it exposes, an SDK method or CLI command before the `api-contract.md` entry it implements.
 - An Ask-first task not flagged — a change to a pushed migration, a new dependency, a CI change, a public-contract change, an AWS deploy or a live Resend write that apply would commit without the owner.
 - `pnpm verify` not last, or absent. Exit 0 with every stage run is the only definition of done.

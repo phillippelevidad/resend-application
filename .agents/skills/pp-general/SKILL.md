@@ -137,7 +137,7 @@ affected tests) and report their actual result. After it: `pnpm verify` exits 0 
 ([pp-workflow → Definition of done](../pp-workflow/SKILL.md#definition-of-done)).
 
 **Then read the diff** (greps in [boundaries.md](references/boundaries.md#review-greps)): new files
-kebab-case with a [listed suffix](references/coding-standards.md#role-suffixes) · no deep
+kebab-case, a role file with a [listed suffix](references/coding-standards.md#role-suffixes) · no deep
 `@ledger/<pkg>/…` import but `/testing`, no relative import leaving its package · every `@ledger/*`
 import declared `workspace:*` · `@aws-sdk/` only in `packages/aws` · `from 'resend'` only in
 `resend-client` and `ingest` · `process.env` only in a composition root (a `main.ts` or an

@@ -50,7 +50,7 @@ Every finding here is a **divergence between two things that were supposed to ag
 
 - **Never disable, skip, or loosen a gate to make it green.** That is the [`Never` tier](../../../AGENTS.md#permissions) — no approval path exists. A failing stage *is* the finding.
 - **Never invent a fact** to justify a repair — a price, a rate limit, a Resend or AWS behaviour, a build estimate. That is rung 5 or 6, never rung 4.
-- **Never edit an applied migration** ([`pp-database` → Never](../pp-database/SKILL.md#never)); a schema fix is a new forward migration, and it is Ask-first.
+- **Never edit a pushed migration** ([`pp-database` → Never](../pp-database/SKILL.md#never)); a schema fix is a new forward migration, and it is Ask-first.
 
 **If you are implementing rather than repairing, stop.** Unticked tasks, a whole group with no code behind it, or a slice whose API, CLI or MCP surface does not exist is an *apply* job. Say so, point at `opsx:apply`, and do not quietly become it.
 

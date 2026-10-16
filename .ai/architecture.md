@@ -522,14 +522,19 @@ account are Ask-first.
 
 | Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
-| 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19 |
-| 1 | RS-U21, RS-U22 | RS-U15, RS-U18 |
-| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, PG-U04 |
+| 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19, the slice's library bullets |
+| 1 | RS-U21, RS-U22 | RS-U15, RS-U18, the slice's library bullets |
+| 2 | AWS-U01, AWS-U02, PG-U01, PG-U02 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, PG-U04, the slice's library bullets |
 | 3 | — | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
+| 5 | — | The slice's library bullets |
 | 6 | — | RS-U16 |
 | 7 | — | RS-U03 (re-measured before M2 closes) |
 | Not owed | AWS-U08, PG-U05: the ADR that switches to the Aurora fallback settles them | — |
+
+**Library bullets** are the [about.md → Open questions](about.md#open-questions) entries under
+"Library behavior the `pp-*` skills assume". They carry no id: each is checked against the
+installed version in one step, and the skill file states its fallback.
 
 **Moved, with reasons:** RS-U08 from slice 2 to slice 3, because the measured ingest p99
 comes from the burst run there. PG-U03 from slice 2 to slice 4, because the hourly
