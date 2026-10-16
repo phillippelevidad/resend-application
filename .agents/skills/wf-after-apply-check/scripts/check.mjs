@@ -927,7 +927,7 @@ for (const t of tripwires) {
   }
 }
 
-// ---------------------------------------------------------------- app-role grants on every new table
+// ---------------------------------------------------------------- runtime-role grants on every new table
 
 // pp-database's gate asks for the runtime role's grants on every new table. The role name is not
 // fixed yet, so this accepts any `GRANT … ON <table> … TO` and leaves the role to the reader.

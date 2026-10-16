@@ -105,7 +105,7 @@ node .agents/skills/wf-after-apply-check/scripts/check.mjs                    # 
 node .agents/skills/wf-after-apply-check/scripts/check.mjs <change> --base <ref>
 ```
 
-It runs `openspec validate --strict` and then everything that tool cannot: unticked tasks, every backticked identifier the change promised that the tree does not contain, the doc duties `pp-workflow` owes checked one by one against the actual files, schema coupling (a `packages/db` schema change with no new migration, an edited migration, a new table with no app-role grant), and a set of tripwire greps over **added lines only** — raw unparameterised SQL (`sql.raw`), `GRANT ALL`, a hardcoded secret shape, a suppressed type error, a skipped test, `console.*` where the logger belongs, and stray `TODO`/`NUL`/scratch residue.
+It runs `openspec validate --strict` and then everything that tool cannot: unticked tasks, every backticked identifier the change promised that the tree does not contain, the doc duties `pp-workflow` owes checked one by one against the actual files, schema coupling (a `packages/db` schema change with no new migration, an edited migration, a new table with no runtime-role grant), and a set of tripwire greps over **added lines only** — raw unparameterised SQL (`sql.raw`), `GRANT ALL`, a hardcoded secret shape, a suppressed type error, a skipped test, `console.*` where the logger belongs, and stray `TODO`/`NUL`/scratch residue.
 
 It also builds **five worklists**, and this is where the expensive defects hide:
 
