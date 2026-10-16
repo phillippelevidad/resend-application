@@ -8,7 +8,7 @@ on. Code, ADRs and tests cite `RS-NN` instead of restating it. Research current 
 
 **API:** `https://api.resend.com` · Bearer API key · 10 req/s per team, shared across keys (RS-19)
 **Code:** `packages/resend-client` (sole caller, [integrations.md](integrations.md)) · signature
-verification in `apps/ingest`
+verification in `packages/ingest`
 **Env:** `RESEND_API_KEY` (the name the SDK examples and the Resend CLI read, RS-33). Signing
 secrets live in Secrets Manager ([features.md → connect webhook](features.md#adopter-lifecycle));
 their names are fixed in [integrations.md → Secrets layout](integrations.md#secrets-layout)

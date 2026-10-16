@@ -199,7 +199,7 @@ redaction replace a raw value with its mask without changing any projection.
 | `api_tokens` | Token hashes only | Kept; a revoked row stays as an audit record |
 | `outbox.payload`, `outbox.dedupe_key`, `last_error` | Ids, hashes and masks only; never a third-party response body | Kept |
 | `local_queue_messages.body` | Raw envelope (local mode only) | Deleted on success; a dead row holds it until redriven or purged |
-| Logs | None | Log `svix_id`, `email_id`, `type`. MUST NOT log addresses, subjects or bodies; evidence: logger allow-list unit test (slice 1) |
+| Logs | None | Allow-listed ids, codes and numbers only ([Log fields](#log-fields)) |
 
 - Fixtures, tests and docs use Resend test addresses only (`delivered@resend.dev`,
   `bounced@resend.dev`).
@@ -214,6 +214,23 @@ redaction replace a raw value with its mask without changing any projection.
 - Slice 1: an invariant that no projection column holds a raw input address or subject.
 - Slice 2: a deploy-command test that refuses a mismatched `key_id`.
 - Slice 7: a rebuild after redaction yields identical projections.
+
+#### Log fields
+
+The canonical log allow-list. Every app logs through the one shared logger, which keeps only these
+fields and drops any other, masks included (AWS-29; ids are log fields, never metric dimensions,
+AWS-12):
+
+- **Allowed:** `svix_id`, `email_id`, `type`, `request_id`, `run_id`, `token_id` (the
+  `api_tokens.id`, never a token or its hash), the error name, the Postgres SQLSTATE `code`,
+  counts, durations, the function name and `cold_start`. The line's `level` and its message, a
+  constant written in code, never interpolated.
+- **Never:** an error's `message` or `detail` from parsing or Postgres (they can quote a row), an
+  address or `address_hash`, a subject, request or response headers, a token or secret, the raw
+  payload or any part of it.
+
+**Evidence:** pending — slice 1: a logger unit test feeding a failing message with a test address
+and a `CHECK` violation finds no log line holding the address or subject.
 
 ## Tables
 
@@ -331,6 +348,9 @@ _Evidence: pending._
   only when the insert happened. This adds no secret and no idle cost (AWS-11). To replace a lost
   or leaked first token, the deploy command takes `--issue-operate-token <name>`, which mints a new
   `operate` token through the same path whatever tokens exist.
+- **Mint home:** token minting and the tag check live in `packages/shared`
+  ([ADR-013](architecture.md#adr-013--pure-core-and-local-mode)). Three callers share them:
+  `packages/api` (`token.create`), the deploy command and the local setup command.
 - **Operations:** `token.create`, `token.list`, `token.revoke` (`operate`) and `token.getCurrent`
   (`read`), with no MCP surface ([api-contract.md](api-contract.md#tokencreate)).
 

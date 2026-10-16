@@ -92,7 +92,8 @@ or push only when asked.** Uncommitted work dies with its worktree or chat.
   included. Never create a branch unasked.
 - Run the cheap checks for what you touched first (lint, the affected tests). Off `main`, a red
   check does not hold the commit: commit, push, and name what is red in the body.
-- Stage by path. Never `git add -A`. Never commit `.env*`, secrets or scratch files.
+- Stage by path. Never `git add -A`. Never commit `.env*` (except `.env.example`, which lists
+  names only, never values), secrets or scratch files.
 - In multi-agent runs, the orchestrator commits and pushes. Helper agents run no git commands.
 - An **Ask-first** change ([Permissions](#permissions)) waits uncommitted for approval. Commit the
   rest of the step around it.
@@ -124,29 +125,42 @@ Resend references: [docs index](https://resend.com/docs/llms.txt) ·
 [idea §6.2](docs/idea.md#62-repository-layout)). Each project lands in the slice that first needs it
 ([build order](.ai/architecture.md#build-order-vertical-slices)):
 
-| Project | Role |
-| --- | --- |
-| **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O (ADR-003, ADR-013) |
-| **packages/db** | Drizzle schema, migrations, repositories (ADR-018) |
-| **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) |
-| **packages/sdk** | Public TS client for the read API (ADR-011) |
-| **apps/ingest** | Lambda: verify + enqueue (ADR-001, ADR-009) |
-| **apps/worker** | Lambda: ledger transaction, projections, outbox (ADR-004, ADR-015) |
-| **apps/dispatcher** | Lambda: outbox delivery (ADR-006, ADR-017) |
-| **apps/reconciler** | Lambda: gap detection + replay (ADR-007) |
-| **apps/api** | Lambda behind the HTTP API: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)). The same code runs in the local dev server (ADR-010, ADR-011) |
-| **apps/cli** | `ledger` CLI, built on the SDK |
-| **apps/mcp** | MCP server, built on the SDK |
-| **infra** | AWS CDK app: app stack and guardrails stack (ADR-010) |
-| **sim** | Simulation + chaos harness, run as `pnpm sim` (ADR-016) |
+| Project | Role | Lands |
+| --- | --- | --- |
+| **packages/core** | Event types, `projectEmail`, `projectRecipient`, reaction rules. Pure, no I/O (ADR-003, ADR-013) | 0 |
+| **packages/shared** | Kernel: port interfaces, logger and metrics helpers, config and env loading with a boot-time Zod assertion, error base class carrying a registry `code`, clock, token mint and tag check. No AWS, Postgres or Resend (ADR-013) | 1 |
+| **packages/db** | Drizzle schema, migrations, repositories (ADR-018) | 1 |
+| **packages/ingest** | Ingest logic: verify + enqueue, over the queue port (ADR-001, ADR-009) | 1 |
+| **packages/worker** | Worker logic: ledger transaction, projections, outbox (ADR-004, ADR-015) | 1 |
+| **packages/api** | Hono app factory: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)); source of the OpenAPI document (ADR-011, ADR-019) | 1 |
+| **packages/sdk** | Public TS client for the read API: generated types plus a thin client (ADR-011, ADR-019) | 1 |
+| **packages/aws** | The only `@aws-sdk/*` importer: SQS queue adapter, Secrets Manager, ESM control, SQS attributes, DLQ receive and redrive, Lambda invoke (ADR-013) | 2 |
+| **packages/reconciler** | Reconciler logic: gap detection + replay (ADR-007) | 4 |
+| **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) | 4 |
+| **packages/dispatcher** | Dispatcher logic: outbox delivery (ADR-006, ADR-017) | 6 |
+| **apps/local** | Local entry point: composes the package factories with `@hono/node-server`, the in-process queue and, from 2B, the Postgres queue; local mode and `docker compose` (ADR-013) | 1 |
+| **apps/cli** | `ledger` CLI, built on the SDK (ADR-019) | 1 |
+| **apps/ingest** | Lambda entry point over `packages/ingest`: event adaptation and composition root (ADR-013) | 2 |
+| **apps/worker** | Lambda entry point over `packages/worker`: SQS batch and resume-event adaptation, composition root (ADR-008, ADR-013) | 2 |
+| **apps/api** | Lambda entry point behind the HTTP API: `packages/api` through `@hono/aws-lambda` (ADR-010, ADR-019) | 2 |
+| **apps/reconciler** | Lambda entry point over `packages/reconciler` (ADR-013) | 4 |
+| **apps/mcp** | MCP server, built on the SDK (ADR-019) | 5 |
+| **apps/dispatcher** | Lambda entry point over `packages/dispatcher` (ADR-013) | 6 |
+| **infra** | AWS CDK app: app stack and guardrails stack (ADR-010) | 2 |
+| **sim** | Simulation + chaos harness, run as `pnpm sim` (ADR-016) | 0 |
 
-Ingest and worker meet at a queue port. They run in one local process in slice 1, and SQS or a
-Postgres-backed queue implements the port beyond that (ADR-013). Update this table as projects land.
+Ingest and worker logic live in `packages/ingest` and `packages/worker` and meet at the queue port
+in `packages/shared`. In slice 1, `apps/local` runs them and the read API in one local process over
+the in-process queue; on AWS, `packages/aws` implements the port with SQS (slice 2), and in local
+mode a Postgres-backed queue does (slice 2B) (ADR-013). Update this table as projects land.
 
 ## Stack
 
-- **Runtime:** Node.js LTS, pnpm workspaces
-- **Code:** TypeScript (strict), Zod, Drizzle + Postgres, Winston (JSON logs)
+- **Runtime:** Node.js 24 (`engines` in `package.json`), ES modules, pnpm workspaces
+- **Code:** TypeScript (strict), Zod 4, Drizzle + Postgres, Winston (JSON logs)
+- **Surfaces:** Hono + `@hono/zod-openapi` (read API), `commander` 14 (CLI),
+  `@modelcontextprotocol/server` v2 (MCP), `openapi-typescript` + `openapi-fetch` (SDK)
+  ([ADR-019](.ai/architecture.md#adr-019--application-and-surface-stack))
 - **Tests:** Vitest, fast-check (property tests), Testcontainers (Postgres)
 - **Infra:** AWS (API Gateway HTTP API, Lambda, SQS, EventBridge Scheduler, Secrets Manager,
   CloudWatch) via AWS CDK. GitHub Actions for CI
@@ -177,6 +191,9 @@ whose exit 0 means every stage ran and passed. Document every command here when 
 
 - `packages/core` imports nothing from AWS, Postgres or Resend. That's what keeps projections
   property-testable in milliseconds.
+- `packages/shared` imports nothing from AWS, Postgres or Resend.
+- Only `packages/aws` imports `@aws-sdk/*`.
+- Apps are entry points: event adaptation and wiring only. Logic lives in packages (ADR-013).
 - Apps import from `packages/` only, never from other apps.
 - Every call to Resend's API goes through `packages/resend-client`, which owns rate limiting
   (`ratelimit-*`, `retry-after`) and the shared 10 req/s budget.
@@ -190,7 +207,7 @@ whose exit 0 means every stage ran and passed. Document every command here when 
 | --- | --- |
 | **Always** | Run tests and lint before committing; follow module boundaries; verify Resend behavior against docs; [commit and push each finished step](#commit-and-push-as-you-go) |
 | **Ask first** | Add a dependency; change a migration that's already pushed; change CI; alter or extend a public contract (read API routes, error codes, CLI commands or flags, environment variables, MCP tools; [api-contract.md → Conventions](.ai/api-contract.md#conventions)); deploy or create AWS resources; any **write** call against a live Resend account (replay, rotate secret, create or update a webhook, send email) |
-| **Never** | Commit secrets, API keys, webhook signing secrets or real recipient addresses (use Resend's test addresses, such as `delivered@resend.dev`); disable a failing gate to make CI green; edit generated files by hand |
+| **Never** | Commit secrets, API keys, webhook signing secrets, `.env*` files (except `.env.example`, which lists names only, never values) or real recipient addresses (use Resend's test addresses, such as `delivered@resend.dev`); disable a failing gate to make CI green; edit generated files by hand |
 
 ## Editing files on this machine
 

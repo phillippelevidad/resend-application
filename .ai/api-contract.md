@@ -2,7 +2,7 @@
 
 The design contract for every Ledger operation: identity, route, surfaces, scope, errors,
 idempotency, and the slices that build it, plus the error-code registry. The OpenAPI document
-generated from `apps/api` is authoritative for the wire. This file is authoritative for intent and
+generated from `packages/api` is authoritative for the wire. This file is authoritative for intent and
 coverage. Field shapes live in [data-modeling.md](data-modeling.md); entries link there instead of
 listing fields.
 
@@ -37,6 +37,9 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   and `operate`, and `operate` implies `read`. A missing, unknown or revoked token gets `401`
   `unauthorized`. A valid token without the scope a route needs gets `403` `forbidden`. The deploy
   command issues the first `operate` token; later tokens come from [`token.create`](#tokencreate).
+  Minting and the tag check live in `packages/shared`, one implementation for `packages/api`, the
+  deploy command and the local setup command
+  ([data-modeling.md → `api_tokens`](data-modeling.md#api_tokens--read-api-bearer-tokens)).
 - **Auth in slice 1.** `api_tokens` lands in slice 2, so in slice 1 the SDK already sends the header
   and the local dev server skips the check. It MUST skip only while bound to a loopback address and
   MUST refuse to start on any other interface without a token store. From slice 2, every mode
@@ -105,9 +108,9 @@ entries are owed by slice 3 and completed in slice 7.
 
 | Code | HTTP | Meaning | Hint | Docs | Raised by |
 | --- | --- | --- | --- | --- | --- |
-| `unauthorized` | 401 | Bearer token missing, malformed, bad-tag, unknown or revoked | Set `LEDGER_TOKEN` to an active token | runbook | apps/api auth middleware |
-| `forbidden` | 403 | The token is valid but lacks the scope this operation needs | Use an `operate` token, or ask its owner for one | runbook | apps/api auth middleware |
-| `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | `message` names the field | runbook | apps/api request validation (Zod) |
+| `unauthorized` | 401 | Bearer token missing, malformed, bad-tag, unknown or revoked | Set `LEDGER_TOKEN` to an active token | runbook | packages/api auth middleware |
+| `forbidden` | 403 | The token is valid but lacks the scope this operation needs | Use an `operate` token, or ask its owner for one | runbook | packages/api auth middleware |
+| `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | `message` names the field | runbook | packages/api request validation (Zod) |
 | `email_not_found` | 404 | No event recorded for this email id | Events may still be queued, or missed: run `ledger gaps` | runbook | `email.get`, `email.explainDelivery` |
 | `recipient_not_found` | 404 | No event has ever named this address | Check the address. If it was emailed recently, run `ledger gaps` | runbook | `recipient.get` |
 | `run_not_found` | 404 | No reconcile run with this id | List runs with `ledger gaps` | runbook | `reconcile.getRun` |
@@ -115,12 +118,12 @@ entries are owed by slice 3 and completed in slice 7.
 | `reconcile_in_progress` | 409 | Another reconcile run is unfinished and still inside its time budget; runs never overlap (ADR-007) | Wait for it: `ledger gaps` | runbook | `reconcile.start` |
 | `redrive_in_progress` | 409 | A DLQ redrive task is already running; SQS allows one per queue (AWS-21) | Wait for the DLQ depth in `ledger health` to fall | [Redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) | `dlq.startRedrive` |
 | `last_operate_token` | 409 | Revoking this token would leave no active `operate` token | Create another `operate` token first | runbook | `token.revoke` |
-| `webhook_disabled` | — (run outcome) | The Resend webhook is disabled, so replays will not be delivered (RS-11, ADR-007) | Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile` | [Retries and replays](https://resend.com/docs/webhooks/retries-and-replays) | apps/reconciler → `reconcile_runs.error_code` |
-| `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, so the run stopped before its horizon (RS-19) | The next hourly run re-diffs from newest. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | apps/reconciler via packages/resend-client |
-| `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, invalid or deleted, restricted, or suspended (RS-22, RS-U17) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
-| `resend_unavailable` | — (run outcome) | Resend's API answered `5xx` past the client's retries (RS-22) | The next scheduled run retries | [Errors](https://resend.com/docs/api-reference/errors) | apps/reconciler via packages/resend-client |
+| `webhook_disabled` | — (run outcome) | The Resend webhook is disabled, so replays will not be delivered (RS-11, ADR-007) | Re-enable it in the Resend dashboard or with `PATCH /webhooks/{id}` and `status: enabled`, then run `ledger reconcile` | [Retries and replays](https://resend.com/docs/webhooks/retries-and-replays) | packages/reconciler → `reconcile_runs.error_code` |
+| `rate_limited` | — (run outcome) | Resend's shared rate limit left no room inside the run's time budget, so the run stopped before its horizon (RS-19) | The next hourly run re-diffs from newest. Check what else is spending the team's budget | [Rate limit](https://resend.com/docs/api-reference/rate-limit) | packages/reconciler via packages/resend-client |
+| `resend_auth_failed` | — (run outcome) | Resend rejected the reconciler's API key: missing, invalid or deleted, restricted, or suspended (RS-22, RS-U17) | The reconciler needs a `full_access` key in its secret | [Errors](https://resend.com/docs/api-reference/errors) | packages/reconciler via packages/resend-client |
+| `resend_unavailable` | — (run outcome) | Resend's API answered `5xx` past the client's retries (RS-22) | The next scheduled run retries | [Errors](https://resend.com/docs/api-reference/errors) | packages/reconciler via packages/resend-client |
 | `database_unavailable` | 503 | Postgres is unreachable | The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume` | runbook | packages/db through any database-reading operation; `worker.resumeEventSource` probe |
-| `internal_error` | 500 | An unexpected server failure. `message` carries no internals | Retry; if it persists, read the API logs by request id | runbook | apps/api error handler |
+| `internal_error` | 500 | An unexpected server failure. `message` carries no internals | Retry; if it persists, read the API logs by request id | runbook | packages/api error handler |
 | `api_unavailable` | — (client-side) | The API answered without the error shape: an HTTP API throttle or a stopped function | The kill switch may be tripped: check the budget alerts, then run the re-arm script | runbook | packages/sdk |
 
 A **run outcome** code is never an HTTP status of its own. It is stored in
@@ -146,6 +149,9 @@ back as the run's `error` object, in the same shape, through `reconcile.getRun` 
 `ledger` in a Surfaces line is the SDK client instance. Every CLI command takes `--json`.
 
 ## Read operations
+
+Sections group operations by kind, not scope: `token.list` is a read that needs `operate`. Scope
+checks and MCP tool registration key on each entry's **Scope**, never on its section.
 
 #### email.get
 

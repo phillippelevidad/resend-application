@@ -24,6 +24,8 @@ and the slice that settles it ([Open questions owed by slice](#open-questions-ow
   and kept (ADR-010).
 - **One contract, many surfaces:** read API → SDK → CLI / MCP, one error shape, from slice 1
   (ADR-011).
+- **Logic in packages, apps as thin entry points**, wired by hand on Hono, commander and the MCP
+  SDK v2 (ADR-013, ADR-019).
 
 ## System shape
 
@@ -251,19 +253,23 @@ Rejected: containers on any path; NAT gateways; provisioned RDS; RDS Proxy (AWS-
 
 ### ADR-011 — One contract, many surfaces
 
-**Accepted.** The read API is described by OpenAPI and validated with Zod; the SDK is generated
-types plus a thin client; the CLI and MCP server are built only on the SDK. One error shape
+**Accepted; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): P-01, P-03).
+The read API is described by OpenAPI and validated with Zod; the SDK is generated types plus a
+thin client (stack in ADR-019); the CLI and MCP server are built only on the SDK. One error shape
 everywhere ([error shape](../AGENTS.md#error-shape)). Bearer tokens carry `read` or `operate`
 scope; MCP operate tools are not registered without `operate`. **The contract starts in slice 1**
 (owner, 2026-10-15): a minimal read API, SDK and `ledger email` / `ledger recipient` run locally,
 and each later slice adds the operations its stage needs: health (slice 2), DLQ inspect and redrive
 (slice 3), gaps and reconcile (slice 4). The same API code runs in the local dev server and behind
-the HTTP API. This resolves the conflict between [idea §7](../docs/idea.md#7-implementation-plan)
-phase 1 (CLI reads the database) and [module boundaries](../AGENTS.md#module-boundaries) in favor of
+the HTTP API. `packages/sdk` never depends on server code: a root script, `pnpm openapi:export`,
+writes the committed, generated `packages/sdk/openapi.json` from `packages/api` (ADR-013);
+`openapi-typescript` generates the SDK's type file from it, also committed; a `pnpm verify` stage
+fails when either file drifts from its source. This resolves the conflict between
+[idea §7](../docs/idea.md#7-implementation-plan) phase 1 (CLI reads the database) and [module boundaries](../AGENTS.md#module-boundaries) in favor of
 the boundary: every slice is hand-walkable without SQL (lens clause 3), and no throwaway read path
 is built.
 Rejected: CLI or MCP reading the database directly; a dev-only inspection script (throwaway); per-surface error formats.
-**Evidence:** pending — SDK ↔ API contract tests and CLI `--json` output tests (slice 1, grown per slice); error-registry mirror test and MCP tool-registration test per scope (slice 5).
+**Evidence:** pending — SDK ↔ API contract tests and CLI `--json` output tests (slice 1, grown per slice); the drift stage fails on a stale `openapi.json` (slice 1); error-registry mirror test and MCP tool-registration test per scope (slice 5).
 
 ### ADR-012 — `resend-client` is the sole Resend API caller
 
@@ -281,12 +287,29 @@ Rejected: calling the `resend` SDK from apps directly; a limiter shared across f
 
 ### ADR-013 — Pure core and local mode
 
-**Accepted.** `packages/core` imports nothing from AWS, Postgres or Resend. Ingest and worker meet
-at a queue port: slice 1 runs both in one local process with an in-process implementation, SQS
+**Accepted; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): P-03).
+`packages/core` imports nothing from AWS, Postgres or Resend. Ingest and worker meet at a queue
+port: slice 1 runs both in one local process (`apps/local`) with an in-process implementation, SQS
 implements it on AWS (slice 2), and a Postgres-backed queue (`FOR UPDATE SKIP LOCKED`, row locks in
 its own short claim transaction, so receive counts survive a failed attempt, pooler-safe) implements
 it for `docker compose up` with no AWS account (slice 2B).
-Rejected: AWS-only development (LocalStack as the only local path).
+- **Logic lives in packages.** `packages/ingest`, `packages/worker`, `packages/dispatcher`,
+  `packages/reconciler` and `packages/api` (the Hono app factory, ADR-019) export factories over
+  ports and import no Lambda event types.
+- **Apps are entry points.** Each `apps/<fn>` is Lambda event adaptation plus its composition root
+  (ADR-019). `apps/local` composes the same factories with local adapters (`@hono/node-server`, the
+  in-process queue, from slice 2B the Postgres queue) for local mode and `docker compose`, so no app
+  imports another.
+- **`packages/shared` is the kernel:** the port interfaces (the queue port and the others), logger
+  and metrics helpers, config and env loading with a boot-time Zod assertion, the error base class
+  carrying a registry `code` ([api-contract.md → Error codes](api-contract.md#error-codes)), the
+  clock, and the token mint and tag check. It imports nothing from AWS, Postgres or Resend.
+- **`packages/aws` is the only importer of `@aws-sdk/*`:** the SQS queue adapter, Secrets Manager,
+  ESM control, SQS attributes, DLQ receive and redrive, Lambda invoke. It lands in slice 2, when
+  each adapter has a second consumer.
+- Each package lands in the slice that first needs it ([Projects](../AGENTS.md#projects)).
+
+Rejected: AWS-only development (LocalStack as the only local path); an `apps/local` exception to "apps never import apps"; one `packages/app` with subfolders (its boundaries would need lint rules, where pnpm's declared dependencies enforce them for free).
 **Evidence:** pending — lint rule on `packages/core` imports (slice 0); sim invariants pass in local mode (slice 2B).
 
 ### ADR-014 — Raw-payload retention and redaction
@@ -363,9 +386,10 @@ Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24
 
 ### ADR-018 — Migrations run from the deploy command, before the code that needs them
 
-**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37).
-`drizzle-kit` migrations run from the deploy command with the **direct** Postgres URL supplied by
-the deployer, then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37)**; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): S-05).
+The deploy command first ensures the DML-only runtime role exists, then runs `drizzle-kit`
+migrations with the **direct** Postgres URL supplied by the deployer (each migration that creates a
+table grants its DML to that role), then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
 never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). The deploy
 command refuses to run while the kill switch is tripped (the worker's reserved concurrency reads
 `0`) unless it runs as the re-arm, and restores an ADR-015 pause after `cdk deploy` if the worker's
@@ -373,22 +397,56 @@ ESM was paused before it, because whether a CloudFormation update re-applies the
 `Enabled: true` is AWS-U09. Migrations are expand/contract only, so code from the previous deploy
 runs against the new schema and no deploy needs downtime.
 Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; concurrent cold starts race); a CDK custom resource (adds a Lambda whose failure blocks the deploy).
-**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it is marked as a contract step (slice 2); the deploy command migrates, then deploys (slice 2).
+**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it is marked as a contract step (slice 2); the deploy command migrates, then deploys (slice 2).
+
+### ADR-019 — Application and surface stack
+
+**Accepted** (owner, 2026-10-16; [pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): P-01).
+- **Read API:** Hono with `@hono/zod-openapi`, which generates OpenAPI 3.1 (`app.doc31()`) from the
+  Zod route schemas and shapes validation failures in one `defaultHook` into the
+  [error shape](../AGENTS.md#error-shape) ([README](https://raw.githubusercontent.com/honojs/middleware/main/packages/zod-openapi/README.md)).
+  One app object, built by `packages/api` (ADR-013), runs on Lambda through `@hono/aws-lambda` and
+  locally through `@hono/node-server`, which is how "the same API code runs locally" (ADR-011)
+  holds. `hono/aws-lambda` is deprecated and goes in Hono v5 ([npm](https://registry.npmjs.org/@hono/aws-lambda),
+  [docs](https://hono.dev/docs/getting-started/aws-lambda)).
+- **Other functions:** plain typed handlers. Each `apps/*` has one composition root that wires
+  concrete classes by hand: no DI container, no decorators. Command and reader classes keep one
+  public `execute(input)`.
+- **CLI:** `commander` 14 with `@commander-js/extra-typings`.
+- **MCP:** `@modelcontextprotocol/server` v2 over stdio, stable since 2.0.0 (2026-07-27,
+  [npm](https://registry.npmjs.org/@modelcontextprotocol/server)).
+- **SDK:** types generated by `openapi-typescript` plus `openapi-fetch`, behind a thin hand-written
+  client (ADR-011).
+- **Zod 4**, which `@hono/zod-openapi` (peer `zod ^4.0.0`, [npm](https://registry.npmjs.org/@hono/zod-openapi/latest))
+  and the MCP SDK (`zod ^4.2.0`) both require.
+
+Close to Resend's public stack: the [handbook](https://resend.com/handbook/engineering/what-is-our-tech-stack)
+names no backend framework; Resend's CLI uses `commander` 14 with extra-typings
+([package.json](https://raw.githubusercontent.com/resend/resend-cli/main/package.json)) and its MCP
+server uses SDK v2 ([package.json](https://raw.githubusercontent.com/resend/resend-mcp/main/package.json)).
+Choosing a package here is not installing it: each dependency stays Ask-first, added in the slice
+that first needs it ([Permissions](../AGENTS.md#permissions)), with its version pinned then.
+Rejected: NestJS (CDK `NodejsFunction` and Vitest compile with esbuild, which emits no decorator metadata, [esbuild #915](https://github.com/evanw/esbuild/issues/915), so DI needs build workarounds; about 1 s of init on a mono-Lambda, [report](https://dev.to/aws-builders/aws-lambda-cold-starts-the-case-of-a-nestjs-mono-lambda-api-4j42), paid on ingest's cold path, CBL-21; `nestjs-zod` peers only Nest ≤ 11, now the `legacy` line, [npm](https://registry.npmjs.org/nestjs-zod/latest)); Fastify with `@fastify/aws-lambda` (heavier, and Zod needs a type provider); a hand-rolled router (OpenAPI and the local server built by hand); oclif (overkill for a small CLI) and clipanion (long at release candidate); `@hey-api/openapi-ts` (pre-1.0, generates more than a thin client needs) and `orval` (frontend-oriented: query hooks and mocks); MCP SDK v1, `@modelcontextprotocol/sdk` (maintenance line only, [repo](https://github.com/modelcontextprotocol/typescript-sdk)).
+**Evidence:** pending — the same app object passes the same contract tests under `@hono/node-server` (slice 1) and through the Lambda adapter (slice 2); CLI `--json` output tests (slice 1); ingest `Init Duration` recorded (slice 3, [CBL-21](check-before-launch.md)); MCP tool-registration test (slice 5).
 
 ## Technology
 
 | Concern | Choice | Note |
 | --- | --- | --- |
-| Language / runtime | TypeScript (strict), Node.js LTS on arm64 Lambda, pnpm workspaces | Resend's public stack; arm64 is 20 % cheaper per GB-s (AWS-20) |
+| Language / runtime | TypeScript (strict), Node.js 24 (`engines` in `package.json`) on arm64 Lambda (`nodejs24.x`, AWS-54, [aws.md](aws.md)), ES modules (`"type": "module"`), pnpm workspaces | Resend's public stack; arm64 is 20 % cheaper per GB-s (AWS-20) |
 | DB / migrations | Postgres on Neon, Drizzle ORM (`node-postgres`) + drizzle-kit | ADR-005, ADR-018 |
-| Validation | Zod | Requests, responses, webhook payloads |
+| Validation | Zod 4 | Requests, responses, webhook payloads, env config; required by `@hono/zod-openapi` and the MCP SDK (ADR-019) |
+| HTTP framework | Hono + `@hono/zod-openapi` (OpenAPI 3.1 from Zod); `@hono/aws-lambda` on Lambda, `@hono/node-server` locally, one app object | ADR-019, ADR-011 |
+| Handlers and wiring | Plain typed handlers; one hand-wired composition root per `apps/*`; command and reader classes with one `execute(input)` | ADR-019, ADR-013. No DI container, no decorators |
+| SDK generation | `openapi-typescript` + `openapi-fetch`, behind a thin hand-written client | ADR-019, ADR-011 |
+| CLI | `commander` 14 + `@commander-js/extra-typings` | ADR-019; what Resend's CLI uses |
 | Tests | Vitest, fast-check, Testcontainers | Property tests are first-class |
 | Lint / format | Biome | |
 | Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
 | Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`; vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
-| Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `apps/ingest` | ADR-012, ADR-009 |
+| Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `packages/ingest` | ADR-012, ADR-009, ADR-013 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
-| MCP | Official MCP TypeScript SDK | ADR-011 |
+| MCP | `@modelcontextprotocol/server` v2, stdio | ADR-019, ADR-011 |
 
 ## Cost envelope
 
@@ -435,7 +493,7 @@ claims, the demo and the deploy coherent.
 | Slice | Ships | Walk | Milestone |
 | --- | --- | --- | --- |
 | 0 — Foundations | Monorepo, Biome, Vitest, CI, `pnpm verify` with a gitleaks history scan; `packages/core` Zod event schemas (RS-25–RS-29), `projectEmail`, `projectRecipient`, properties 1–4 (ADR-003); core import lint rule (ADR-013); `sim` history generator; README skeleton with link check | `pnpm sim` prints the projection of a generated, shuffled history | M1 |
-| 1 — Local ledger and read path | `packages/db` schema and migrations (ADR-018); ingest (verify against the secret set, ADR-001, ADR-009) and worker transaction (ADR-004) behind the queue port in one local process; minimal read API, SDK and `ledger email` / `ledger recipient` with `--json` (ADR-011); `sim` duplicates + shuffle, invariants 1–2 | `pnpm sim` against the local process, then `ledger email` | M1 |
+| 1 — Local ledger and read path | `packages/db` schema and migrations (ADR-018); ingest (verify against the secret set, ADR-001, ADR-009) and worker transaction (ADR-004) behind the queue port in one local process (`apps/local`, ADR-013); minimal read API, SDK and `ledger email` / `ledger recipient` with `--json` (ADR-011); `sim` duplicates + shuffle, invariants 1–2 | `pnpm sim` against the local process, then `ledger email` | M1 |
 | 2 — Durable ingest on AWS | App stack: HTTP API, ingest, SQS + DLQ, worker ESM (ADR-002, ADR-008), outage pause and resume (ADR-015), read API with bearer scopes (hashed `api_tokens`), health read; guardrails stack with budget, kill switch and trip drill (ADR-010); deploy and teardown commands with migrations (ADR-018) | Verify stage: one send to `delivered@resend.dev`, `ledger email`, `ledger health`; trip drill; teardown listing | M1 |
 | 3 — Operations and evidence on AWS | Alarms → SNS → email with one runbook entry each; DLQ inspect and redrive (ADR-008); simulator secret (ADR-016); `sim` burst, `--chaos db-outage` and poison runs on the deployed stack, invariants 1, 2, 4 | `pnpm sim --burst` and `--chaos db-outage` on AWS; `ledger dlq inspect`, `ledger dlq redrive` | M1 |
 | 4 — Recovery | `packages/resend-client` (ADR-012); reconciler on the hourly cron (ADR-007); `ledger gaps`, `ledger reconcile [--dry-run]`; rotation runbook and retired-secret test (ADR-009) | `ledger gaps` → `ledger reconcile` → `ledger gaps` shows 0 missing | M1 |
@@ -493,7 +551,7 @@ impacted recipients); it rides on the RS-U15 sends.
 | Reconcile competes with the team's sending for 10 req/s | A 2 req/s limiter per single-flight caller, yielding on low `remaining`, ≤ 4 req/s in total (ADR-012) |
 | Replays fail verification or land under a new id (RS-U01, RS-U20) | Settled in slice 4 by one Ask-first replay of a stored event, before recovery is called done |
 | Outcome precedence wrong for async bounces or `created_at` semantics | Oracle property test under both answers (ADR-003); RS-U10, RS-U11, RS-U12 in slice 0 |
-| PII or secrets leak through logs, responses or tool output | gitleaks history scan in `pnpm verify` (slice 0); test addresses only; ids in logs, never addresses or bodies, enforced by the logger's allow-list (unit test, slice 1); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
+| PII or secrets leak through logs, responses or tool output | gitleaks history scan in `pnpm verify` (slice 0); test addresses only; ids in logs, never addresses or bodies, enforced by the logger's allow-list ([data-modeling.md → Log fields](data-modeling.md#log-fields); unit test, slice 1); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
 
 ## Open decisions
 

@@ -16,15 +16,19 @@ Manager, [Secrets layout](#secrets-layout))
 
 1. **One caller.** Every call to Resend's API goes through `packages/resend-client`
    ([module boundaries](../AGENTS.md#module-boundaries)). No other package imports the `resend`
-   SDK for API calls. Signature verification in `apps/ingest` calls the SDK's `webhooks.verify`
+   SDK for API calls. Signature verification in `packages/ingest` calls the SDK's `webhooks.verify`
    (RS-02), never a hand-rolled HMAC compare: local crypto, not an API call (RS-01, RS-02).
 2. **One budget, with headroom.** The 10 req/s limit is per team and shared by every key (RS-19),
    and observed live to be shared across endpoints (RS-20). The client's limiter defaults to
    **2 req/s**, configurable. It also yields when `ratelimit-remaining` falls below half of
    `ratelimit-limit`, and on `429` it waits `retry-after` (RS-19). The reconciler, the dispatcher
-   and any CLI-triggered call use it, one instance per calling function; each such caller is
+   and any Resend call the API makes on a CLI or MCP request use it, one instance per calling
+   function. The CLI and MCP server never call Resend themselves (ADR-011), and the one operation
+   that spends the budget, `reconcile.start`, spends it inside the reconciler
+   ([api-contract.md → Conventions](api-contract.md#conventions), Rate limits). Each caller is
    single-flight (the reconciler by non-overlapping runs, ADR-007; the dispatcher by its
-   transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. *Why 2:* Ledger is a
+   transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. A read-API route that calls
+   Resend directly adds a caller and MUST restate this bound. *Why 2:* Ledger is a
    background consumer of the team's budget. At 2 req/s, recovering a 10,000-event gap (100 List
    Events pages plus 10,000 replays, RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6
    hourly runs because each run stops at its time budget (AWS-03), which is acceptable for recovery
@@ -194,12 +198,20 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   ESM `MaximumConcurrency` (AWS-04), plus one delivering dispatcher and the losers that exit at
   once (ADR-017), the read API's concurrency and one reconciler bound open connections, far below
   the pooler's limits.
-- **Runtime role.** The deploy command creates a DML-only runtime role (no DDL) through the direct
-  URL, and the pooled connection string in `ledger/database` uses it. `webhook_events` grants it
-  `SELECT, INSERT` and, once the retention job lands (slice 7), column-level `UPDATE` on the
-  columns it rewrites; never `DELETE`. Only migrations use the owner role. Evidence: integration
-  test where the runtime role gets `permission denied` on `DELETE FROM webhook_events` and on
-  `CREATE TABLE` (slice 2).
+- **Runtime role.** A DML-only role (no DDL), named by one constant the deploy command and the
+  migrations share. The pooled connection string in `ledger/database` uses it; only migrations use
+  the owner role. Grants are per table: `webhook_events` gets `SELECT, INSERT` and, once the
+  retention job lands (slice 7), column-level `UPDATE` on the columns it rewrites; never `DELETE`.
+  **Order (MUST)**, through the direct URL:
+  1. The deploy command ensures the role exists (idempotent: created only if absent).
+  2. It runs the migrations. Each migration that creates a table grants that table's DML to the
+     role in the same migration.
+  3. It deploys the code ([ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them)).
+
+  The local setup command and the Testcontainers harness follow the same order, so the role and
+  its grants exist in every environment. Because a pushed migration is never edited, grants start with the first
+  migration (slice 1). Evidence: integration test where the runtime role gets
+  `permission denied` on `DELETE FROM webhook_events` and on `CREATE TABLE` (slice 2).
 - **Pooler-safe SQL only.** No session-level advisory locks, `SET`, `LISTEN/NOTIFY` or SQL-level
   `PREPARE` ([pooling](https://neon.com/docs/connect/connection-pooling)). Mutual exclusion uses row
   locks or transaction-scoped locks inside one transaction.

@@ -168,6 +168,7 @@ this decides *whose exposure* may run thin meanwhile.
 | Someone who deploys Ledger | adopter | customer, tenant, integrator | — |
 | The control that stops compute when the monthly cap is hit | kill switch | circuit breaker | — |
 | A countable threshold or named event that reopens a deferral | tripwire | "when demand warrants" | — |
+| The Lambda resource that polls SQS and invokes the worker | ESM (event source mapping) | "ESM" for the JavaScript module system: write "ES modules" | `AWS::Lambda::EventSourceMapping` |
 
 ## Non-goals / out of scope
 
@@ -209,8 +210,6 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Smaller Resend gaps ([RS-U13, U15–U19, U22](resend.md#unverified)).** List Events visibility lag, test-address event sequences, idempotency-key scope, invalid-key status code, orphaned `listen` webhooks, the `email.suppressed` object, how a `listen` session's signing secret reaches local ingest. Each row names its slice. `[Unverified]`
 - **Per-event recipient lists ([RS-U21](resend.md#unverified)).** Whether a bounce on a multi-recipient email lists only the impacted recipients in `data.to`. If not, a healthy co-recipient would read `hard_bounced`. Settled by one Ask-first two-recipient send. · [slice 1](build-checklist.md#1--local-ledger-and-read-path), MUST be settled `[Unverified]`
 
-- **MCP SDK line and tool annotations.** The MCP TypeScript SDK's `main` is now v2, published as split packages (`@modelcontextprotocol/server`, `@modelcontextprotocol/client`), while `@modelcontextprotocol/sdk` is the v1.x maintenance line ([SDK README](https://github.com/modelcontextprotocol/typescript-sdk)). The annotation fields that [api-contract.md → Conventions](api-contract.md#conventions) sets (`readOnlyHint`, `destructiveHint`, `idempotentHint`) were read in the 2025-06-18 spec; whether the 2026-07-28 spec keeps them unchanged was not checked. Annotations are untrusted hints and scope is enforced by the read API, so this is safe either way. The package is picked when slice 5 adds the dependency (Ask-first). · [slice 5](build-checklist.md#5--mcp-server-and-contract-hardening) `[Unverified]`
-
 **Scope questions (deferred on a tripwire):**
 
 - **Inngest adapter (§10.7).** A second worker implementation as a comparison. Tripwire: M2 is done **and** a row in [What this project must demonstrate](#what-this-project-must-demonstrate) names a claim only it can prove.
@@ -225,4 +224,5 @@ in [resend.md → \[Unverified\]](resend.md#unverified). The bullets below say w
 - **Secret rotation (§10.1).** For 24 hours after a rotation, both secrets sign ([RS-04](resend.md#facts)). Verification MUST accept both during that window.
 - **Retry window.** Resend's docs disagree: "up to 24 hours" on one page, a schedule spanning ≈ 27.6 h on another. Ledger designs to the longer window ([resend.md → Constraint 3](resend.md#constraints-and-sharp-edges)), which is safe under either.
 - **Reconcile cadence vs the shared API budget (§10.5).** Hourly by default, through a 2 req/s client limiter per single-flight caller ([ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller)) that yields when `ratelimit-remaining` runs low ([integrations.md → Locked rules](integrations.md#locked-rules-must); owner, 2026-10-15).
+- **MCP SDK line and tool annotations.** The package is `@modelcontextprotocol/server` v2, stable since 2.0.0 on 2026-07-27 ([npm](https://registry.npmjs.org/@modelcontextprotocol/server); [ADR-019](architecture.md#adr-019--application-and-surface-stack)); `@modelcontextprotocol/sdk` is the v1 maintenance line ([SDK README](https://github.com/modelcontextprotocol/typescript-sdk)). The 2026-07-28 spec keeps `readOnlyHint`, `destructiveHint` and `idempotentHint` on `ToolAnnotations` with unchanged meanings and defaults ([schema.ts](https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/main/schema/2026-07-28/schema.ts), checked 2026-10-16), so [api-contract.md → Conventions](api-contract.md#conventions) stands. Annotations stay untrusted hints; the read API enforces scope.
 - **Upstream contribution (§10.6).** Closed. Upstream PRs are not planned (owner, 2026-10-15; [decision lens](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
