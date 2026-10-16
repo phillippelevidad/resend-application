@@ -57,17 +57,17 @@ Ships 1 and 2 are already met and ticked (PP §5). Their evidence is re-confirme
 
 ## 5. `projectRecipient` (Ships 5, Ships 10; RS-U12; D6, D7)
 
-- [ ] 5.1 Write `src/testing/ledger-history.ts` (`ledgerHistory({ namespace })`) per D15: at least 2 emails of at least 2 events each, several recipients per email, recipients shared across emails, and each event's `data.to` a subset. It puts sticky events before higher-ranked non-sticky ones on the same email (`suppressed` then `failed`, `complained` then a `Transient` bounce), and draws `data.bounce.type` from `Permanent`, `Transient`, `Temporary`, `Undetermined` and any string. Ids come from namespace plus counter. Verify: a unit test asserts a sample holds a shared recipient and a sticky-then-higher-ranked pair.
-- [ ] 5.2 Write `project-recipient.projection.ts` per D6 / D7: sticky signal first, else the latest soft signal, else `ok` with null `since` / `causeEmailId`. It reads signals only, never `status`. Verify: `pnpm typecheck` exits 0.
-- [ ] 5.3 Write `project-recipient.projection.prop.test.ts`: properties 1–4 with an oracle that reads the events behind the rows directly (max sticky signal; latest delivery or soft bounce). Add named tests "only `Permanent` yields hard_bounced; any other bounce.type yields soft_bouncing (RS-U12)", "a later delivery of the same email clears soft_bouncing", and the sticky-after-higher-ranked case. Export `projectRecipient` from `index.ts`. Verify: the properties pass, and deriving deliverability from a row's `status` makes property 3 fail (revert after).
-- [ ] 5.4 Docs. Verify: `git grep -nE "RS-U1[0129]" -- .ai/resend.md` shows a test link on each of the four rows, and the card's fifth and tenth `Ships` boxes read `[x]`.
+- [x] 5.1 Write `src/testing/ledger-history.ts` (`ledgerHistory({ namespace })`) per D15: at least 2 emails of at least 2 events each, several recipients per email, recipients shared across emails, and each event's `data.to` a subset. It puts sticky events before higher-ranked non-sticky ones on the same email (`suppressed` then `failed`, `complained` then a `Transient` bounce), and draws `data.bounce.type` from `Permanent`, `Transient`, `Temporary`, `Undetermined` and any string. Ids come from namespace plus counter. Verify: a unit test asserts a sample holds a shared recipient and a sticky-then-higher-ranked pair.
+- [x] 5.2 Write `project-recipient.projection.ts` per D6 / D7: sticky signal first, else the latest soft signal, else `ok` with null `since` / `causeEmailId`. It reads signals only, never `status`. Verify: `pnpm typecheck` exits 0.
+- [x] 5.3 Write `project-recipient.projection.prop.test.ts`: properties 1–4 with an oracle that reads the events behind the rows directly (max sticky signal; latest delivery or soft bounce). Add named tests "only `Permanent` yields hard_bounced; any other bounce.type yields soft_bouncing (RS-U12)", "a later delivery of the same email clears soft_bouncing", and the sticky-after-higher-ranked case. Export `projectRecipient` from `index.ts`. Verify: the properties pass, and deriving deliverability from a row's `status` makes property 3 fail (revert after).
+- [x] 5.4 Docs. Verify: `git grep -nE "RS-U1[0129]" -- .ai/resend.md` shows a test link on each of the four rows, and the card's fifth and tenth `Ships` boxes read `[x]`.
   - data-modeling.md: `recipient_state` states D6's fold from the row signals, never `status`; every non-`Permanent` bounce goes to `soft_bouncing` (C6, D7); `recipient_state.since` / `cause_email_id` are null while `ok` is undecided (C9).
   - architecture.md: ADR-003 **Evidence** and Reliability core add this prop-test file.
   - resend.md: the RS-U12 row cites its test.
   - about.md: the RS-U12 bullet cites its test.
   - features.md: the recipient-deliverability pointer moves to slice 0 (C5).
   - Card: tick `Ships` 5, and `Ships` 10 once the RS-U10, U11, U12 and U19 rows all cite their tests.
-- [ ] 5.5 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 5.5 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 6. Simulator (Ships 8; D15, D16)
 

@@ -36,7 +36,7 @@ type Step = {
   malformed?: Malformation;
 };
 
-const baseInstant = Date.parse('2026-10-16T12:00:00.000Z');
+export const baseInstant = Date.parse('2026-10-16T12:00:00.000Z');
 
 // RS-34: Resend's test addresses only.
 const testLocalParts = ['delivered', 'bounced', 'complained', 'suppressed'] as const;

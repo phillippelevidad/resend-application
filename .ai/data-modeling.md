@@ -338,17 +338,26 @@ _Evidence: the slice 0 item holds; the slice 1 items are pending._
 | --- | --- | --- |
 | `address_hash` | `text` PK | What the API looks up after hashing the caller's input |
 | `address_masked` | `text` | What support sees |
-| `deliverability` | `text` `CHECK (ok, soft_bouncing, hard_bounced, complained, suppressed)` | What an application checks before sending. `hard_bounced`, `complained` and `suppressed` are sticky; `soft_bouncing` clears to `ok` on a `delivered` later by `event_created_at`, `rank` and `svix_id` breaking ties, so the result is the same in any arrival order |
-| `since` | `timestamptz` | From `event_created_at`, never row time |
-| `cause_email_id` | `text` | The email that caused the transition ([features.md → J2](features.md#j2--support-lookup)) |
+| `deliverability` | `text` `CHECK (ok, soft_bouncing, hard_bounced, complained, suppressed)` | What an application checks before sending. `hard_bounced`, `complained` and `suppressed` are sticky; `soft_bouncing` clears to `ok` on a `delivered` later by `event_created_at`, `rank` and `svix_id` breaking ties, so the result is the same in any arrival order. Only `bounce.type` exactly `Permanent` is `hard_bounced`; every other bounce (`Transient`, `Temporary`, `Undetermined`, any other string, no `bounce` object) is `soft_bouncing`, so the result does not depend on RS-U12's answer |
+| `since` | `timestamptz` null | From `event_created_at`, never row time. Null while `ok` was decided by no event |
+| `cause_email_id` | `text` null | The email that caused the transition ([features.md → J2](features.md#j2--support-lookup)). Null while `ok` was decided by no event |
 
 - **Recompute:** each recompute reads every `email_recipients` row for the hash, under a lock taken
   in sorted `address_hash` order after the email lock
   ([architecture.md → Risks](architecture.md#risks--mitigations)).
+- **Fold:** from the rows' signal columns, never their `status`, which a later `failed` or soft
+  bounce lifts past a sticky outcome. Any `sticky_signal` → the highest by `hard_bounced` >
+  `suppressed` > `complained`, its earliest by `sticky_signal_at`, `rank` and
+  `sticky_signal_svix_id` giving `since` and `cause_email_id`. Else the latest `soft_signal` by
+  `soft_signal_at`, `rank` and `soft_signal_svix_id`: `delivered` → `ok`, `bounced` →
+  `soft_bouncing`. Else `ok`, with `since` and `cause_email_id` null.
 
 _Schema: `packages/db/src/schema/recipient-state.ts` (once it exists)._
-_Evidence: pending._
-- Slice 0: a property test that a hard bounce comes from `Permanent` only.
+_Evidence: the slice 0 item holds; the later items are pending._
+- Slice 0: fast-check permutation, idempotence, sticky-monotonicity and oracle properties, one `it`
+  each, with the tests that a hard bounce comes from `Permanent` only (RS-U12) and that a later
+  delivery clears `soft_bouncing`, in
+  [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts).
 - Slice 1: a concurrency integration test with two emails and one recipient.
 - Slice 2: the same test through the pooler (PG-U02).
 - Slices 1 and 3: sim invariant 2.

@@ -69,7 +69,7 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 | --- | --- | --- | --- |
 | **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | pending — sim invariant 1 (slice 1); `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
 | **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` and `--chaos dispatcher-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
-| **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) (slice 0). Pending — properties 1–4 for `projectRecipient` (slice 0); sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
+| **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) and for `projectRecipient` in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0). Pending — sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
 ### Simulator invariants
 
@@ -134,7 +134,7 @@ sort key with `rank` and `svix_id` as tie-breaks, so state stays deterministic w
 tracks the real event time (RS-U10); precedence is property-tested whether or not a bounce can
 follow a delivery (RS-U11).
 Rejected: incremental `UPDATE status = new` (correctness depends on arrival order); Retrieve Email's `last_event` as status (recency, RS-38).
-**Evidence:** fast-check permutation, idempotence, monotonicity and oracle properties for `projectEmail`, one `it` each, with the RS-U10, RS-U11 and two-recipient tests, in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) (slice 0). Pending — the same properties for `projectRecipient` (slice 0). Source: [idea §5.4](../docs/idea.md#54-order-independent-projections), [§9](../docs/idea.md#9-general-questions).
+**Evidence:** fast-check permutation, idempotence, monotonicity and oracle properties for `projectEmail`, one `it` each, with the RS-U10, RS-U11 and two-recipient tests, in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) (slice 0). The same properties for `projectRecipient`, monotonicity over its sticky states, with the RS-U12 hard-bounce, soft-clears-on-later-delivery, sticky-after-higher-ranked and cross-email tie tests, in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0). Source: [idea §5.4](../docs/idea.md#54-order-independent-projections), [§9](../docs/idea.md#9-general-questions).
 
 ### ADR-004 — Immutable ledger keyed on `svix_id`, one transaction per message
 

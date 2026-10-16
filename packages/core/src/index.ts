@@ -15,6 +15,7 @@ export {
   type EmailState,
   projectEmail,
 } from './project-email.projection.ts';
+export { projectRecipient, type RecipientState } from './project-recipient.projection.ts';
 export { type SoftSignal, softSignalSchema } from './soft-signal.schema.ts';
 export { type StickySignal, stickySignalSchema } from './sticky-signal.schema.ts';
 export { type WebhookEnvelope, webhookEnvelopeSchema } from './webhook-envelope.schema.ts';
