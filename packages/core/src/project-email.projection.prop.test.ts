@@ -421,6 +421,8 @@ describe('projectEmail', () => {
         const others = (state: EmailState) =>
           state.recipients.filter((row) => row.recipientKey !== targetKey);
         const beforeBounce = projectEmail(history.emailId, history.events);
+        // Every projectable event can name the same recipient, which leaves no other one to check.
+        fc.pre(others(beforeBounce).length > 0);
         const afterBounce = projectEmail(history.emailId, withBounce);
         expect(others(afterBounce)).toEqual(others(beforeBounce));
         expect(afterBounce.recipients.find((row) => row.recipientKey === targetKey)?.status).toBe(
