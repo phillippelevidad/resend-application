@@ -894,6 +894,13 @@ T1 (if a webhook is left over).
 - **Trade-off — events acknowledged but still in the in-process queue are lost if `apps/local`
   dies.** Accepted locally: local traffic is simulator and test-address traffic only. SQS (slice 2)
   and `local_queue_messages` (slice 2B) remove it.
+- **Trade-off — a Postgres outage locally dead-lists what is in flight.** The worker fails every
+  message alike (D13), so with Postgres down (`pnpm db:down`, a compose restart, a laptop sleep)
+  each queued message spends its 5 receives at 1 s apart (D8) and moves to the in-memory dead list
+  in about 4 s; only its `queue.dead_lettered` line survives a restart, and nothing redrives it.
+  Accepted on the same grounds: the outage pause is ADR-015's, landing with the Lambda worker in
+  slice 2, and dead rows that survive a restart are slice 2B's. The walk stops Postgres (B6) only
+  with no event in flight.
 - **Trade-off — `docs` runbook links 404 until slice 3.** A named later slice carries it.
 
 ## Migration Plan
