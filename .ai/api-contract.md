@@ -25,8 +25,11 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   error code is additive, but it is still Ask-first because it extends the contract.
   - **Public environment variables** are the ones a user sets, in the shell or `.env.local`, for the
     CLI, SDK, MCP server, simulator, or the deploy and setup commands: `LEDGER_URL`,
-    `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`,
-    `AWS_PROFILE`, and any such variable added later.
+    `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `LEDGER_WEBHOOK_SECRETS` (local Resend signing
+    secrets, comma-separated `whsec_` values, one per `resend webhooks listen` session),
+    `LEDGER_ADDRESS_HASH_KEY` (the address-hash key, 64 hex characters, written once by
+    `pnpm db:setup` and never changed; [data-modeling.md → PII & retention](data-modeling.md#pii--retention)),
+    `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`, `AWS_PROFILE`, and any such variable added later.
   - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
     mapping UUID, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
     `as const` object per function, imported by `infra/src/function-env.ts`, which sets each value
@@ -126,11 +129,12 @@ entries are owed by slice 3 and completed in slice 7.
 | --- | --- | --- | --- | --- | --- |
 | `unauthorized` | 401 | Bearer token missing, malformed, bad-tag, unknown or revoked | Set `LEDGER_TOKEN` to an active token | runbook | packages/api auth middleware |
 | `forbidden` | 403 | The token is valid but lacks the scope this operation needs | Use an `operate` token, or ask its owner for one | runbook | packages/api auth middleware |
-| `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | `message` names the field | runbook | packages/api request validation (Zod) |
+| `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | Fix the field the message names, then retry | runbook | packages/api request validation (Zod) |
 | `email_not_found` | 404 | No event recorded for this email id | Events may still be queued, or missed: run `ledger gaps` | runbook | `email.get`, `email.explainDelivery` |
 | `recipient_not_found` | 404 | No event has ever named this address | Check the address. If it was emailed recently, run `ledger gaps` | runbook | `recipient.get` |
 | `run_not_found` | 404 | No reconcile run with this id | List runs with `ledger gaps` | runbook | `reconcile.getRun` |
 | `token_not_found` | 404 | No token with this id | List tokens with `ledger token list` | runbook | `token.revoke` |
+| `route_not_found` | 404 | No operation at this method and path | Check `LEDGER_URL`, and that the CLI or SDK version matches the API's | runbook | packages/api not-found handler |
 | `reconcile_in_progress` | 409 | Another reconcile run is unfinished and still inside its time budget; runs never overlap (ADR-007) | Wait for it: `ledger gaps` | runbook | `reconcile.start` |
 | `redrive_in_progress` | 409 | A DLQ redrive task is already running; SQS allows one per queue (AWS-21) | Wait for the DLQ depth in `ledger health` to fall | [Redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) | `dlq.startRedrive` |
 | `last_operate_token` | 409 | Revoking this token would leave no active `operate` token | Create another `operate` token first | runbook | `token.revoke` |

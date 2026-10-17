@@ -16,6 +16,11 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
   `apps/mcp`, whose stdout is the JSON-RPC channel, routes every level to stderr (Winston Console
   `stderrLevels`, [pp-mcp → Output](../../pp-mcp/SKILL.md#output)); `apps/cli` logs nothing, since
   its output is its interface ([pp-cli → Output and exit codes](../../pp-cli/SKILL.md#output-and-exit-codes)).
+- **Tests pass a `stream`.** `createLogger({ functionName, stream? })` takes an optional sink (any
+  `{ write(chunk) }`): without it, the Console transport above; with it, a Winston Stream transport
+  over that sink, with the same format and allow-list, so a test captures and parses the real lines
+  (slice 1, D15). Winston's Stream transport accepts only a real Node stream, so the logger wraps the
+  sink in a `Writable`. Runtime code never passes one.
 - **Write `level`, `timestamp` and `request_id` yourself.** Winston's Console transport writes to
   `console._stdout` unless `forceConsole` is set
   ([source](https://raw.githubusercontent.com/winstonjs/winston/master/lib/winston/transports/console.js)),
@@ -37,7 +42,8 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
   property, so `{ error_name: err }` would serialize the row. The allow-list is one constant in
   `packages/shared` that mirrors the doc. To log a new
   field, change the doc first, then the constant, in the same change. The slice 1 logger unit test
-  is the evidence ([build-checklist → slice 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path)).
+  is the evidence ([create-logger.test.ts](../../../../packages/shared/src/create-logger.test.ts),
+  [build-checklist → slice 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path)).
 - **Messages are constants, never interpolated.** `logger.info('event.duplicate', { svix_id })`,
   never `` logger.info(`duplicate ${svixId}`) ``. Interpolation is how a value the allow-list would
   drop slips into the one field it never inspects.

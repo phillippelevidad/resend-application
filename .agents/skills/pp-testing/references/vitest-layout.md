@@ -11,13 +11,14 @@ owns the config, the names inside a file, the shared suites and the review greps
 `test.projects` runs several project configs "within a single Vitest process"; `vitest.workspace` is
 "deprecated since 3.2 and replaced with the `projects` configuration"
 ([Vitest → Projects](https://vitest.dev/guide/projects)). The root's `globalSetup` is not inherited
-by projects (same page); that a project's own one runs is `[Unverified]` (slice 1's first
-`--project int` run settles it). Written against vitest.dev as read on
-2026-10-16: check the installed version's docs before writing it
-([version rule](../../pp-general/SKILL.md#check-the-installed-version-not-memory)).
+by projects (same page); a project's own `globalSetup` runs: under Vitest 5.0.5, `pnpm test:int`
+(`--project int`) runs the inline `int` project's setup once, before its files, and its
+`project.provide` values reach `inject` in the tests (slice 1), so `int` needs no config file of its
+own. Written against vitest.dev as read on 2026-10-16: check the installed version's docs before
+writing it ([version rule](../../pp-general/SKILL.md#check-the-installed-version-not-memory)).
 
 ```ts
-// vitest.config.ts, as committed; slice 1 adds the int project's globalSetup
+// vitest.config.ts, abridged: the int project's measured timeouts and comments are in the file
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -34,7 +35,9 @@ export default defineConfig({
         test: {
           name: 'int',
           include: ['{packages,apps,sim}/**/*.int.test.ts'],
-          // globalSetup (the Testcontainers Postgres harness) lands in slice 1.
+          globalSetup: ['packages/db/src/testing/postgres-global-setup.ts'],
+          testTimeout: 5_000,
+          hookTimeout: 10_000,
         },
       },
       {
@@ -50,22 +53,22 @@ export default defineConfig({
 
 - **`unit`** holds `*.test.ts` and `*.prop.test.ts` (both match `*.test.ts`) and never needs Docker,
   so it runs first and fails fast. **`int`** is `*.int.test.ts` only, behind the
-  [harness](postgres-harness.md); slice 1 adds its `globalSetup`
-  (`packages/db/src/testing/postgres-global-setup.ts`) and the `int` stage of `pnpm verify` together
-  with the first `*.int.test.ts`; until then `int` is not a verify stage. **`e2e`** is `*.e2e.test.ts` only:
+  [harness](postgres-harness.md): its `globalSetup`
+  (`packages/db/src/testing/postgres-global-setup.ts`) and the `int` stage of `pnpm verify` landed
+  with the first `*.int.test.ts` in slice 1. **`e2e`** is `*.e2e.test.ts` only:
   it spawns a real local process from its entry point (`node apps/local/src/main.ts`), talks to it
   over `127.0.0.1` and asserts what the process prints, answers and exits with. No Docker. First
   file: `apps/local/src/main.e2e.test.ts`.
 - Run one tier: `pnpm test` (`unit`), `pnpm test:int`, `pnpm test:e2e`, or
   `pnpm exec vitest run --project <name>` (`--project` "can be used multiple times", Vitest →
-  Projects). `pnpm verify` runs `unit` and `e2e` as their own stages (`int` from slice 1); the
+  Projects). `pnpm verify` runs `unit`, `int` and `e2e` as their own stages; the
   scripts are listed in
   [root AGENTS.md → Commands](../../../../AGENTS.md#commands).
 - **Every project declares `vitest` as `catalog:`** in its own `devDependencies`, with the version
   once in `pnpm-workspace.yaml` → `catalog`, because Biome's `noUndeclaredDependencies` checks the
   closest `package.json`.
 - `int` files run in parallel: each has its own database. Timeouts for `int` are set from a measured
-  run in slice 1, never guessed.
+  run, never guessed: the slice 1 numbers are in the `vitest.config.ts` comment beside them.
 - A per-package `vitest.config.ts` appears only when a package needs a setting the root cannot give
   it, and the same change says why.
 - Coverage is never a gate ([Test tiers](../../pp-workflow/SKILL.md#test-tiers)).
@@ -108,9 +111,14 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
   The SQS adapter only enqueues (the ESM receives), so it runs the enqueue cases only; the
   receive-and-settle cases run against the in-process and Postgres-backed queues
   ([pp-backend → Ports](../../pp-backend/references/composition.md#ports)).
-- Where the SDK ↔ API contract tests live is the slice 1 pre-proposal's. Constraint:
-  `packages/sdk` never depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
-  so they do not live in `packages/sdk`. They read real rows, so they are `*.int.test.ts`.
+- The SDK ↔ API contract tests live in `apps/local/src/sdk-contract.int.test.ts`. `packages/sdk`
+  never depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
+  so they do not live in `packages/sdk`; `apps/local` already composes the API, and takes
+  `@ledger/sdk` as a `workspace:*` dev dependency for them. They read real rows, so they are
+  `*.int.test.ts`: `createApi(deps)` under `@hono/node-server` on `127.0.0.1:0` over a harness
+  clone, rows seeded through the worker's `RecordEventCommand`, every call through
+  `createLedgerClient` (slice 1: both operations' success paths, `email_not_found`,
+  `recipient_not_found`, `validation_failed`, `route_not_found`).
 
 ## Review greps
 

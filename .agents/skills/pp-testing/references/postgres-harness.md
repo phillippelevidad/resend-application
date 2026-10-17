@@ -23,9 +23,11 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
    image argument required and [pinned](#the-image), its database set by `.withDatabase()` to the
    template's name, never `postgres` ([Testcontainers → PostgreSQL](https://node.testcontainers.org/modules/postgresql/)).
    The container's user is the owner role.
-2. **Ensure the runtime role**, through the same function the deploy command calls (S-05), with a
-   password the harness generates for the run. That function also applies the deploy command's
-   role-level `idle_in_transaction_session_timeout` and `lock_timeout`
+2. **Ensure the runtime role**, through the same function the deploy command calls (S-05),
+   `prepareDatabase` in `packages/db`, with a password the harness generates for the run. That
+   function also applies the deploy command's role-level `idle_in_transaction_session_timeout` and
+   `lock_timeout` (timeouts from slice 2, C13 of the slice 1 change; slice 1's `prepareDatabase`
+   only creates the role)
    ([pp-database → Grants](../../pp-database/references/migrations-and-grants.md#grants)); the
    harness passes short test values (seconds, the idle one below `lock_timeout`, both above the
    longest lock wait a [concurrency test](#faults-and-concurrency) polls for). Without them the
@@ -46,9 +48,9 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
    ([Vitest → globalSetup](https://vitest.dev/config/globalsetup)).
 6. **Teardown** stops the container.
 
-Steps 2 and 3 are code that does not exist yet: slice 1 lands the role-and-migrate entry point in
-`packages/db` and the harness calls it; slice 2's deploy command calls the same one. Its name is the
-slice 1 pre-proposal's.
+Steps 2 and 3 are one call: `prepareDatabase({ ownerUrl, runtimePassword })` in
+`packages/db/src/prepare-database.ts` (slice 1), which the harness, `pnpm db:setup` and slice 2's
+deploy command all call.
 
 **Why not `snapshot()` / `restoreSnapshot()`.** The module's restore drops the container's database
 and recreates it from the snapshot, in place
@@ -69,7 +71,10 @@ afterAll(async () => { await t.drop(); });
 - `createTestDatabase()` runs `CREATE DATABASE "<unique name>" TEMPLATE <template>` over the owner
   URL, then opens the file's handles: `t.db`, a Drizzle database **connected as the runtime role**,
   which is what tests pass to repositories, commands and readers; `t.owner`, an owner connection to
-  the same clone, for [fault injection](#faults-and-concurrency) only.
+  the same clone, for [fault injection](#faults-and-concurrency) only; `t.runtimeUrl`, the runtime
+  role's URL for the clone, for a test that opens its own size-1 pools (one per simulated Lambda
+  container). `sqlStateOf(call)` from the same module reads a rejection's SQLSTATE through Drizzle's
+  `cause` wrapper.
 - `drop()` closes both pools, then `DROP DATABASE … WITH (FORCE)`.
 - **One clone per file, never truncated, never shared.** Tests inside a file share it, so each test
   generates its own `svix_id`s, `email_id`s and test addresses (`delivered+<n>@resend.dev`) and
@@ -138,8 +143,8 @@ It is the one exception to one container per run ([Case-by-case](../SKILL.md#cas
 
 **Postgres 18.** The harness MUST run the major the Neon project runs, which is 18
 ([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)). The image tag
-names an exact 18.x minor, never `latest` or a bare major, so CI runs are reproducible; slice 1
-picks the minor when it adds the harness.
+names an exact 18.x minor, never `latest` or a bare major, so CI runs are reproducible:
+`postgres:18.6-alpine`, the compose tag (slice 1).
 
 `@testcontainers/postgresql` is a dev dependency of `packages/db` only, Ask-first when slice 1 adds
 it ([Permissions](../../../../AGENTS.md#permissions)). The harness needs Docker locally and in CI

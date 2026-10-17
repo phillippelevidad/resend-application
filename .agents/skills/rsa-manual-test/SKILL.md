@@ -47,7 +47,8 @@ exist (→ [api-contract.md](../../../.ai/api-contract.md)) · the CLI's output 
    stop a process it did not start. List everything it created (sim seed and run namespace, tokens
    minted, temporary webhooks). After an interrupted `resend webhooks listen`, check for a leftover
    webhook with a read-only list ([RS-33](../../../.ai/resend.md#facts),
-   [RS-U18](../../../.ai/resend.md#unverified)); deleting one is a write, so Ask-first.
+   [RS-40](../../../.ai/resend.md#facts): a hard kill leaves it behind); deleting one is a write,
+   so Ask-first.
 7. **Never run `pnpm verify` or the test suites.** That is `wf-after-apply-check`'s gate, not a walk.
 8. **Wait on conditions, not sleeps.** Poll with a bounded timeout and record the waited time; a
    timeout without the change is `inconclusive`. Long commands follow

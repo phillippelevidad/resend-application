@@ -19,8 +19,12 @@
     "dev:stop": "node scripts/dev-stop.mjs",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose stop postgres",
+    "db:setup": "pnpm --filter @ledger/app-local run setup",
+    "db:generate": "pnpm --filter @ledger/db exec drizzle-kit generate",
     "synth": "pnpm --filter @ledger/infra synth",
-    "sim": "node --env-file-if-exists=.env.local sim/src/main.ts"
+    "openapi:export": "node packages/api/scripts/export-openapi.ts && pnpm --filter @ledger/sdk exec openapi-typescript openapi.json -o src/openapi-types.ts",
+    "sim": "node --env-file-if-exists=.env.local sim/src/main.ts",
+    "ledger": "node --env-file-if-exists=.env.local apps/cli/src/main.ts"
   },
   "packageManager": "pnpm@10.11.0",
   "type": "module",

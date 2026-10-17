@@ -1,6 +1,6 @@
 ---
 name: pp-cli
-description: Ledger's `ledger` CLI conventions — `commander` 15 with `@commander-js/extra-typings`, one command per operation in `apps/cli/src/commands/<noun>-<verb>.cli.ts` registered in `main.ts`, the SDK's `{ data, error }` unwrapped once, exit codes `0` / `1` / `2`, `--json` on stdout and `message` + `hint` on stderr, colour only on a TTY through `node:util` `styleText`, `LEDGER_URL` / `LEDGER_TOKEN` with no `--token` flag, waiting on a `202` command with `--no-wait`, and the per-command `--json` output tests against a fake SDK. Load it before writing or reviewing anything under `apps/cli/**` — "add a CLI command", "add a flag", "what does the CLI print", "which exit code", "why is this coloured", "make it wait", "test the CLI". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
+description: Ledger's `ledger` CLI conventions — `commander` 15 with `@commander-js/extra-typings`, one command per operation in `apps/cli/src/commands/<noun>-<verb>.cli.ts` registered in `create-program.ts`, the SDK's `{ data, error }` unwrapped once, exit codes `0` / `1` / `2`, `--json` on stdout and `message` + `hint` on stderr, colour only on a TTY through `node:util` `styleText`, `LEDGER_URL` / `LEDGER_TOKEN` with no `--token` flag, waiting on a `202` command with `--no-wait`, and the per-command `--json` output tests against a fake SDK. Load it before writing or reviewing anything under `apps/cli/**` — "add a CLI command", "add a flag", "what does the CLI print", "which exit code", "why is this coloured", "make it wait", "test the CLI". Load it alongside pp-workflow and pp-general, not instead of them. When it and a linked doc disagree, the doc wins and this file is fixed.
 ---
 
 # pp-cli — patterns and practices, the `ledger` CLI
@@ -17,8 +17,9 @@ stdout and stderr discipline, `--json`, colour · waiting on a `202` · the CLI'
 **Does not own:** which commands, flags and codes exist → [api-contract.md](../../../.ai/api-contract.md)
 · the shared surface rules and the SDK → [pp-backend](../pp-backend/SKILL.md#surfaces--sdk-cli-mcp)
 · the error class → [pp-general → errors](../pp-general/references/errors.md) · test tiers →
-[pp-testing](../pp-testing/SKILL.md) · human output layouts → the slice 1 pre-proposal, then each
-slice for the commands it adds.
+[pp-testing](../pp-testing/SKILL.md) · human output layouts → the slice 1 pre-proposal's
+[§12 Surfaces](../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md#12-surfaces)
+(`ledger email`, `ledger recipient`), then each slice for the commands it adds.
 
 ## Precedence
 
@@ -36,13 +37,15 @@ pp-general; a doc beats both.
   [ADR-019](../../../.ai/architecture.md#adr-019--application-and-surface-stack); installed 15.0.0).
   Import `Command` from `@commander-js/extra-typings` (major and minor matching `commander`); types
   build up only through one chain per command ([README](https://github.com/commander-js/extra-typings)).
-- **`apps/cli` is `@ledger/app-cli`, `bin` `ledger`.** It imports `@ledger/sdk` and
+- **`apps/cli` is `@ledger/app-cli`, the `ledger` command.** It imports `@ledger/sdk` and
   `@ledger/shared` (the config loader) and no other workspace package
-  ([review grep 13](../pp-general/references/boundaries.md#review-greps)). How the bin starts in the
-  workspace and loads `.env.local` is the slice 1 pre-proposal's, under
+  ([review grep 13](../pp-general/references/boundaries.md#review-greps)). In the workspace it
+  starts through the root script `"ledger": "node --env-file-if-exists=.env.local apps/cli/src/main.ts"`,
+  run as **`pnpm -s ledger <command>`**: `-s` keeps pnpm's banner off stdout, so `--json` stays one
+  document (slice 1 pre-proposal, D33; under
   [type stripping](../pp-general/references/imports-and-tsconfig.md#node-24-runs-ts-directly) and
-  [no `dotenv`](../pp-general/references/config-and-env.md#local-env-file); the npm bundle is
-  [slice 8](../../../.ai/build-checklist.md#8--npm-release)'s.
+  [no `dotenv`](../pp-general/references/config-and-env.md#local-env-file)). No `bin` until the npm
+  bundle, [slice 8](../../../.ai/build-checklist.md#8--npm-release)'s.
 - **One command per operation:** `apps/cli/src/commands/<noun>-<verb>.cli.ts`, the operation id
   kebab-cased (`email.get` → `email-get.cli.ts` → `emailGetCli`; `dlq.listMessages` →
   `dlq-list-messages.cli.ts`). The command, its arguments and flags are copied from the operation's

@@ -9,8 +9,8 @@ mechanics.
 ## Generating
 
 - **The schema is the source.** Edit `packages/db/src/schema/<kebab>.ts`, then run
-  `drizzle-kit generate --name <what-it-does>` in `packages/db`; the root script that wraps it
-  lands in slice 1 with its [Commands](../../../../AGENTS.md#commands) line.
+  `pnpm db:generate --name <what-it-does>` from the root: it runs `drizzle-kit generate` in
+  `packages/db` with the flags passed through ([Commands](../../../../AGENTS.md#commands)).
 - **Read the SQL before committing it.** Check it creates exactly what the schema says: every
   `CHECK`, unique constraint and index named, nullability as decided, no `DROP` or `RENAME` you did
   not mean. drizzle-kit can read a rename as drop-and-add and prompts for it. Under expand/contract a
@@ -31,12 +31,13 @@ mechanics.
 For SQL `generate` cannot emit: grants, and any statement with no schema counterpart.
 
 ```sh
-drizzle-kit generate --custom --name grant-<table>
+pnpm db:generate --custom --name grant-<table>
 ```
 
 `--custom` writes an empty migration file to fill in by hand
-([custom migrations](https://orm.drizzle.team/docs/kit-custom-migrations)); `drizzle-kit migrate`
-applies it in sequence with the generated ones. A custom migration never creates or alters a table
+([custom migrations](https://orm.drizzle.team/docs/kit-custom-migrations)), with its journal entry
+and a snapshot equal to the previous one; `migrate()` applies it in sequence with the generated
+ones. A custom migration never creates or alters a table
 or column: that is the schema's, or the next `generate` diffs against a shape it never saw.
 
 ## Expand and contract
@@ -95,10 +96,11 @@ reason saying which way it goes:
   value and rows no longer hold it; `ADD CONSTRAINT … CHECK` validates existing rows, so a leftover
   row fails the migration loudly instead of passing silently.
 
-What `generate` emits for a changed `check()` (drizzle-kit source on `main`: a same-name
-`DROP CONSTRAINT`, then `ADD CONSTRAINT … CHECK`) is `[Unverified]` against the installed version;
-read the SQL. Safe either way: the closed-set integration test inserts every member of the core
-tuple (slice 1).
+What `generate` emits for a changed `check()`: drizzle-kit 0.31.11 writes a same-name
+`ALTER TABLE … DROP CONSTRAINT`, then `ALTER TABLE … ADD CONSTRAINT … CHECK`, in one migration
+(observed in slice 1 by removing `bounced` from `email_state_status_check`); read the SQL anyway.
+Safe either way: the closed-set integration tests insert every member of the core tuple, and that
+mutation failed [email-state.repository.int.test.ts](../../../../packages/db/src/email-state.repository.int.test.ts).
 
 ## Grants
 
@@ -113,9 +115,9 @@ command and the Testcontainers harness follow the same order
   GRANT SELECT, INSERT ON webhook_events TO <runtime role>;
   ```
 - **The role is named by one constant** in `packages/db`, shared with the deploy command
-  (integrations.md). SQL cannot import it, so the migration spells the same literal; the harness
-  connects as the role the constant names, so a mismatch fails as `permission denied`. The name is
-  the slice 1 pre-proposal's.
+  (integrations.md): `RUNTIME_ROLE = 'ledger_runtime'` in `prepare-database.ts`. SQL cannot import
+  it, so the migration spells the same literal; the harness connects as the role the constant
+  names, so a mismatch fails as `permission denied`.
 - **The narrowest DML each table needs**, from its Mutability in the
   [Model index](../../../../.ai/data-modeling.md#model-index):
 
@@ -138,7 +140,8 @@ command and the Testcontainers harness follow the same order
   ([integrations.md → \[Unverified\]](../../../../.ai/integrations.md#unverified)). Evidence: an
   integration test where an idle transaction holds a lock and the worker still commits (slice 2).
 - An identity column's sequence needs no separate grant for `INSERT` (`[Unverified]`, unlike
-  `serial`); the harness inserting as the runtime role proves it in slice 1.
+  `serial`); the harness inserting as the runtime role proves it in slice 2, whose `api_tokens` is
+  the first identity column.
 - Evidence: the integration test where the runtime role gets `permission denied` on
   `DELETE FROM webhook_events` and on `CREATE TABLE` (slice 2,
   [build-checklist](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws)).
@@ -146,9 +149,11 @@ command and the Testcontainers harness follow the same order
 ## Running migrations
 
 - **One code path** for the deploy command, the local setup command and the harness, so the tested
-  path is the deployed path. Whether it is `drizzle-kit migrate` or the programmatic `migrate()`
-  from `drizzle-orm/node-postgres/migrator` ([migrations](https://orm.drizzle.team/docs/migrations))
-  is the slice 1 pre-proposal's; the programmatic one keeps drizzle-kit out of every runtime.
+  path is the deployed path: `prepareDatabase({ ownerUrl, runtimePassword })` in
+  `packages/db/src/prepare-database.ts`. It creates the runtime role only when absent, then runs
+  the programmatic `migrate()` from `drizzle-orm/node-postgres/migrator`
+  ([migrations](https://orm.drizzle.team/docs/migrations)), which keeps drizzle-kit out of every
+  runtime (slice 1, D20).
 - **The direct URL, never the pooled one, never from a runtime Lambda** (ADR-018).
 - **The migrate connection sets `lock_timeout`** (a few seconds) as a connection option. Pending
   migrations apply in one transaction ([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon))
@@ -159,11 +164,11 @@ command and the Testcontainers harness follow the same order
   one session setting allowed. The migrate connection runs as the owner role, so the runtime role's
   role-level timeouts ([grants](#grants)) do not apply to it.
 - Applied migrations are recorded in `drizzle.__drizzle_migrations` by default
-  ([drizzle-kit migrate](https://orm.drizzle.team/docs/drizzle-kit-migrate)). Whether pending
-  migrations run in one transaction is `[Unverified]` for the installed version (drizzle-orm's
-  `migrate()` on `main` runs every pending migration in one transaction,
-  [source](https://raw.githubusercontent.com/drizzle-team/drizzle-orm/main/drizzle-orm/src/pg-core/dialect.ts));
-  either way, no `CREATE INDEX CONCURRENTLY`
+  ([drizzle-kit migrate](https://orm.drizzle.team/docs/drizzle-kit-migrate)). Pending migrations
+  run in one transaction: drizzle-orm 0.45.4's `PgDialect.migrate` (`pg-core/dialect.js`) creates
+  the `drizzle` schema and the migrations table outside it, then applies every pending migration's
+  statements and their `__drizzle_migrations` rows inside one `session.transaction`, so a failing
+  statement rolls back the whole set. So no `CREATE INDEX CONCURRENTLY`
   (it cannot run inside a transaction block, and tables at the
   [scale ceiling](../../../../.ai/about.md#platform-scale-assumptions) index in moments).
 - CI applies every migration to a fresh Postgres before the integration tests (slice 1,

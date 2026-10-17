@@ -5,9 +5,20 @@
   "description": "Drizzle schema, migrations and repositories",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "12.2.1",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
   }
 }

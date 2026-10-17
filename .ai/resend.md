@@ -40,7 +40,7 @@ Four gaps shape the design:
 | Id | Fact | Source | Checked on |
 | --- | --- | --- | --- |
 | RS-01 | Deliveries carry `svix-id`, `svix-timestamp`, `svix-signature`. Verification MUST use the raw body: "The cryptographic signature is sensitive to even the slightest change." | verify-webhooks-requests | 2026-10-15 |
-| RS-02 | SDK `webhooks.verify({ payload, headers: { id, timestamp, signature }, webhookSecret })` is synchronous, returns the parsed payload and throws on failure. In 6.33.0 it wraps `standardwebhooks@1.1.1`: **one secret per call** (`whsec_` prefix), only `v1` signatures checked, timestamps more than 5 min off rejected. The docs map `svix-*` headers to `id`/`timestamp`/`signature`. | `resend@6.33.0` types and impl; verify-webhooks-requests | 2026-10-15 |
+| RS-02 | SDK `webhooks.verify({ payload, headers: { id, timestamp, signature }, webhookSecret })` is synchronous, returns the parsed payload (`undefined`, unparsed, for an empty body) and throws on failure. In 6.33.0 it wraps `standardwebhooks@1.1.1`: **one secret per call** (`whsec_` prefix), only `v1` signatures checked, timestamps more than 5 min off rejected. The docs map `svix-*` headers to `id`/`timestamp`/`signature`. Re-checked against the pinned install in Constraint 12. | `resend@6.33.0` types and impl; verify-webhooks-requests | 2026-10-17 |
 | RS-03 | `[Svix]` Signed content is `id.timestamp.body`, HMAC-SHA256 keyed with the base64 part after `whsec_`; `svix-signature` is "a list of space delimited signatures and their corresponding version identifiers"; Svix libraries reject timestamps "more than five minutes away (past or future)". Resend states no tolerance of its own. | Svix: verifying payloads (manual, why) | 2026-10-15 |
 | RS-04 | "For 24 hours after the rotation, payloads are signed with both the new and the previous secret, so either one verifies them. After that, only the new secret does." | api-reference/webhooks/rotate-signing-secret | 2026-10-15 |
 | RS-05 | "Calls to create, retrieve, or list webhooks will also return the signing secret in the response body." The List Webhooks example shows no `signing_secret`, while Create and Retrieve do (RS-13). The design assumes list returns it (the safe reading). | verify-webhooks-requests; get-webhook; list-webhooks | 2026-10-15 |
@@ -77,6 +77,11 @@ Four gaps shape the design:
 | RS-36 | The dashboard's email events are `bounced`, `canceled`, `clicked`, `complained`, `delivered`, `delivery_delayed`, `failed`, `opened`, `queued`, `scheduled`, `sent`, `suppressed`. Two are not webhook types (RS-25): `canceled` ("The scheduled email was canceled (by user).") and `queued` ("The email created from Broadcasts or Batches is queued for delivery."). `delivery_delayed`: "Resend keeps retrying automatically for up to 14 hours. If the recipient's mail server still hasn't accepted the email by then, it's marked as `bounced`." Each event is defined alone; the page states no precedence between them. | dashboard/emails/manage-emails | 2026-10-16 |
 | RS-37 | "An address is added to Suppressions for one of three origins": "`bounce`: the recipient's mail server permanently rejected the email", "`complaint`: the recipient marked your email as spam", "`manual`: you add the recipient's address yourself." The list works "by intentionally skipping sending to any addresses on your list"; "Future emails to addresses on the list will be marked as `suppressed` and won't be delivered until the address is removed." | dashboard/emails/email-suppressions; knowledge-base/why-are-my-emails-landing-on-the-suppression-list | 2026-10-16 |
 | RS-38 | Retrieve Email returns one `last_event` per email (example: `"last_event": "delivered"` beside a `to` array): "See all available `last_event` types in the Email Events overview" (RS-36). | api-reference/emails/retrieve-email | 2026-10-16 |
+| RS-39 | Live, each test address (RS-32) produced, in `created_at` order: `delivered@` → `email.sent`, `email.delivered`; `bounced@` → `email.sent`, `email.bounced` with `bounce.type` `Permanent` and `subType` `General`; `complained@` → `email.sent`, `email.complained`, `email.delivered`, the complaint's `created_at` ≈ 23 ms before the delivery's; `suppressed@` → `email.suppressed` only, no `email.sent`, its `data` carrying a `suppressed` object. Every event's `data.to` listed exactly one recipient. The ledger projected `complained@` to `complained` (email and recipient) and `suppressed@` to `suppressed`. The test-email page: "The suppressed test email address does not support labeling yet"; the others support `+label`. Replayed as fixtures by `testAddressSequences` ([test-address-sequences.test.ts](../packages/core/src/testing/test-address-sequences.test.ts)). | Ask-first sends from `onboarding@resend.dev`, observed through `resend webhooks listen` (resend-cli 2.26.0); dashboard/emails/send-test-emails | 2026-10-17 |
+| RS-40 | A `listen` session ended by a hard kill (no graceful exit, the equivalent of closing its terminal) leaves its temporary webhook behind, `enabled` and pointing at the tunnel: one was counted with `resend webhooks list` afterwards and deleted with `resend webhooks delete` (Ask-first). The CLI's help says it deletes the webhook on exit (Ctrl+C); a graceful exit was not exercised. | Ask-first `listen` session (resend-cli 2.26.0), owner's terminal | 2026-10-17 |
+| RS-41 | A `listen` session's forwarded deliveries (`--forward-to`, original Svix headers, RS-33) verify against the temporary webhook's own signing secret, which `resend webhooks get <id>` returns (RS-05, RS-13): with it in `LEDGER_WEBHOOK_SECRETS`, 12 forwarded, 12 accepted by local ingest, 0 rejected, all committed by the worker. | Ask-first `listen` session (resend-cli 2.26.0) against `apps/local` | 2026-10-17 |
+| RS-42 | Sends from `onboarding@resend.dev`, with no verified domain, to the `@resend.dev` test addresses were accepted (`200`) and produced events (RS-39): the test addresses are exempt from RS-34's own-address rule. | Ask-first sends (resend-cli 2.26.0 and `POST /emails`), owner's account | 2026-10-17 |
+| RS-43 | On a multi-recipient email, each per-recipient event lists only the recipient it concerns in `data.to`. Live, one send from the project's verified sending domain with `to: [delivered@, bounced@]` kept both recipients (Retrieve Email returned both, unlike the `onboarding@resend.dev` sends of RS-U21's history) and produced four events, none naming both recipients: two `email.sent`, one per recipient, sharing one `created_at`; `email.delivered` with `to: [delivered@]`; `email.bounced` with `to: [bounced@]`, `bounce.type` `Permanent`, `subType` `General`. A second, identical send produced the same four. Retrieve Email's `last_event` was `bounced` for both emails. A third send, `to: [delivered@, complained@]`, produced five events, each naming one recipient: two `email.sent`; `email.complained` with `to: [complained@]`; then two `email.delivered`, one per recipient, the `complained@` one ≈ 250 ms after the complaint (RS-39's order). | Ask-first `POST /emails` from the verified domain, observed through `resend webhooks listen` (resend-cli 2.26.0) and the dashboard's webhook event log; `GET /emails/{id}` | 2026-10-17 |
 
 ## Mechanisms
 
@@ -132,7 +137,8 @@ alert before the key expires (Constraint 8).
 ### Event types and payloads (RS-25–RS-30)
 
 The 11 email types and 5 other families are fixed in RS-25. Payloads are `{ type, created_at,
-data }` (RS-26). Email events carry `email_id` and `to[]` (RS-27). Bounces carry `bounce.type` and
+data }` (RS-26). Email events carry `email_id` and `to[]` (RS-27); on a multi-recipient email each
+event names only its own recipient, and Resend sends one `email.sent` per recipient (RS-43). Bounces carry `bounce.type` and
 `bounce.subType` (RS-28): `Permanent` is the hard bounce, `Transient` the soft one, `Undetermined`
 neither (RS-35), and the webhook example also shows `Temporary`.
 **Consequence for Ledger:** `packages/core` Zod schemas mirror RS-26–RS-29, with event-specific
@@ -143,9 +149,10 @@ from `bounce.type`, never from the event type alone.
 ### Retention, test sends and local development (RS-31–RS-34)
 
 Resend keeps email data 30 days (RS-31). Webhook-event reach is not stated (RS-U03). The test
-addresses produce delivery scenarios without harming reputation (RS-32). Sends from `resend.dev`
-reach only the account owner (RS-34). `resend webhooks listen` creates and deletes a webhook
-(RS-33).
+addresses produce delivery scenarios without harming reputation (RS-32), each with its observed
+event sequence (RS-39). Sends from `resend.dev` reach only the account owner (RS-34), the test
+addresses excepted (RS-42). `resend webhooks listen` creates and deletes a webhook (RS-33), but a
+hard kill leaves it behind (RS-40); its forwarded deliveries verify against its own secret (RS-41).
 **Consequence for Ledger:** the reconciler's lookback stays inside the verified reach. The verify
 stage sends one email to `delivered@resend.dev` ([features.md](features.md#adopter-lifecycle)).
 `listen` is a real-traffic loop that writes to the account, so each session is Ask-first. Signed
@@ -183,7 +190,8 @@ simulator traffic is the default local loop.
 6. **`resend webhooks listen` is a write, not a tunnel** (RS-33). idea §2.1 and the CLI 2.0 blog
    ("The CLI handles the tunnel") disagree with the CLI reference: it creates a temporary webhook,
    and `--url` needs your own public tunnel. *Resolution:* trust the reference. Each `listen`
-   session is Ask-first. The local default loop is signed simulator traffic.
+   session is Ask-first. The local default loop is signed simulator traffic. A hard-killed session
+   leaves its webhook behind (RS-40), so `resend webhooks list` follows each session.
 7. **"Bounced" is not always permanent** (RS-28, RS-35). The event is described as a permanent
    rejection, but Resend documents `Transient` and `Undetermined` bounces too, and the webhook
    example shows `Temporary`. *Resolution:* `projectRecipient` derives hard bounce from
@@ -204,6 +212,27 @@ simulator traffic is the default local loop.
 12. **`verify` takes one secret per call** (RS-02). *Resolution:* ingest loops over the configured
     secret set (Mechanisms → Signing). [Slice 1](build-checklist.md#1--local-ledger-and-read-path), which adds `resend`
     (Ask-first dependency), re-checks RS-02 against the pinned version's types.
+    *Re-checked 2026-10-17 against the installed `resend@6.33.0` (`dist/index.mjs`, `dist/index.d.mts`)
+    and `standardwebhooks@1.1.1` (`dist/index.js`):*
+    - `webhooks.verify` builds `new Webhook(webhookSecret)` per call and passes `headers.id`,
+      `.timestamp`, `.signature` as `webhook-id`, `webhook-timestamp`, `webhook-signature`. One
+      secret per call holds.
+    - The window is `WEBHOOK_TOLERANCE_IN_SECONDS = 5 * 60`, both ways (more than 300 s in the past
+      or the future is rejected), read against the wall clock (`Date.now()`), not an injectable
+      clock. The header is read with `parseInt`.
+    - `svix-signature` is split on spaces; each `v1,<sig>` is compared in constant time and any
+      match passes, so one header carrying two signatures verifies under either secret. Other
+      versions are skipped.
+    - It throws `WebhookVerificationError` for a missing header, an unparseable timestamp, a stale
+      or future timestamp and no matching signature; `SyntaxError` from `JSON.parse` for a signed
+      body that is not JSON; `Error` for an empty secret. An empty body returns `undefined` before
+      any parse, so ingest treats that result as no match
+      ([create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts)).
+    - **The constructor (D10):** `new Resend()` with no key reads `RESEND_API_KEY` and throws
+      `Missing API key` when that is unset too. Ingest holds no API key, so it passes the placeholder
+      `ingest-verifies-only`. A passed key also keeps the constructor from reading `RESEND_API_KEY`.
+      The placeholder never reaches a request: ingest makes no API call, and constructing makes
+      none.
 13. **Forward-only pagination** (RS-14). *Resolution:* each reconcile run pages newest to oldest
     down to the horizon. A run can't resume from the oldest end.
 14. **SDK error names differ from the docs** (RS-22). *Resolution:* map by status, then name, with
@@ -223,7 +252,7 @@ Resend.
 | Verify a sending domain: DNS records; needed to send alerts to anyone but the account owner (RS-34) | Yes, needs DNS access | Not done: deferred on the project-domain tripwire ([about.md](about.md#open-questions)) |
 | Create the webhook pointing at the ingest URL and subscribe to events; the response returns the signing secret (RS-13) | Yes, dashboard or `POST /webhooks`, so it is scriptable | Not done: no webhook exists (live read) |
 | Store the signing secret in Secrets Manager | Adopter's step ([features.md → connect webhook](features.md#adopter-lifecycle)) | — |
-| Verify with one send to `delivered@resend.dev` (RS-32) | Yes | Pending RS-U14 |
+| Verify with one send to `delivered@resend.dev` (RS-32) | Yes, with no verified domain (RS-42) | Not done as the verify stage (slice 2); test-address sends accepted 2026-10-17 (RS-42) |
 
 ## [Unverified]
 
@@ -247,15 +276,15 @@ owner's approval when it runs.
 | RS-U11 | `email.bounced` can follow `email.delivered` | Not stated. `email.complained` always does (RS-29) | Resend docs or support | [slice 0](build-checklist.md#0--foundations). Precedence property-tested under both answers: "a bounce outranks delivered in either world (RS-U11)" in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) |
 | RS-U12 | Which `bounce.type` values a live `email.bounced` carries (is the example's `Temporary` live, beside the documented `Transient` and `Undetermined`?), and so which ones `soft_bouncing` folds | RS-28's examples and RS-35's list disagree. `Permanent` as the hard bounce is settled by RS-35 | The `bounced@resend.dev` payload (Ask-first send) | [slice 0](build-checklist.md#0--foundations) (hard bounce only on `Permanent`; both fields `z.string()`; safe either way: "only `Permanent` yields hard_bounced; any other bounce.type yields soft_bouncing (RS-U12)" in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts)) |
 | RS-U13 | New events take ≈ 8 s to appear in List Events | Community only (ingester#12) | Read-only: timestamps of the first real deliveries vs their List Events visibility | [slice 4](build-checklist.md#4--recovery). Safe if the grace window (10 min default) holds |
-| RS-U14 | `resend.dev` test addresses are exempt from the own-address rule (RS-34) | Every quickstart sends `onboarding@resend.dev` → `delivered@resend.dev`, but no page states the exemption | Ask-first: that one send. It is also the verify-stage send | [slice 2](build-checklist.md#2--durable-ingest-on-aws) (verify stage) |
-| RS-U15 | The webhook event sequence each test address produces | RS-32 describes scenarios, not event types | Ask-first sends observed through `resend webhooks listen` | [slice 1](build-checklist.md#1--local-ledger-and-read-path) (simulator fixtures mirror real sequences) |
+| ~~RS-U14~~ | ~~`resend.dev` test addresses are exempt from the own-address rule (RS-34)~~ | Every quickstart sends `onboarding@resend.dev` → `delivered@resend.dev`, but no page states the exemption | Ask-first: that one send. It is also the verify-stage send | **Settled 2026-10-17 → [RS-42](#facts)** by slice 1's Ask-first sends. [Slice 2](build-checklist.md#2--durable-ingest-on-aws)'s verify-stage send still runs |
+| ~~RS-U15~~ | ~~The webhook event sequence each test address produces~~ | RS-32 describes scenarios, not event types | Ask-first sends observed through `resend webhooks listen` | **Settled 2026-10-17 → [RS-39](#facts)** ([slice 1](build-checklist.md#1--local-ledger-and-read-path); simulator fixtures mirror the observed sequences) |
 | RS-U16 | Idempotency keys are scoped per team, not per API key | Not stated | Resend docs or support | [slice 6](build-checklist.md#6--reactions). Safe with one sending key |
 | RS-U17 | Which status a deleted or invalid key gets on non-sending endpoints. Documented: `400 validation_error`, message "API key is invalid": "Every endpoint except sending returns this for a key that doesn't exist or was deleted" (api-reference/errors) | The introduction's generic table still says `403` "The API key used was invalid" | Read-only: one call with a revoked test key confirms the status and message | [slice 4](build-checklist.md#4--recovery). Safe either way (Constraint 14 maps it by message, and anything else takes the default branch) |
-| RS-U18 | `resend webhooks listen` leaves its temporary webhook behind if killed without Ctrl+C | Not stated | Read-only `GET /webhooks` after an interrupted session | [slice 1](build-checklist.md#1--local-ledger-and-read-path) (dev guide checks after each session) |
+| ~~RS-U18~~ | ~~`resend webhooks listen` leaves its temporary webhook behind if killed without Ctrl+C~~ | Not stated | Read-only `GET /webhooks` after an interrupted session | **Settled 2026-10-17 → [RS-40](#facts)**: it does ([slice 1](build-checklist.md#1--local-ledger-and-read-path); the dev guide checks after each session) |
 | RS-U19 | `email.suppressed` always carries `data.suppressed` | It appears in the example only | A real `suppressed@resend.dev` payload (Ask-first send) | [slice 0](build-checklist.md#0--foundations) (Zod field optional; safe either way: the page's example parses with and without `data.suppressed`, [email-event.schema.test.ts](../packages/core/src/email-event.schema.test.ts)) |
 | RS-U20 | A **replayed** delivery carries a fresh `svix-timestamp`, so it passes the 5-minute window (RS-02, RS-03) | RS-16 says a replay "queues one additional delivery"; no page says it is re-signed at send time. `[Svix]` sends "the timestamp of the attempt" in `svix-timestamp` (how-manual), which suggests a fresh one. If it keeps the original timestamp, ingest rejects every replay older than 5 min and recovery fails ([architecture.md → ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)) | The RS-U01 experiment: the replayed delivery passes verification | [slice 4](build-checklist.md#4--recovery). MUST be settled |
-| RS-U21 | On a multi-recipient email, a per-recipient event (`bounced`, `complained`, `delivered`) lists only the **impacted** recipients in `data.to` | RS-27 says "Array of impacted recipient email addresses"; no page shows a multi-recipient payload. If the list were complete, no projection could pin a bounce to one recipient, and a healthy co-recipient would read `hard_bounced` | Ask-first: one send to `delivered@resend.dev` and `bounced@resend.dev` together, observed through `resend webhooks listen` (rides on the RS-U15 sends) | [slice 1](build-checklist.md#1--local-ledger-and-read-path). MUST be settled. `email_recipients` folds each event's own `to`, so it is exact under the documented reading ([data-modeling.md](data-modeling.md#email_recipients--outcome-per-email-and-recipient)) |
-| RS-U22 | A `listen` session's forwarded deliveries are signed with the temporary webhook's own secret, and a local verifier can obtain that secret | RS-33: the session "registers a temporary webhook" and `--forward-to` "passes original Svix headers"; each webhook has its own `signing_secret` (RS-13). Neither CLI page says how the session's secret reaches a local verifier. If it can't, real events reach local ingest only as `401`s (stdout streaming still serves RS-U15 and RS-U21) | In the first approved `listen` session: read-only `resend webhooks get <id>` on the temporary webhook (RS-05), load its secret into the local set, and verify one forwarded delivery | [slice 1](build-checklist.md#1--local-ledger-and-read-path). MUST be settled (the slice Goal verifies real events locally) |
+| ~~RS-U21~~ | ~~On a multi-recipient email, a per-recipient event (`bounced`, `complained`, `delivered`) lists only the **impacted** recipients in `data.to`~~ | RS-27 says "Array of impacted recipient email addresses"; no page shows a multi-recipient payload. If the list were complete, no projection could pin a bounce to one recipient, and a healthy co-recipient would read `hard_bounced`. **Observed 2026-10-17, not settled:** from `onboarding@resend.dev` with no verified domain, Resend kept only the first `to` recipient: `to: [delivered@, bounced@]` was stored (`GET /emails/{id}`) and delivered as `to: [delivered@]` only, through the CLI and through `POST /emails` with an explicit JSON array; the reversed order kept only `bounced@`; a `cc: bounced@` was dropped (`cc: null`). No multi-recipient email can be produced in that setup; settling this needs a send from the project's verified sending domain ([about.md → Project domain](about.md#open-questions)) | Ask-first: one send from the verified domain to `delivered@resend.dev` and `bounced@resend.dev` together, observing each event's own `data.to` (through `resend webhooks listen` or the deployed ledger's stored payload) | **Settled 2026-10-17 → [RS-43](#facts)**: positive, by the send from the project's verified sending domain (owed by [slice 2](build-checklist.md#2--durable-ingest-on-aws), settled early). `email_recipients` folds each event's own `to`, so it is exact ([data-modeling.md](data-modeling.md#email_recipients--outcome-per-email-and-recipient)) |
+| ~~RS-U22~~ | ~~A `listen` session's forwarded deliveries are signed with the temporary webhook's own secret, and a local verifier can obtain that secret~~ | RS-33: the session "registers a temporary webhook" and `--forward-to` "passes original Svix headers"; each webhook has its own `signing_secret` (RS-13). Neither CLI page says how the session's secret reaches a local verifier. If it can't, real events reach local ingest only as `401`s (stdout streaming still serves RS-U15 and RS-U21) | In the first approved `listen` session: read-only `resend webhooks get <id>` on the temporary webhook (RS-05), load its secret into the local set, and verify one forwarded delivery | **Settled 2026-10-17 → [RS-41](#facts)**: positive ([slice 1](build-checklist.md#1--local-ledger-and-read-path)) |
 
 ## Sources
 
@@ -286,11 +315,13 @@ All pages are at `https://resend.com/docs/<path>`, fetched as `.md` on 2026-10-1
 | [api-reference/introduction](https://resend.com/docs/api-reference/introduction) | RS-21, RS-U17 | 2026-10-15 |
 | [api-reference/api-keys/create-api-key](https://resend.com/docs/api-reference/api-keys/create-api-key) | RS-18 | 2026-10-15 |
 | [dashboard/emails/idempotency-keys](https://resend.com/docs/dashboard/emails/idempotency-keys) | RS-17, RS-24 | 2026-10-15 |
-| [dashboard/emails/send-test-emails](https://resend.com/docs/dashboard/emails/send-test-emails) | RS-32 | 2026-10-15 |
+| [dashboard/emails/send-test-emails](https://resend.com/docs/dashboard/emails/send-test-emails) | RS-32, RS-39 | 2026-10-15, 2026-10-17 |
 | [knowledge-base/403-error-resend-dev-domain](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain) | RS-34 | 2026-10-15 |
 | [cli](https://resend.com/docs/cli), [cli-agents](https://resend.com/docs/cli-agents); [Resend CLI 2.0 blog](https://resend.com/blog/resend-cli-2) | RS-33, Constraint 6 | 2026-10-15 |
 | `resend@6.33.0` (npm; `dist/index.d.mts`, `dist/index.mjs`), `standardwebhooks@1.1.1` | RS-02, RS-22, RS-23 | 2026-10-15 |
 | Live read-only calls with the owner's key: `GET /webhooks`, `/api-keys`, `/domains` | RS-18, RS-20, Onboarding reality | 2026-10-15 |
+| Owner-approved Ask-first experiments (slice 1): sends from `onboarding@resend.dev` to the four test addresses, `resend webhooks listen` sessions forwarding to `apps/local` (resend-cli 2.26.0), `GET /emails/{id}`; no id recorded | RS-39, RS-40, RS-41, RS-42, RS-U21's observation | 2026-10-17 |
+| Owner-approved Ask-first experiment (slice 2's RS-U21, run early): `POST /emails` from the project's verified sending domain to `delivered@resend.dev` with `bounced@resend.dev`, then with `complained@resend.dev`, each pair in one email, a `resend webhooks listen` session through the owner's tunnel (resend-cli 2.26.0), the dashboard's webhook event log, `GET /emails/{id}`, the temporary webhook deleted afterwards; no id recorded | RS-43 | 2026-10-17 |
 | `[Svix]` [verifying payloads (manual)](https://docs.svix.com/receiving/verifying-payloads/how-manual), [why](https://docs.svix.com/receiving/verifying-payloads/why), [retries](https://docs.svix.com/retries) | RS-03, RS-08, RS-10, RS-U06, RS-U08 | 2026-10-15 |
 | Community: [resend-webhooks-ingester#12](https://github.com/resend/resend-webhooks-ingester/issues/12) | RS-U01, RS-U02, RS-U13 | 2026-10-15 |
 | Community: [resend-webhooks-ingester PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13) | RS-U04 | 2026-10-15 |

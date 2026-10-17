@@ -5,9 +5,12 @@
   "description": "Simulation and chaos harness, run as pnpm sim",
   "license": "MIT",
   "dependencies": {
-    "@ledger/core": "workspace:*"
+    "@ledger/core": "workspace:*",
+    "@ledger/db": "workspace:*",
+    "@ledger/shared": "workspace:*"
   },
   "devDependencies": {
+    "@ledger/worker": "workspace:*",
     "fast-check": "4.10.2",
     "vitest": "catalog:"
   }

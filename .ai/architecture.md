@@ -67,9 +67,9 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 
 | Invariant | Carried by | Evidence | Design test (MUST) |
 | --- | --- | --- | --- |
-| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | pending — sim invariant 1 (slice 1); `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
+| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | sim invariant 1 ([invariant-1.ts](../sim/src/invariants/invariant-1.ts)), run live by `pnpm sim --duplicates 0.2 --shuffle` against `apps/local` (slice 1, local; the checker's pass and fail on real Postgres in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)). Pending — `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
 | **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` and `--chaos dispatcher-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
-| **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) and for `projectRecipient` in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0). Pending — sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
+| **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) and for `projectRecipient` in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0); sim invariant 2 ([invariant-2.ts](../sim/src/invariants/invariant-2.ts)) under `--shuffle`, run live against `apps/local` (slice 1, local; pass and fail in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
 ### Simulator invariants
 
@@ -101,7 +101,7 @@ it does, and repeated failure can auto-disable the endpoint (RS-10, RS-11, RS-U0
 the [idea §5.2](../docs/idea.md#52-ingest) rationale ([resend.md → Constraint 4](resend.md#constraints-and-sharp-edges)).
 A misconfigured secret is handled like an outage: fix it, re-enable the webhook, reconcile.
 Rejected: writing to Postgres in the request path (a database outage becomes failed deliveries, then auto-disable).
-**Evidence:** pending — unit tests for the three responses, both body encodings and the fixed body (slices 1, 2); `--chaos db-outage` keeps ingest at `200` (slice 3).
+**Evidence:** unit tests for the three responses and the fixed bodies: forged, stale, unsigned, one-byte-changed and signed non-JSON requests answer `401` with nothing enqueued, `200` waits for the enqueue to resolve, a rejected enqueue answers `503`, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts) (slice 1). Pending — both body encodings (slice 2); `--chaos db-outage` keeps ingest at `200` (slice 3).
 
 ### ADR-002 — SQS standard, not FIFO
 
@@ -125,7 +125,7 @@ negatives, because it always follows a delivery (RS-29). `rank(type)` is the sam
 ([event-rank.ts](../packages/core/src/event-rank.ts)); status is null until the set holds an
 outcome event. Resend documents no precedence of its own (RS-36). Opens and
 clicks are counters plus first/last timestamps. `projectRecipient` derives from per-recipient email
-states, each folded from the events whose own `data.to` names that recipient (RS-27, RS-U21,
+states, each folded from the events whose own `data.to` names that recipient (RS-27, RS-43,
 [data-modeling.md → `email_recipients`](data-modeling.md#email_recipients--outcome-per-email-and-recipient)); a
 hard bounce comes from `bounce.type = Permanent`, never from the event type alone (RS-28, RS-35,
 [resend.md → Constraint 7](resend.md#constraints-and-sharp-edges)). Event-specific payload objects
@@ -158,7 +158,7 @@ which Resend's retries keep (RS-06, RS-08), never on the SQS `messageId`, which 
 (AWS-21). **Conditional:** a reconciler replay dedupes only if
 it carries the original `svix-id` (RS-U01); slice 4 MUST settle it.
 Rejected: dedupe on `(email_id, type)` (collapses distinct events); one transaction per step.
-**Evidence:** pending — Testcontainers integration tests for duplicate insert, crash between steps, and a NUL-bearing payload stored with U+FFFD, projected and counted, not dead-lettered; a sanitizer property test; sim invariant 1 (slice 1).
+**Evidence:** Testcontainers integration tests, as the runtime role: a sequential duplicate, two concurrent copies of one `svix_id` and a copy under a new `messageId` each leave one row and unchanged projections; a `CHECK (false) NOT VALID` fault after the ledger insert commits nothing, and the redelivery commits one row of everything; a NUL in the subject and a lone surrogate in a tag value are stored with U+FFFD, projected and counted once; the unprojectable kinds (unknown type, `contact.created`, `email.received`, a schema-failing outbound event, a JSON array and a JSON `null` payload) are stored raw and committed on their first receive; out-of-order arrival yields the projection of the stored events; two emails sharing recipients in opposite `data.to` order commit in either interleaving without deadlock, in [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts) (slice 1). The sanitizer properties in [sanitize-for-jsonb.prop.test.ts](../packages/core/src/sanitize-for-jsonb.prop.test.ts) (slice 1). Pending — sim invariant 1 (slice 1).
 
 ### ADR-005 — Postgres only
 
@@ -256,7 +256,7 @@ retired secret takes effect within 5 minutes, with no redeploy. The loop ships w
 1; slice 4 adds the rotation runbook and the retired-secret test. **Conditional:** how both
 signatures appear in the header (RS-U09) does not matter to a per-secret loop.
 Rejected: one secret with a redeploy on rotation (drops deliveries for the redeploy window).
-**Evidence:** pending — unit tests with old, new and both signatures, forged and stale requests (slice 1); retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
+**Evidence:** unit tests with old, new and both signatures in one header, forged and stale (6 min) requests, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), signed by the test signer that `resend`'s `webhooks.verify` accepts in [sign-webhook.test.ts](../packages/ingest/src/sign-webhook.test.ts) (slice 1). Pending — retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
 
 ### ADR-010 — Serverless on AWS CDK: an app stack and a guardrails stack
 
@@ -292,7 +292,7 @@ fails when either file drifts from its source. This resolves the conflict betwee
 the boundary: every slice is hand-walkable without SQL (lens clause 3), and no throwaway read path
 is built.
 Rejected: CLI or MCP reading the database directly; a dev-only inspection script (throwaway); per-surface error formats.
-**Evidence:** pending — SDK ↔ API contract tests and CLI `--json` output tests (slice 1, grown per slice); the drift stage fails on a stale `openapi.json` (slice 1); error-registry mirror test and MCP tool-registration test per scope (slice 5).
+**Evidence:** the drift stage fails on a stale `openapi.json` or SDK type file: the `drift` stage of [`scripts/verify.mjs`](../scripts/verify.mjs), [`openapi-drift.mjs`](../scripts/openapi-drift.mjs), whose one-byte canary runs first on every run (slice 1); one error shape with registry codes, masks only, on the read API: [get-email.route.int.test.ts](../packages/api/src/get-email.route.int.test.ts), [get-recipient.route.int.test.ts](../packages/api/src/get-recipient.route.int.test.ts) and [create-api.test.ts](../packages/api/src/create-api.test.ts) (slice 1). Pending — SDK ↔ API contract tests and CLI `--json` output tests (slice 1, grown per slice); error-registry mirror test and MCP tool-registration test per scope (slice 5).
 
 ### ADR-012 — `resend-client` is the sole Resend API caller
 
@@ -419,8 +419,10 @@ Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24
 ### ADR-018 — Migrations run from the deploy command, before the code that needs them
 
 **Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37)**; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): S-05; [pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-07).
-The deploy command first ensures the DML-only runtime role exists, then runs `drizzle-kit`
-migrations with the **direct** Postgres URL supplied by the deployer (each change that creates a
+The deploy command first ensures the DML-only runtime role exists, then runs the
+drizzle-kit-generated migrations through drizzle-orm's programmatic `migrate()` (drizzle-kit stays a
+dev-only generator; the entry point is `prepareDatabase` in `packages/db`, slice 1) with the
+**direct** Postgres URL supplied by the deployer (each change that creates a
 table grants its DML to that role, in a custom migration right after the generated one), then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
 never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). The deploy
 command refuses to run while the kill switch is tripped (the worker's reserved concurrency reads
@@ -433,7 +435,7 @@ the deployed commit as stack output `DeployedCommit`, and before migrating the d
 refuses any pending contract step whose SHA is not an ancestor of it
 (`git merge-base --is-ancestor`), so a `DROP` never runs under Lambdas that still use the object.
 Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; concurrent cold starts race); a CDK custom resource (adds a Lambda whose failure blocks the deploy).
-**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it carries the contract-step marker (slice 2); the deploy command refuses a contract step whose SHA is not an ancestor of `DeployedCommit` (slice 2); the deploy command migrates, then deploys (slice 2).
+**Evidence:** the slice 1 item holds; the rest are pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating: the `int` stage of [`scripts/verify.mjs`](../scripts/verify.mjs), whose global setup [`postgres-global-setup.ts`](../packages/db/src/testing/postgres-global-setup.ts) runs [`prepareDatabase`](../packages/db/src/prepare-database.ts) before any test, which then connects as the runtime role (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it carries the contract-step marker (slice 2); the deploy command refuses a contract step whose SHA is not an ancestor of `DeployedCommit` (slice 2); the deploy command migrates, then deploys (slice 2).
 
 ### ADR-019 — Application and surface stack
 
@@ -469,7 +471,7 @@ adapters, Zod, `commander` 15 with extra-typings, `@modelcontextprotocol/server`
 installed when every project was scaffolded, and the owner ratified them at their pinned versions
 (owner, 2026-10-16). Every other dependency still waits for its slice.
 Rejected: NestJS (CDK `NodejsFunction` and Vitest compile with esbuild, which emits no decorator metadata, [esbuild #915](https://github.com/evanw/esbuild/issues/915), so DI needs build workarounds; about 1 s of init on a mono-Lambda, [report](https://dev.to/aws-builders/aws-lambda-cold-starts-the-case-of-a-nestjs-mono-lambda-api-4j42), paid on ingest's cold path, CBL-21; `nestjs-zod` peers only Nest ≤ 11, now the `legacy` line, [npm](https://registry.npmjs.org/nestjs-zod/latest)); Fastify with `@fastify/aws-lambda` (heavier, and Zod needs a type provider); a hand-rolled router (OpenAPI and the local server built by hand); oclif (overkill for a small CLI) and clipanion (long at release candidate); `@hey-api/openapi-ts` (pre-1.0, generates more than a thin client needs) and `orval` (frontend-oriented: query hooks and mocks); MCP SDK v1, `@modelcontextprotocol/sdk` (maintenance line only, [repo](https://github.com/modelcontextprotocol/typescript-sdk)).
-**Evidence:** pending — the same app object passes the same contract tests under `@hono/node-server` (slice 1) and through the Lambda adapter (slice 2); CLI `--json` output tests (slice 1); ingest `Init Duration` recorded (slice 3, [CBL-21](check-before-launch.md)); MCP tool-registration test (slice 5).
+**Evidence:** `@hono/zod-openapi` routes generate the committed OpenAPI 3.1 document, held to it by the `drift` stage ([`openapi-drift.mjs`](../scripts/openapi-drift.mjs)); one `defaultHook` and one `onError` shape every failure, the library's `415` included: [get-recipient.route.int.test.ts](../packages/api/src/get-recipient.route.int.test.ts), [get-email.route.int.test.ts](../packages/api/src/get-email.route.int.test.ts) and [create-api.test.ts](../packages/api/src/create-api.test.ts) (slice 1). Pending — the same app object passes the same contract tests under `@hono/node-server` (slice 1) and through the Lambda adapter (slice 2); CLI `--json` output tests (slice 1); ingest `Init Duration` recorded (slice 3, [CBL-21](check-before-launch.md)); MCP tool-registration test (slice 5).
 
 ## Technology
 
@@ -563,8 +565,8 @@ account are Ask-first.
 | Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19, the slice's library bullets |
-| 1 | RS-U21, RS-U22 | RS-U15, RS-U18, the slice's library bullets |
-| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
+| 1 | ~~RS-U22~~ → RS-41 | ~~RS-U15~~ → RS-39, ~~RS-U18~~ → RS-40, the slice's library bullets |
+| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06, ~~RS-U21~~ → RS-43 (moved from slice 1; settled early, 2026-10-17) | RS-U07, ~~RS-U14~~ → RS-42 (settled early, slice 1), AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
 | 3 | PG-U07 | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 5 | — | The slice's library bullets |
@@ -579,9 +581,13 @@ installed version in one step, and the skill file states its fallback.
 **Moved, with reasons:** RS-U08 from slice 2 to slice 3, because the measured ingest p99
 comes from the burst run there. PG-U03 from slice 2 to slice 4, because the hourly
 reconciler is the first idle waker: before it, an idle stack never opens a connection (ADR-015).
+RS-U21 from slice 1 to slice 2, because from `onboarding@resend.dev` Resend keeps only the first
+recipient, so the two-recipient send needs the project's verified sending domain, bought but not
+yet verified while its DNS propagates (owner, 2026-10-17). Once the domain was verified, the send
+settled it the same day (RS-43).
 RS-U20 is new in this step (a replayed delivery passes the 5-minute timestamp window); it rides on
 the RS-U01 experiment. RS-U21 is new in bootstrap step 8 (per-event `data.to` lists only the
-impacted recipients); it rides on the RS-U15 sends. PG-U06 (the pooler honors role-level
+impacted recipients). PG-U06 (the pooler honors role-level
 timeouts) and PG-U07 (Neon's storage-limit error) are new in the 2026-10-16 architecture review;
 PG-U07 MAY settle in slice 2 and MUST by slice 3's first storage-budget measurement.
 

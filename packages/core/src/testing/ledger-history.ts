@@ -12,6 +12,7 @@ import {
   spelling,
   testLocalParts,
 } from './email-history.ts';
+import { testAddressSequences } from './test-address-sequences.ts';
 
 // D15: a multi-email ledger, the input of `projectRecipient` and of `pnpm sim`. Built on
 // `emailHistory`, so it inherits every world that generator covers (RS-U10, RS-U11, RS-U12, RS-U19,
@@ -20,10 +21,15 @@ import {
 export type LedgerHistoryOptions = {
   // Prefix of every id, so two namespaces never share an email, `svix_id` or `+label`.
   namespace?: string;
+  // D38: every address `<local>+<namespace>-<n>@resend.dev`, plus the walk probe email and, D39,
+  // one email per observed test-address sequence. Off by default, so core's properties keep
+  // exercising bare addresses; `pnpm sim` always turns it on.
+  labelEveryAddress?: boolean;
 };
 
-// Shape: one entry per email, sorted by `emailIndex`; each email's events in generated order (the
-// properties and `sim` permute them). Ids are unique across the whole history.
+// Shape: one entry per email, sorted by `emailIndex`, then, when addresses are labelled, the walk
+// probe and the observed emails in `testLocalParts` order; each email's events in generated order (the properties and `sim` permute them). Ids are
+// unique across the whole history.
 export type LedgerHistory = {
   emails: EmailHistory[];
 };
@@ -36,12 +42,16 @@ const instants = 4;
 type StickyPair = 'suppressed-then-failed' | 'complained-then-transient';
 
 // One pool for the whole ledger, so recipients are shared across emails. Distinct by recipient key.
-function sharedPool(namespace: string) {
+// Labelled, the `+<namespace>-<n>` tag is drawn for every address instead of some.
+function sharedPool(namespace: string, labelEveryAddress: boolean) {
+  const label: fc.Arbitrary<number | undefined> = labelEveryAddress
+    ? fc.nat(9)
+    : fc.option(fc.nat(9), { nil: undefined });
   return fc
     .uniqueArray(
       fc.record({
         local: fc.constantFrom(...testLocalParts),
-        label: fc.option(fc.nat(9), { nil: undefined }),
+        label,
         control: fc.option(fc.constantFrom(...controlCharacters), { nil: undefined }),
       }),
       {
@@ -129,30 +139,111 @@ function withPair(
   });
 }
 
+// D38: the walk probe, a fixed email a walker can look up by an address they can type. Its two
+// recipients carry the namespace but no `-<n>`, so neither equals a generated address. `email.sent`
+// to both, `email.delivered` to the first, a `Permanent` / `General` bounce to the second (RS-27,
+// RS-28, RS-35), one second apart in lifecycle order. Nothing here is drawn from the seed.
+function walkProbe(namespace: string): EmailHistory {
+  const emailId = `${namespace}-probe`;
+  const delivered = `delivered+${namespace}@resend.dev`;
+  const bounced = `bounced+${namespace}@resend.dev`;
+  const shared = { from: 'onboarding@resend.dev', subject: 'Ledger walk probe' };
+  const event = (
+    counter: number,
+    type: EmailEventType,
+    to: string[],
+    extra: Record<string, unknown> = {},
+  ) =>
+    pairEvent(
+      emailId,
+      `${namespace}-svix-probe-${counter}`,
+      type,
+      to,
+      new Date(baseInstant + counter * 1000),
+      { ...shared, ...extra },
+    );
+  return {
+    emailId,
+    events: [
+      event(0, 'email.sent', [delivered, bounced]),
+      event(1, 'email.delivered', [delivered]),
+      event(2, 'email.bounced', [bounced], {
+        bounce: {
+          type: 'Permanent',
+          subType: 'General',
+          message: 'The recipient mail server rejected the email.',
+        },
+      }),
+    ],
+  };
+}
+
+// The `+<namespace>-<n>` counter of the observed emails' addresses: one past the generated pool's
+// 0–9, so no generated or probe address equals one and each sequence projects on its own.
+const observedLabel = 10;
+
+// D39: one email per test address, replaying its observed sequence (RS-39) one second apart in
+// observed order, under fresh namespaced ids. The `suppressed@` address takes a `+label` here too,
+// though Resend does not support one on it (RS-32): the sim never sends to Resend.
+function observedEmails(namespace: string): EmailHistory[] {
+  return testLocalParts.map((local) => {
+    const emailId = `${namespace}-observed-${local}`;
+    const to = [`${local}+${namespace}-${observedLabel}@resend.dev`];
+    return {
+      emailId,
+      events: testAddressSequences[local].map(({ type, bounce }, counter) =>
+        pairEvent(
+          emailId,
+          `${namespace}-svix-observed-${local}-${counter}`,
+          type,
+          to,
+          new Date(baseInstant + counter * 1000),
+          {
+            from: 'onboarding@resend.dev',
+            subject: 'Ledger observed sequence',
+            ...(bounce === undefined ? {} : { bounce: { ...bounce } }),
+          },
+        ),
+      ),
+    };
+  });
+}
+
 export function ledgerHistory(options: LedgerHistoryOptions = {}): fc.Arbitrary<LedgerHistory> {
   const namespace = options.namespace ?? 'core';
-  return fc.tuple(sharedPool(namespace), fc.integer({ min: 2, max: 3 })).chain(([pool, count]) => {
+  const labelEveryAddress = options.labelEveryAddress ?? false;
+  const pools = sharedPool(namespace, labelEveryAddress);
+  return fc.tuple(pools, fc.integer({ min: 2, max: 3 })).chain(([pool, count]) => {
     // More than half the pool per email, so any two emails draw at least one recipient in common.
     // Each event's `to` is a subset of the draw, so the shared one usually, not always, reaches both
     // emails' projections.
     const minRecipients = Math.floor(pool.length / 2) + 1;
     const pair = stickyPair(pool);
-    return fc
-      .tuple(
-        ...Array.from({ length: count }, (_, emailIndex) =>
-          emailHistory({
-            namespace,
-            emailIndex,
-            recipients: pool,
-            minRecipients,
-            maxRecipients: pool.length,
-            instants,
-          })
-            // D15's minimum: 2 events per email, so `sim --duplicates 0.3` repeats at least one.
-            .filter((history) => history.events.length >= 2)
-            .chain((history) => withPair(history, emailIndex, namespace, pair)),
-        ),
-      )
-      .map((emails) => ({ emails }));
+    return (
+      fc
+        .tuple(
+          ...Array.from({ length: count }, (_, emailIndex) =>
+            emailHistory({
+              namespace,
+              emailIndex,
+              recipients: pool,
+              minRecipients,
+              maxRecipients: pool.length,
+              instants,
+            })
+              // D15's minimum: 2 events per email, so `sim --duplicates 0.3` repeats at least one.
+              .filter((history) => history.events.length >= 2)
+              .chain((history) => withPair(history, emailIndex, namespace, pair)),
+          ),
+        )
+        // The probe and the observed emails are fixed, so appending them draws nothing and leaves
+        // the generated emails as they were. Built per value, so no two histories share an event
+        // object.
+        .map((emails) => ({
+          emails: labelEveryAddress
+            ? [...emails, walkProbe(namespace), ...observedEmails(namespace)]
+            : emails,
+        }))
+    );
   });
 }

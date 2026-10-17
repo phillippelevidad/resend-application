@@ -1,4 +1,12 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["packages/*/src", "apps/*/src", "infra/src", "sim/src", "vitest.config.ts"]
+  "include": [
+    "packages/*/src",
+    "packages/api/scripts",
+    "apps/*/src",
+    "infra/src",
+    "sim/src",
+    "vitest.config.ts",
+    "packages/db/drizzle.config.ts"
+  ]
 }

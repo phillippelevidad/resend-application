@@ -11,8 +11,8 @@ code meets them.
 
 1. `packages/api` generates OpenAPI 3.1 from its routes ([read-api.md](read-api.md#the-openapi-document)).
 2. `pnpm openapi:export`, a root script, writes it to **`packages/sdk/openapi.json`**, committed.
-3. `openapi-typescript` generates the SDK's type file from that JSON, also **committed**. Its path is
-   the slice 1 pre-proposal's.
+3. `openapi-typescript` generates the SDK's type file from that JSON, also **committed**, at
+   **`packages/sdk/src/openapi-types.ts`**: its `paths` type is what the client is built over.
 4. A `pnpm verify` stage regenerates both and fails when either differs from the committed copy
    (ADR-011; evidence: the stage fails on a stale fixture, slice 1).
 

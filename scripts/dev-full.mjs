@@ -4,7 +4,8 @@
 //   pnpm dev:full
 //
 // deps (install only when the lockfile or a package.json changed) → Docker → the compose Postgres
-// → `pnpm build` (typecheck) → the apps/local dev server, attached. Each step checks before it
+// → `pnpm db:setup` (.env.local, runtime role, migrations) → `pnpm build` (typecheck) → the
+// apps/local dev server, attached. Each step checks before it
 // acts, so on a half-up machine it starts only what is missing. A server already on the API port
 // is adopted only when it is this repo's apps/local; anything else there fails the start, so the
 // banner never points at another project's app.
@@ -45,7 +46,7 @@ const run = (command) =>
 const quiet = (command, timeout) =>
   spawnSync(command, { cwd: repoRoot, shell: true, stdio: 'ignore', timeout }).status === 0;
 
-/** True when anything answers HTTP at `url`, whatever the status (the app has no routes yet). */
+/** True when anything answers HTTP at `url`, whatever the status. */
 const answers = (url) =>
   new Promise((done) => {
     const probe = request(url, { method: 'GET', timeout: 2000 }, (response) => {
@@ -82,7 +83,7 @@ LEDGER READY in ${Math.round((Date.now() - startedAt) / 1000)}s
   postgres  ${POSTGRES_ADDRESS} (compose service "postgres")
 
   stop everything   pnpm dev:stop
-  try the CLI       pnpm --filter @ledger/app-cli start --help
+  try the CLI       pnpm -s ledger --help
 `);
 }
 
@@ -135,6 +136,9 @@ await ensureDocker();
 step('starting Postgres…');
 if (!run('docker compose up -d --wait postgres'))
   fail('Postgres did not become healthy; see above');
+
+step('preparing the database and .env.local…');
+if (!run('pnpm db:setup')) fail('pnpm db:setup failed; see above');
 
 step('building (typecheck)…');
 if (!run('pnpm build')) fail('pnpm build failed; see above');

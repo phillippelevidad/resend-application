@@ -145,9 +145,10 @@ This table is the canonical layout (adapted from the frozen
 `package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
-scaffolds hold: `packages/api`'s routeless `createApi()`, served by `apps/api`
-(`handle(createApi())`) and `apps/local` (`@hono/node-server`, loopback-only); `apps/cli`'s program
-with no commands and `apps/mcp`'s server with no tools; `infra`'s two empty stacks.
+scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools and `infra`'s two empty
+stacks. `apps/api`'s handler is an `export {}` stub until slice 2: `createApi(deps)` needs a
+database, a logger and the address-hash key, which only slice 2's composition root supplies, so
+until then `apps/local` alone serves the read API (`@hono/node-server`, loopback-only).
 
 | Project | Role | Logic lands |
 | --- | --- | --- |
@@ -220,40 +221,71 @@ pnpm check         # lint + typecheck + unit tests; the commit gate
 pnpm lint          # biome check .   (pnpm lint:fix writes the fixes)
 pnpm typecheck     # tsc -p tsconfig.json: one pass over every project (pnpm build is the same; nothing emits)
 pnpm test          # Vitest project unit   (pnpm test:watch to watch)
-pnpm test:int      # Vitest project int (real Postgres; the Testcontainers harness lands in slice 1)
+pnpm test:int      # Vitest project int (real Postgres: one Testcontainers container per run, migrated,
+                   # then one clone per test file connected as the runtime role; needs Docker)
 pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
 
 # Full gate: mirrors CI by construction (CI runs exactly this)
-pnpm verify        # install, docker, secrets, lint, links, typecheck, unit, synth, e2e; exit 0 = VERIFY PASSED
+pnpm verify        # install, docker, secrets, lint, links, typecheck, drift, unit, int, synth, e2e;
+                   # exit 0 = VERIFY PASSED
 pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
 node scripts/secret-scan.mjs # the secrets stage: a canary of each custom .gitleaks.toml rule, then
                              # gitleaks (pinned image, needs Docker) over every commit on every ref
 node scripts/check-links.mjs [file …]   # the links stage: relative links and anchors in README.md,
                                         # or in the named files; a canary first; no network
+node scripts/openapi-drift.mjs   # the drift stage: regenerates the OpenAPI document and SDK types
+                                 # into a temp dir, a one-byte canary first, then byte-compares
+                                 # the committed packages/sdk/openapi.json and src/openapi-types.ts
+
+# Contract
+pnpm openapi:export   # writes packages/sdk/openapi.json from packages/api's routes, then
+                      # packages/sdk/src/openapi-types.ts with openapi-typescript; run it in the
+                      # change that alters a route (a changed contract is Ask-first)
 
 # Local stack
-pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts this repo's running
-                   # server, fails on any other process holding the API port;
+pnpm dev:full      # deps, Docker, compose Postgres, pnpm db:setup, build, apps/local; adopts this
+                   # repo's running server, fails on any other process holding the API port;
                    # prints LEDGER READY or LEDGER START FAILED: <reason>
 pnpm dev:stop      # compose stop; stops the dev server only if it belongs to this repo
 pnpm dev           # apps/local under node --watch, loading .env.local if present
 pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
+pnpm db:setup      # (pnpm --filter @ledger/app-local run setup; `setup` alone is a pnpm built-in)
+                   # writes each of DATABASE_URL, LEDGER_ADDRESS_HASH_KEY, LEDGER_SIMULATOR_SECRET,
+                   # LEDGER_URL, LEDGER_TOKEN to .env.local only when unset or empty, printing
+                   # names, never values; ensures the runtime role, applies pending migrations;
+                   # ends `db:setup: ready` or `db:setup: failed: <reason>` (exit 1). Rerun-safe
+pnpm db:generate --name <what-it-does>   # drizzle-kit generate in packages/db, flags passed
+                   # through (--custom for a grant); writes packages/db/drizzle/, read the SQL
 pnpm deps          # pnpm install only when the lockfile or a package.json changed
 pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
 
 # Simulator (every flag optional; no `--` before them)
 pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shuffle
                    # prints `sim seed=… namespace=…` (the replay pair, chosen when not given), the
-                   # history counts, then its projection as JSON, masks only; a bad flag exits 2
+                   # history counts, then its projection as JSON, masks only; a bad flag exits 2.
+                   # Live when LEDGER_URL is non-empty (the default once pnpm db:setup has written
+                   # .env.local): sends signed events to apps/local, prints `sent requests=… accepted=…`,
+                   # settles, then checks invariants 1 and 2. `LEDGER_URL= pnpm sim` runs offline
+
+# CLI (no `bin` until slice 8; loads .env.local, written by pnpm db:setup)
+pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
+pnpm -s ledger email <email_id> [--json]
+pnpm -s ledger recipient <address> [--json]   # the address goes in the request body; output shows its mask
+                   # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
+                   # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
+                   # without -s (pnpm's banner then precedes the output)
 
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
-pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3200; --port, --host (loopback only)
+pnpm --filter @ledger/app-local start   # ingest (POST /webhooks/resend), worker and read API in one
+                                        # process on 127.0.0.1:3200; --port, --host (loopback only);
+                                        # needs DATABASE_URL, LEDGER_ADDRESS_HASH_KEY and at least one
+                                        # of LEDGER_WEBHOOK_SECRETS, LEDGER_SIMULATOR_SECRET
 pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```
 
-`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: `int` with
-its first integration test plus OpenAPI and SDK drift (slice 1), migration lint (slice 2).
+`pnpm verify` needs Docker. Its planned stage, one entry in `scripts/verify.mjs`: migration lint
+(slice 2).
 Document every command here when it lands.
 
 ## Module boundaries

@@ -9,5 +9,11 @@
   },
   "devDependencies": {
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "@ledger/db": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "zod": "4.6.7"
   }
 }

@@ -61,6 +61,10 @@ export class RecordEventCommand {
 ## A reader never writes
 
 - **No insert, update, delete or lock.** A reader that needs a write is a command.
+- **One snapshot when it reads more than one table:** a `REPEATABLE READ`, read-only transaction
+  around every read, so a worker commit between two of them cannot answer one response from two
+  moments (`GetEmailReader`; transaction-scoped, so pooler-safe). A single-statement reader needs
+  none.
 - **It returns a read shape**, never a raw row: the route's mapper turns it into the wire object
   and applies the masks ([read-api.md](read-api.md#mappers)).
 - **It computes nothing a projection owns.** State comes from `email_state`, `email_recipients`

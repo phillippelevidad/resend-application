@@ -5,9 +5,17 @@
   "description": "Public TS client for the read API: generated types plus a thin client",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "openapi-fetch": "0.17.0",
+    "zod": "4.6.7"
   }
 }

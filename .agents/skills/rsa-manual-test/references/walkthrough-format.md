@@ -122,9 +122,9 @@ and code.
      -d '{"from":"onboarding@resend.dev","to":["delivered@resend.dev"],"subject":"walk A6","html":"<p>walk</p>"}'
    ```
 
-   Expect: a response carrying the new email's `id`, or `403` `validation_error` if test addresses
-   are not exempt from the own-address rule (RS-34, [RS-U14](../../../../.ai/resend.md#unverified));
-   then step 7 reads it with `ledger email`.
+   Expect: a response carrying the new email's `id` (test addresses are exempt from the
+   own-address rule, RS-34, [RS-42](../../../../.ai/resend.md#facts)); then step 7 reads it with
+   `ledger email`.
    **Ask-first:** one live send from the owner's Resend account (counts against quota, RS-32).
 ````
 
