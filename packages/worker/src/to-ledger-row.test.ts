@@ -106,6 +106,30 @@ describe('toLedgerRow: unprojectable payloads are stored unchanged (D17, D19)', 
     });
   });
 
+  // Postgres refuses a UTC year outside 1–9999 in `toISOString()`'s form, so a schema-valid
+  // `created_at` there would fail the insert on every receive and dead-list the event.
+  it.each([
+    ['year 0', '0000-01-01T00:00:00Z'],
+    ['year 1 with a positive offset', '0001-01-01T00:30:00+01:00'],
+    ['year 9999 with a negative offset', '9999-12-31T23:00:00-05:00'],
+  ])(
+    'a created_at whose UTC year Postgres cannot store (%s) nulls event_created_at',
+    (_label, at) => {
+      const payload = {
+        type: 'email.sent',
+        created_at: at,
+        data: { email_id: 'e_out_of_range', to: ['delivered@resend.dev'] },
+      };
+      const result = toLedgerRow(envelope, payload, key);
+      expect(result.projectable).toBe(false);
+      expect(result.row).toMatchObject({
+        type: 'email.sent',
+        eventCreatedAt: null,
+        emailId: 'e_out_of_range',
+      });
+    },
+  );
+
   it('a payload with no string type is stored with a null type', () => {
     const payload = { type: 42, created_at: createdAt, data: {} };
     const result = toLedgerRow(envelope, payload, key);

@@ -19,6 +19,16 @@ export type LedgerRow =
 // The same rule `emailEventSchema` applies to `created_at` (RS-26).
 const createdAtSchema = z.iso.datetime({ offset: true });
 
+// `timestamptz` binds through `toISOString()`, and Postgres refuses a UTC year outside 1–9999 in
+// that form (no year 0; a 5-digit year prints as `+010000`). The schema admits `0000-01-01` and
+// `9999-12-31T23:00:00-05:00`, so such an instant would fail the insert on every receive and
+// dead-list a verified event: it is unreadable instead, stored null.
+const toStorableInstant = (iso: string): Date | null => {
+  const instant = new Date(iso);
+  const year = instant.getUTCFullYear();
+  return year >= 1 && year <= 9999 ? instant : null;
+};
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -52,7 +62,7 @@ export function toLedgerRow(
 
   const type = typeof payload.type === 'string' ? payload.type : null;
   const createdAt = createdAtSchema.safeParse(payload.created_at);
-  const eventCreatedAt = createdAt.success ? new Date(createdAt.data) : null;
+  const eventCreatedAt = createdAt.success ? toStorableInstant(createdAt.data) : null;
   // RS-25: only the ten outbound types carry an `email_id` and a `to` this ledger keys on;
   // `email.received` names an inbound email, so it stays null.
   const data = isOutbound(type) && isPlainObject(payload.data) ? payload.data : undefined;
@@ -67,7 +77,6 @@ export function toLedgerRow(
     eventCreatedAt === null ||
     to === null ||
     toHashes === null ||
-    toHashes.length !== to.length ||
     !emailEventSchema.safeParse(payload).success
   ) {
     return { row, projectable: false };
