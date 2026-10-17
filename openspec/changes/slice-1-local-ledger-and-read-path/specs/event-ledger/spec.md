@@ -88,7 +88,7 @@ After any set of deliveries settles, every `email_state`, `email_recipients` and
 
 #### Scenario: Recipient state follows the new event's recipients
 - **WHEN** an event naming one recipient of a two-recipient email is processed
-- **THEN** that recipient's `recipient_state` is recomputed from every `email_recipients` row for its hash, and the other recipient's row is unchanged (RS-27; per-recipient `data.to` is RS-U21)
+- **THEN** that recipient's `recipient_state` is recomputed from every `email_recipients` row for its hash, and the other recipient's row is unchanged (RS-27; per-recipient `data.to` is RS-43)
 
 ### Requirement: Lock order prevents deadlock
 A message SHALL lock its `email_state` row first, then the `recipient_state` rows of the new event's distinct recipients in sorted `address_hash` order, then the email's `email_recipients` rows in the same order. Each row SHALL be inserted if absent before it is locked.

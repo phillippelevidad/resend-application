@@ -73,8 +73,8 @@ and the sweep reads `outbox.next_attempt_at`.
 - Projection logic lives in `packages/core`. `packages/db` only loads events and writes the results.
 - Per-recipient state folds each event's **own** `data.to` (RS-27), never the email's first-seen
   recipient list. RS-27 documents `to` as the *impacted* recipients, so a bounce reaches only the
-  recipient it names, and a healthy co-recipient keeps its outcome. Slice 2 MUST confirm that reading
-  (RS-U21).
+  recipient it names, and a healthy co-recipient keeps its outcome. A live two-recipient send
+  confirmed that reading (RS-43).
 
 ### Idempotency keys
 
@@ -362,7 +362,8 @@ _Evidence: the slice 0 and slice 1 items hold; the slice 2 item is pending._
   in any arrival order, in
   [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts).
 - Slice 1: sim invariant 2.
-- Slice 2: RS-U21 settled by the Ask-first two-recipient send from the project's verified domain.
+- Slice 2 (settled early, 2026-10-17): RS-U21 settled by the Ask-first two-recipient send from the
+  project's verified domain → [RS-43](resend.md#facts).
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path; 2 — Durable ingest on AWS
 
@@ -536,15 +537,8 @@ _Evidence: pending (slice 6)._
 
 ## Open questions
 
-- **Recipients listed in `data.to` per event ([RS-U21](resend.md#unverified)).** Does a bounce
-  (or a complaint or delivery) on a multi-recipient email list only the impacted recipients? RS-27
-  says so, and `email_recipients` is exact under that reading. If the list were complete, no
-  projection could pin a bounce to one recipient. Slice 2 MUST settle it with one Ask-first
-  two-recipient send (moved from slice 1; owner, 2026-10-17). Observed 2026-10-17: from
-  `onboarding@resend.dev` with no verified domain, Resend kept only the first recipient (a second
-  `to` and a `cc` were dropped), so that send cannot produce a multi-recipient email; it needs the
-  project's verified sending domain ([about.md → Project domain](about.md#open-questions)).
-  `[Unverified]`
+- None. Recipients listed in `data.to` per event (RS-U21) settled 2026-10-17 → [RS-43](resend.md#facts):
+  each event names only its own recipient, so `email_recipients` is exact.
 
 ## Deferred
 
