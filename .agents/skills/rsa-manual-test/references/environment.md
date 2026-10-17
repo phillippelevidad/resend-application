@@ -129,3 +129,4 @@ never a retry loop.
 
 | K | Symptom (exact error text) | Cause | Fast path | Seen |
 | --- | --- | --- | --- | --- |
+| K1 | `Refusing to run it — a worktree-isolated session's git operations must target its own worktree. Split it into plain, separate commands` | A worktree-isolated agent session's Bash guard rejects a command whose program or operand is computed at runtime: `export "$(grep '^LEDGER_URL=' .env.local)"` (Path C), a `{{.ServerVersion}}` template in a chained command, a `$VAR` path passed to `node`, `'bad id!'` in a chained line | Run each command alone; read `LEDGER_URL` with a plain `grep '^LEDGER_URL=' .env.local` and inline the loopback URL; pass literal paths, not variables | [slice 1 run, 2026-10-17](../../../../openspec/changes/slice-1-local-ledger-and-read-path/WALKTHROUGH-RUN.md) |
