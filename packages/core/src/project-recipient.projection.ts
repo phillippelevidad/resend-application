@@ -3,7 +3,7 @@ import type { EmailEventType } from './email-event-types.ts';
 import { eventRank } from './event-rank.ts';
 import type { EmailRecipientState } from './project-email.projection.ts';
 import type { SoftSignal } from './soft-signal.schema.ts';
-import type { StickySignal } from './sticky-signal.schema.ts';
+import { type StickySignal, stickyPrecedence } from './sticky-signal.schema.ts';
 
 // D4: the `recipient_state` columns.
 export type RecipientState = {
@@ -17,13 +17,6 @@ export type RecipientState = {
 
 // One row's signal with the keys D6 orders it by.
 type Signal<S> = { signal: S; at: Date; rank: number; svixId: string; emailId: string };
-
-// D1: sticky precedence, `hard_bounced` > `suppressed` > `complained`.
-const stickyPrecedence: Readonly<Record<StickySignal, number>> = {
-  complained: 0,
-  suppressed: 1,
-  hard_bounced: 2,
-};
 
 // D6: the event type behind each signal, for the `rank(type)` tie-break.
 const stickyType: Readonly<Record<StickySignal, EmailEventType>> = {

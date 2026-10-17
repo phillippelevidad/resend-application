@@ -6,3 +6,12 @@ import { z } from 'zod';
 export const stickySignalSchema = z.enum(['hard_bounced', 'suppressed', 'complained']);
 
 export type StickySignal = z.infer<typeof stickySignalSchema>;
+
+// D1: sticky precedence, `hard_bounced` > `suppressed` > `complained`. One table for both
+// projections: `projectEmail` keeps a row's strongest signal by it and `projectRecipient` picks
+// across rows by it, so the two can never rank differently.
+export const stickyPrecedence: Readonly<Record<StickySignal, number>> = {
+  complained: 0,
+  suppressed: 1,
+  hard_bounced: 2,
+};

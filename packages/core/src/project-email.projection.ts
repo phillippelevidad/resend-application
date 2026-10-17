@@ -8,7 +8,7 @@ import { maskFrom } from './mask-from.ts';
 import { maskText } from './mask-text.ts';
 import { normalizeAddress } from './normalize-address.ts';
 import type { SoftSignal } from './soft-signal.schema.ts';
-import type { StickySignal } from './sticky-signal.schema.ts';
+import { type StickySignal, stickyPrecedence } from './sticky-signal.schema.ts';
 
 // D4: the `email_recipients` columns plus C3's six signal fields.
 export type EmailRecipientState = {
@@ -63,13 +63,6 @@ const outcomeStatuses: Readonly<Partial<Record<EmailEvent['type'], EmailStatus>>
   'email.suppressed': 'suppressed',
   'email.failed': 'failed',
   'email.bounced': 'bounced',
-};
-
-// D1: sticky precedence, `hard_bounced` > `suppressed` > `complained`.
-const stickyPrecedence: Readonly<Record<StickySignal, number>> = {
-  complained: 0,
-  suppressed: 1,
-  hard_bounced: 2,
 };
 
 function isEmailEventType(type: string): boolean {
