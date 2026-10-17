@@ -237,6 +237,29 @@ describe('invariant 2: stored projections equal the projection of the ground tru
     expect(result.line).toBe('invariant 2 fail email_ids=walk-email-0,walk-email-2');
   });
 
+  // Every compared `email_state` column, changed alone: a checker that skipped one would pass here.
+  it.each([
+    ['status', 'sent'],
+    ['fromMasked', 'changed'],
+    ['subjectMasked', 'changed'],
+    ['openCount', 1],
+    ['clickCount', 1],
+    ['firstOpenedAt', at(1)],
+    ['firstClickedAt', at(1)],
+    ['lastEventAt', at(59)],
+    ['eventCount', 99],
+  ] as const)('fails naming the email whose email_state %s alone differs', (column, value) => {
+    const stored = storedRows();
+    stored.emailStates = stored.emailStates.map((row) =>
+      row.emailId === 'walk-email-0' ? { ...row, [column]: value } : row,
+    );
+
+    const result = checkInvariant2(expectedLedger(history, key), stored);
+
+    expect(result.pass).toBe(false);
+    expect(result.line).toBe('invariant 2 fail email_ids=walk-email-0');
+  });
+
   it('fails when a projectable email has no email_state row', () => {
     const stored = storedRows();
     stored.emailStates = stored.emailStates.filter(({ emailId }) => emailId !== 'walk-email-2');
