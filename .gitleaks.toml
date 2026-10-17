@@ -26,3 +26,21 @@ regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#'"`)>]+'''
 [[rules.allowlists]]
 regexTarget = "match"
 regexes = ['''@(?:localhost|127\.0\.0\.1)$''']
+
+# Two pushed branch commits wrote fake test fixtures as literals, against the run-time convention
+# (packages/ingest/src/create-ingest.test.ts): in 13ab103 the base64 of the ASCII string
+# "simulator-test-secret" behind a whsec_ prefix, twice; in ef11982 the counting hex string
+# 0123456789abcdef four times as a hash key. History is not rewritten (no force-push), so exactly
+# these two commits, three files and two rules are excused. The same files in any other commit,
+# and every other file or rule in these commits, are still scanned; a later commit builds the
+# values at run time.
+[[allowlists]]
+description = "Fake test fixtures committed as literals in two slice 1 branch commits"
+condition = "AND"
+targetRules = ["resend-webhook-secret", "generic-api-key"]
+commits = ["13ab103681c264cd5e9d0f255eff03b81353392a", "ef11982ed74e37b01ebc8013a31d0ccec25fc118"]
+paths = [
+  '''^sim/src/main\.e2e\.test\.ts$''',
+  '''^sim/src/sim\.config\.test\.ts$''',
+  '''^apps/local/src/main\.e2e\.test\.ts$''',
+]

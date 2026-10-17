@@ -143,11 +143,11 @@ when each runs.
 ## 12. Walkthrough
 
 - [x] 12.1 Write `openspec/changes/slice-1-local-ledger-and-read-path/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (`pnpm install`, Docker, `pnpm dev:full` waiting for `LEDGER READY`; names only); Path A (Reviewer: sim live A1–A3 with the walk probe); Path B (Support / on-call engineer: `ledger email`, `ledger recipient`, `email_not_found`, `recipient_not_found`, `validation_failed`, `database_unavailable` with `pnpm db:down` then `pnpm db:up`, a missing argument); Path C (Application developer: `curl` recipient lookup, unsigned ingest `401`, `route_not_found`, non-loopback refusal); Path D (Application developer: the `listen` session, every write marked `**Ask-first:**`, the secret load owner-run); Teardown T1–T3; and the "cannot reach today" table. Verify: every card `UI surfaces` entry is reached; the three personas each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; no numbered line carries a blocked word without `→ slice N`; `node scripts/check-links.mjs openspec/changes/slice-1-local-ledger-and-read-path/WALKTHROUGH.md` exits 0.
-- [ ] 12.2 Verify every `Ships` box on the card is ticked, or marked `[!]` with its reason from 11.5. `Status` stays `[~]` until the walk passes (Workflow follow-up). Commit and push. Verify: `git status --short` is empty after the push.
+- [x] 12.2 Verify every `Ships` box on the card is ticked, or marked `[!]` with its reason from 11.5. `Status` stays `[~]` until the walk passes (Workflow follow-up). Commit and push. Verify: `git status --short` is empty after the push.
 
 ## 13. Gate
 
-- [ ] 13.1 Run `pnpm exec openspec validate slice-1-local-ledger-and-read-path --type change --strict`. Verify: it reports the change is valid.
+- [x] 13.1 Run `pnpm exec openspec validate slice-1-local-ledger-and-read-path --type change --strict`. Verify: it reports the change is valid.
 - [ ] 13.2 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
 - [ ] 13.3 After the final push, run `gh run list --branch worktree-slice-1 --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `drift` and `int` stages passing. Report an in-progress run as in progress.
 
