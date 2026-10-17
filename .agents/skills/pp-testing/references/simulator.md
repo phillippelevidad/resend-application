@@ -84,7 +84,17 @@ its `svix_id`, and `+label`
 - The generated history is the ground truth: the set of distinct events, keyed by `svix_id`. A
   duplicate is a resend of the same signed event, so it adds no truth.
 - The run sends, then waits for the system to settle with a **bounded** wait, and fails the run at
-  its bound instead of waiting forever. How a run detects settling is the slice 1 pre-proposal's.
+  its bound instead of waiting forever. Locally it polls `webhookEventsRepository.countPresent`
+  over the run's `svix_id`s every 250 ms, up to 30 s, then checks invariants 1 and 2 through
+  `packages/db` reads ([sim/src/live-run.ts](../../../../sim/src/live-run.ts)).
+- **Live or offline:** a run is live iff `LEDGER_URL` is set and non-empty. A shell value, even
+  empty, wins over `.env.local` (Node's `--env-file-if-exists` never overrides the environment), so
+  `LEDGER_URL= pnpm sim` stays offline; [main.e2e.test.ts](../../../../sim/src/main.e2e.test.ts)
+  pins it and spawns every run with `LEDGER_URL` removed.
+- **Labels are mandatory in `pnpm sim`:** it always passes `labelEveryAddress: true`, so every
+  address carries `+<namespace>-<n>` and the history gains the walk probe `<namespace>-probe`
+  (`delivered+<namespace>@` and `bounced+<namespace>@resend.dev`). `ledgerHistory`'s default stays
+  unlabelled so core's properties keep exercising bare addresses.
 - Knobs are the ones the Ships lists name: the seed, `--duplicates <ratio>` and `--shuffle`
   (slices 0–1), `--burst 10000/10s`, `--chaos db-outage` and the poison run (slice 3),
   `--chaos worker-crash:0.05` and `--chaos dispatcher-crash:0.05` (slice 6)

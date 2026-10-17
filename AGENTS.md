@@ -256,7 +256,10 @@ pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
 # Simulator (every flag optional; no `--` before them)
 pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shuffle
                    # prints `sim seed=… namespace=…` (the replay pair, chosen when not given), the
-                   # history counts, then its projection as JSON, masks only; a bad flag exits 2
+                   # history counts, then its projection as JSON, masks only; a bad flag exits 2.
+                   # Live when LEDGER_URL is non-empty (the default once pnpm db:setup has written
+                   # .env.local): sends signed events to apps/local, prints `sent requests=… accepted=…`,
+                   # settles, then checks invariants 1 and 2. `LEDGER_URL= pnpm sim` runs offline
 
 # CLI (no `bin` until slice 8; loads .env.local, written by pnpm db:setup)
 pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
