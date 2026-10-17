@@ -1,8 +1,6 @@
 import {
   type EmailRecipientState,
   type EmailState,
-  hashAddress,
-  type LedgerEvent,
   projectEmail,
   projectRecipient,
   type RecipientState,
@@ -17,6 +15,7 @@ import {
   type RecipientStateRow,
   recipientStateRepository,
 } from '@ledger/db';
+import { asStoredEvent } from '../as-stored-event.ts';
 
 // Simulator invariant 2 (architecture.md → Simulator invariants): every `email_state`,
 // `email_recipients` and `recipient_state` row of the run equals `projectEmail` /
@@ -46,25 +45,13 @@ function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// The stored event as the worker reads it back (D14 step 6, D17): `recipientKeys` are `to_hashes`,
-// `data.to` through `hashAddress`. The generator's keys are `normalizeAddress(to[i])`, and
-// `hashAddress` normalizes first, so hashing them gives the same value.
-function asStored(event: LedgerEvent, addressHashKey: Uint8Array): LedgerEvent {
-  const { recipientKeys } = event;
-  return {
-    ...event,
-    recipientKeys:
-      recipientKeys === null ? null : recipientKeys.map((key) => hashAddress(addressHashKey, key)),
-  };
-}
-
 // D37: the ground truth projected as the ledger would, every email and every recipient it names.
 // A duplicate adds no truth, so the history's distinct events are the whole input.
 export function expectedLedger(history: LedgerHistory, addressHashKey: Uint8Array): ExpectedLedger {
   const emails = history.emails.map(({ emailId, events }) =>
     projectEmail(
       emailId,
-      events.map((event) => asStored(event, addressHashKey)),
+      events.map((event) => asStoredEvent(event, addressHashKey)),
     ),
   );
   const rows = emails.flatMap(({ recipients }) => recipients);
