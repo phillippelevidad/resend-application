@@ -149,7 +149,7 @@ when each runs.
 
 - [x] 13.1 Run `pnpm exec openspec validate slice-1-local-ledger-and-read-path --type change --strict`. Verify: it reports the change is valid.
 - [x] 13.2 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
-- [ ] 13.3 After the final push, run `gh run list --branch worktree-slice-1 --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `drift` and `int` stages passing. Report an in-progress run as in progress.
+- [x] 13.3 After the final push, run `gh run list --branch worktree-slice-1 --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `drift` and `int` stages passing. Report an in-progress run as in progress.
 
 ## Workflow follow-up
 
