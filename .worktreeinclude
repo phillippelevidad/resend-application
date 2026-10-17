@@ -5,3 +5,8 @@
 
 # Per-developer agent settings and rules — CLAUDE.md imports it.
 AGENTS.local.md
+
+# Local secrets and config every local entry point loads (--env-file-if-exists).
+# Not regenerable: the address-hash key is generated once and must match the
+# compose Postgres every checkout shares.
+.env.local
