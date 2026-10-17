@@ -161,6 +161,26 @@ describe('ledger email', () => {
     expect(controls).toEqual([]);
   });
 
+  it('--json escapes DEL and C1 so the same value prints with no raw control', async () => {
+    const recipient = bouncedEmail.recipients[0];
+    if (!recipient) throw new TypeError('fixture has a recipient');
+    const hostile: Email = {
+      ...bouncedEmail,
+      recipients: [{ ...recipient, bounce_type: '\u001b[31mPermanent\u007f\u009b' }],
+    };
+    const client = new FakeLedgerClient({ emailsGet: { data: hostile, error: null } });
+
+    const result = await runCli(['email', 'walk-probe', '--json'], client);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(hostile);
+    const controls = [...result.stdout].filter((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return (code <= 0x1f && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+    });
+    expect(controls).toEqual([]);
+  });
+
   it('--json on a registry error prints exactly { error } on stdout and exits 1', async () => {
     const result = await runCli(['email', 'no-such-email', '--json'], failing(emailNotFound));
 

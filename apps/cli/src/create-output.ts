@@ -30,6 +30,13 @@ export function printable(value: string | number | null): string {
   return String(value).replace(CONTROL_CHARACTERS, '*');
 }
 
+// `JSON.stringify` escapes C0 only, so DEL and C1 (U+009B is a one-character CSI) would reach the
+// terminal raw. Outside a JSON string they cannot occur, so `\u` escapes keep the document and every
+// value identical while nothing executes.
+const UNESCAPED_CONTROLS = /[\u007f-\u009f]/g;
+const escapeControls = (json: string): string =>
+  json.replace(UNESCAPED_CONTROLS, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
 export function createOutput(streams: { stdout: Writer; stderr: Writer }): Output {
   return {
     out: (text) => {
@@ -39,7 +46,7 @@ export function createOutput(streams: { stdout: Writer; stderr: Writer }): Outpu
       streams.stderr.write(text);
     },
     json: (value) => {
-      streams.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+      streams.stdout.write(`${escapeControls(JSON.stringify(value, null, 2))}\n`);
     },
     result: (text) => {
       streams.stdout.write(withNewline(text));
