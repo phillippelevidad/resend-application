@@ -1,6 +1,7 @@
 import {
   type EmailRecipientState,
   type EmailState,
+  type LedgerEvent,
   projectEmail,
   projectRecipient,
   type RecipientState,
@@ -38,12 +39,19 @@ export function projectLedger(
   emailIds: readonly string[],
   events: readonly ArrangedEvent[],
 ): LedgerProjection {
-  const states = [...emailIds].sort(compareCodeUnits).map((emailId) =>
-    projectEmail(
-      emailId,
-      events.filter((arranged) => arranged.emailId === emailId).map(({ event }) => event),
-    ),
-  );
+  // One pass to group, in arrival order, instead of one filter over every event per email.
+  const byEmail = new Map<string, LedgerEvent[]>();
+  for (const { emailId, event } of events) {
+    const group = byEmail.get(emailId);
+    if (group === undefined) {
+      byEmail.set(emailId, [event]);
+    } else {
+      group.push(event);
+    }
+  }
+  const states = [...emailIds]
+    .sort(compareCodeUnits)
+    .map((emailId) => projectEmail(emailId, byEmail.get(emailId) ?? []));
   const rows = states.flatMap((state) => state.recipients);
   const keys = [...new Set(rows.map((row) => row.recipientKey))].sort(compareCodeUnits);
   return {
