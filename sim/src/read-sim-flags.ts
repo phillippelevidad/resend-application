@@ -55,6 +55,12 @@ function checkTokens(args: readonly string[]): void {
     if (type === 'string' && token.value === undefined) {
       reject(token.rawName, 'needs a value');
     }
+    // Non-strict parsing takes the next argument as the value even when it is another flag, so
+    // `--namespace --shuffle` would read `--shuffle` as the namespace (it matches the format) and
+    // silently drop the shuffle. A dash-led value like `--seed -1` still reaches the value checks.
+    if (type === 'string' && token.inlineValue === false && token.value?.startsWith('--')) {
+      reject(token.rawName, `needs a value; ${token.value} is the next flag`);
+    }
     if (type === 'boolean' && token.value !== undefined) {
       reject(token.rawName, 'takes no value');
     }

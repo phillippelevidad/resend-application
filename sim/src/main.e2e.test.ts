@@ -164,6 +164,9 @@ describe('pnpm sim (sim/src/main.ts)', () => {
     [['--seed', '4294967296'], '--seed'],
     [['--seed', '-1'], '--seed'],
     [['--namespace', 'Walk'], '--namespace'],
+    // `--shuffle` matches the namespace format, so only the next-flag check stops it being read
+    // as the namespace and the shuffle silently dropped.
+    [['--namespace', '--shuffle'], '--namespace'],
     [['--verbose'], '--verbose'],
   ])('rejects %j with one stderr line naming %s, exit 2 and nothing on stdout', (args, flag) => {
     const { code, stdout, stderr } = runSim(args);
