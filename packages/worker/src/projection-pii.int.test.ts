@@ -24,6 +24,9 @@ const emailId = 'e_projection_pii';
 const recipients = ['Delivered@Resend.dev', 'bounced@resend.dev'];
 const normalized = ['delivered@resend.dev', 'bounced@resend.dev'];
 const from = 'Acme Billing <billing@resend.dev>';
+// The sender's parts, each forbidden alone: a column holding only the address or only the display
+// name leaks as much as one holding the whole `from`.
+const fromParts = ['billing@resend.dev', 'Acme Billing'];
 const subject = 'Your invoice 48213 is ready';
 
 function message(svixId: string, type: string, second: number, to: readonly string[], extra = {}) {
@@ -77,7 +80,7 @@ describe('no raw PII in projection rows (projection-privacy)', () => {
     expect(tables.email_state[0]?.from_masked).toEqual(expect.any(String));
     expect(tables.email_state[0]?.subject_masked).toEqual(expect.any(String));
 
-    const forbidden = [...normalized, from, subject];
+    const forbidden = [...normalized, from, ...fromParts, subject];
     const leaks = Object.entries(tables).flatMap(([table, rows]) =>
       rows.flatMap((row) =>
         Object.entries(row).flatMap(([column, value]) =>
