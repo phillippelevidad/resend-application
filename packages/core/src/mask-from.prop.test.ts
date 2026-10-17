@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { maskFrom } from './mask-from.ts';
 import { maskInputChar } from './testing/mask-input-char.ts';
 
-const part = fc.string({ unit: maskInputChar, maxLength: 20 });
+// `size: 'max'`: fast-check's default size caps a string at 10 code points, and the `min(3, …)` cap
+// only binds on a token of 12 or more.
+const part = fc.string({ unit: maskInputChar, maxLength: 20, size: 'max' });
 const address = fc
   .tuple(part, fc.array(part, { maxLength: 3 }))
   .map(([local, labels]) => `${local}@${[...labels, 'resend', 'dev'].join('.')}`);
@@ -15,7 +17,7 @@ const sender = fc.oneof(
   fc.tuple(part, address).map(([name, addr]) => `${name} <${addr}>`),
   fc.tuple(part, address).map(([name, addr]) => `${name}<${addr}>`),
   address,
-  fc.string({ unit: maskInputChar, maxLength: 40 }),
+  fc.string({ unit: maskInputChar, maxLength: 40, size: 'max' }),
 );
 
 type Span = [number, number];

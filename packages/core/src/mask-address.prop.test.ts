@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { maskAddress } from './mask-address.ts';
 import { maskInputChar } from './testing/mask-input-char.ts';
 
-const part = fc.string({ unit: maskInputChar, maxLength: 20 });
+// `size: 'max'`: fast-check's default size caps a string at 10 code points, and the `min(3, …)` cap
+// only binds on a local part of 12 or more.
+const part = fc.string({ unit: maskInputChar, maxLength: 20, size: 'max' });
 
 // Address-shaped inputs put arbitrary local parts and labels under `resend.dev`; free strings cover
 // no `@`, several `@` and any domain. Every part can hold digits, control characters, astral code
@@ -12,7 +14,7 @@ const address = fc.oneof(
   fc
     .tuple(part, fc.array(part, { maxLength: 3 }))
     .map(([local, labels]) => `${local}@${[...labels, 'resend', 'dev'].join('.')}`),
-  fc.string({ unit: maskInputChar, maxLength: 40 }),
+  fc.string({ unit: maskInputChar, maxLength: 40, size: 'max' }),
 );
 
 // The tokens of an address are its local part (everything before the last `@`, or the whole

@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { maskText } from './mask-text.ts';
 import { maskInputChar } from './testing/mask-input-char.ts';
 
-const text = fc.string({ unit: maskInputChar, maxLength: 40 });
+// `size: 'max'`: fast-check's default size caps a string at 10 code points, and the `min(3, …)` cap
+// only binds on a token of 12 or more.
+const text = fc.string({ unit: maskInputChar, maxLength: 40, size: 'max' });
 
 // A token of the input is a maximal run of token characters: a control character (D13 step 1 maps
 // it to `*` before tokenizing), `*`, or anything outside whitespace, punctuation and symbols.

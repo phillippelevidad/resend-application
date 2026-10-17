@@ -6,6 +6,10 @@ describe('maskText', () => {
     expect(maskText('Your invoice is ready')).toBe('Y*** in***** ** r****');
   });
 
+  it('keeps at most 3 characters of a long token, where ⌊n/3⌋ alone would keep more', () => {
+    expect(maskText('Internationalization')).toBe('Int*****************');
+  });
+
   it('masks every digit of a one-time code, so no code is revealed', () => {
     const masked = maskText('Code 123456');
     expect(masked).toBe('C*** ******');
