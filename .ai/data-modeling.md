@@ -88,6 +88,12 @@ and the sweep reads `outbox.next_attempt_at`.
 A unique key MUST live in the migration, not only in the Drizzle schema file. The SQS `messageId`
 is never a key, because a redrive changes it (AWS-21).
 
+_Evidence:_ `svix_id`: a sequential duplicate, two concurrent copies and a copy under a new
+`messageId` each leave one row, and the projection keys' insert-then-lock order lets two emails
+sharing recipients in opposite `data.to` order commit without deadlock, as the runtime role, in
+[record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts)
+(slice 1). `outbox.dedupe_key` (slice 6) and `api_tokens.bootstrap` (slice 2) are pending.
+
 ### Timestamps & ordering
 
 - `event_created_at` is the payload's top-level `created_at`, "when the webhook event was created"
@@ -220,13 +226,16 @@ redaction replace a raw value with its mask without changing any projection.
 - The retention period N is configurable and owed by slice 7. Resend keeps email data for 30 days
   (RS-31).
 
-**Evidence:** the slice 0 item holds; the slice 1, 2 and 7 items are pending.
+**Evidence:** the slice 0 and slice 1 items hold; the slice 2 and 7 items are pending.
 - Slice 0: fast-check properties for the masks (idempotent, length-preserving, no digit revealed,
   at most 3 characters revealed per token, no control character), one `it` each in
   [mask-text.prop.test.ts](../packages/core/src/mask-text.prop.test.ts),
   [mask-address.prop.test.ts](../packages/core/src/mask-address.prop.test.ts) and
   [mask-from.prop.test.ts](../packages/core/src/mask-from.prop.test.ts).
-- Slice 1: an invariant that no projection column holds a raw input address or subject.
+- Slice 1: after the worker commits events to `delivered@resend.dev` and `bounced@resend.dev`
+  with a `from` and a subject, no text column of any projection row holds either normalized
+  address, the raw `from` or the raw subject, in
+  [projection-pii.int.test.ts](../packages/worker/src/projection-pii.int.test.ts).
 - Slice 2: a deploy-command test that refuses a mismatched `key_id`.
 - Slice 7: a rebuild after redaction yields identical projections.
 
@@ -277,12 +286,19 @@ Load-bearing columns only. Every table also carries its
   column land with it in slice 7.
 
 _Schema: [`packages/db/src/schema/webhook-events.ts`](../packages/db/src/schema/webhook-events.ts)._
-_Evidence: the slice 1 schema item holds; the other items are pending._
+_Evidence: the slice 1 schema and worker items hold; the other items are pending._
 - Slice 1 (schema): the `source` `CHECK` against `eventSourceSchema` and a duplicate
   `insertIfAbsent` leaving one row, as the runtime role, in
   [webhook-events.repository.int.test.ts](../packages/db/src/webhook-events.repository.int.test.ts).
-- Slice 1: Testcontainers duplicate-insert and crash-between-steps tests; a NUL-payload
-  integration test (stored with U+FFFD, projected, committed, never dead-lettered); sim invariant 1.
+- Slice 1 (worker): Testcontainers duplicate-insert tests (sequential, concurrent, under a new
+  `messageId`) and a crash-between-steps test (a `CHECK (false) NOT VALID` fault commits nothing;
+  the redelivery commits one row of everything); NUL and lone-surrogate payloads stored with
+  U+FFFD, projected, committed and counted, never dead-lettered; unknown, non-email, inbound,
+  schema-failing, array and JSON `null` payloads stored raw on their first receive, in
+  [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts);
+  the typed columns of each unprojectable kind in
+  [to-ledger-row.test.ts](../packages/worker/src/to-ledger-row.test.ts).
+- Slice 1: sim invariant 1.
 - Slice 3: a unit test that a simulator-signed event is stamped `simulated`.
 - Slice 4: replays dedupe on `svix_id` (RS-U01).
 - Slice 7: a rebuild after redaction yields identical projections.
@@ -305,11 +321,14 @@ _Evidence: the slice 1 schema item holds; the other items are pending._
   `email_recipients`.
 
 _Schema: [`packages/db/src/schema/email-state.ts`](../packages/db/src/schema/email-state.ts)._
-_Evidence: the slice 0 and slice 1 schema items hold; the other slice 1 item is pending._
+_Evidence: the slice 0 item and the slice 1 schema and worker items hold; the other slice 1 item is pending._
 - Slice 0: fast-check permutation, idempotence, monotonicity and oracle properties, one `it` each
   in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
 - Slice 1 (schema): the `status` `CHECK` against `emailStatusSchema`, as the runtime role, in
   [email-state.repository.int.test.ts](../packages/db/src/email-state.repository.int.test.ts).
+- Slice 1 (worker): the committed row equals `projectEmail` over the stored events after
+  out-of-order arrival, duplicates and a redelivery after a fault, in
+  [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts).
 - Slice 1: sim invariant 2 under `--shuffle`.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path; 5 — MCP server and contract hardening
@@ -332,13 +351,16 @@ _Evidence: the slice 0 and slice 1 schema items hold; the other slice 1 item is 
 - **Locking:** the row is written under the email's lock.
 
 _Schema: [`packages/db/src/schema/email-recipients.ts`](../packages/db/src/schema/email-recipients.ts)._
-_Evidence: the slice 0 and slice 1 schema items hold; the other slice 1 items are pending._
+_Evidence: the slice 0 item and the slice 1 schema and worker items hold; the other slice 1 items are pending._
 - Slice 0: a property test that a two-recipient email whose bounce names one recipient leaves the
   other recipient's outcome unchanged, in
   [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
 - Slice 1 (schema): the `status`, `sticky_signal` and `soft_signal` `CHECK`s against their core
   tuples, as the runtime role, in
   [email-recipients.repository.int.test.ts](../packages/db/src/email-recipients.repository.int.test.ts).
+- Slice 1 (worker): the committed rows equal `projectEmail`'s recipients over the stored events,
+  in any arrival order, in
+  [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts).
 - Slice 1: sim invariant 2; RS-U21 settled by the Ask-first two-recipient send.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path
@@ -364,14 +386,18 @@ _Evidence: the slice 0 and slice 1 schema items hold; the other slice 1 items ar
   `soft_bouncing`. Else `ok`, with `since` and `cause_email_id` null.
 
 _Schema: [`packages/db/src/schema/recipient-state.ts`](../packages/db/src/schema/recipient-state.ts)._
-_Evidence: the slice 0 and slice 1 schema items hold; the later items are pending._
+_Evidence: the slice 0 item and the slice 1 schema and concurrency items hold; the other items are pending._
 - Slice 0: fast-check permutation, idempotence, sticky-monotonicity and oracle properties, one `it`
   each, with the tests that a hard bounce comes from `Permanent` only (RS-U12) and that a later
   delivery clears `soft_bouncing`, in
   [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts).
 - Slice 1 (schema): the `deliverability` `CHECK` against `deliverabilitySchema`, as the runtime
   role, in [recipient-state.repository.int.test.ts](../packages/db/src/recipient-state.repository.int.test.ts).
-- Slice 1: a concurrency integration test with two emails and one recipient.
+- Slice 1: a concurrency integration test with two emails sharing recipients in opposite
+  `data.to` order, interleaved both ways by polling `pg_stat_activity`: both commit and every row
+  equals `projectRecipient` over its `email_recipients` rows; an event naming one recipient leaves
+  the other's row unchanged, in
+  [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts).
 - Slice 2: the same test through the pooler (PG-U02).
 - Slices 1 and 3: sim invariant 2.
 

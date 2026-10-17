@@ -96,16 +96,16 @@ listed there as not an operation ([Coverage](api-contract.md#coverage)).
 
 ## Ingest
 
-- Signature and timestamp verified on the raw body before enqueue; bad signature → `401`. evidence: unit test · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
-- `200` on enqueue, `503` on enqueue failure so Resend retries ([RS-10](resend.md#facts)). evidence: unit test · [slice 2](build-checklist.md#2--durable-ingest-on-aws).
+- Signature and timestamp verified on the raw body before enqueue; bad signature → `401`. evidence: unit test ([create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts)) · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
+- `200` on enqueue, `503` on enqueue failure so Resend retries ([RS-10](resend.md#facts)). evidence: unit test ([create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts)) · [slice 1](build-checklist.md#1--local-ledger-and-read-path); both body encodings on AWS · [slice 2](build-checklist.md#2--durable-ingest-on-aws).
 - No database in the request path: a database outage is not a failed delivery. evidence: `--chaos db-outage` keeps ingest at `200` with 0 lost · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws).
 
 ## Ledger & projections
 
-- One row per `svix_id`, ever; duplicates counted, never re-applied. evidence: property test + simulator invariant 1 · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
+- One row per `svix_id`, ever; duplicates counted, never re-applied. evidence: Postgres integration tests ([record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts)) + property test ([project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts)) + simulator invariant 1 · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
 - `projectEmail` is a pure function of the event set: permutation invariance, idempotence, monotonicity, oracle agreement. evidence: fast-check properties ([project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts)) · [slice 0](build-checklist.md#0--foundations).
 - Recipient deliverability derived from email states, with the email that caused each transition. evidence: fast-check properties ([project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts)) · [slice 0](build-checklist.md#0--foundations).
-- Unknown event types stored raw, projection skipped, metric emitted. evidence: unit test · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
+- Unknown event types stored raw, projection skipped, metric emitted. evidence: unit test ([to-ledger-row.test.ts](../packages/worker/src/to-ledger-row.test.ts)) + Postgres integration test ([record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts)) · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
 
 ## Recovery
 
