@@ -333,7 +333,7 @@ it for `docker compose up` with no AWS account (slice 2B).
 - Each package lands in the slice that first needs it ([Projects](../AGENTS.md#projects)).
 
 Rejected: AWS-only development (LocalStack as the only local path); an `apps/local` exception to "apps never import apps"; one `packages/app` with subfolders (its boundaries would need lint rules, where pnpm's declared dependencies enforce them for free).
-**Evidence:** the lint rule on `packages/core` imports rejects `pg`, `drizzle-orm`, `resend` and `@aws-sdk/*`, run with the committed `biome.json` in [import-boundaries.test.ts](../packages/core/src/import-boundaries.test.ts) (slice 0). Pending — sim invariants pass in local mode (slice 2B).
+**Evidence:** the lint rule on `packages/core` and `packages/shared` imports rejects the AWS, Postgres and Resend package families (`@aws-*/**`, `aws-*`, `@smithy/**`, `pg`, `pg-*`, `postgres`, `drizzle-*`, `@neondatabase/**`, `resend`, `@react-email/**` and the rest of the list in [pp-general → Lint enforcement](../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome)), subpaths included, run with the committed `biome.json` in [import-boundaries.test.ts](../packages/core/src/import-boundaries.test.ts), one fixture per pattern (slice 0). Pending — sim invariants pass in local mode (slice 2B).
 
 ### ADR-014 — Raw-payload retention and redaction
 

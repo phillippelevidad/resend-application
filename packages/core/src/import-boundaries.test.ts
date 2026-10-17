@@ -13,26 +13,87 @@ const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 // spawnSync refuses without a shell (EINVAL).
 const biomeLauncher = join(repoRoot, 'node_modules', '@biomejs', 'biome', 'bin', 'biome');
 
-const copiedConfig = ['biome.json', 'packages/core/package.json', 'packages/aws/package.json'];
+const copiedConfig = [
+  'biome.json',
+  'packages/core/package.json',
+  'packages/shared/package.json',
+  'packages/aws/package.json',
+];
 
 const restrictedImportRule = 'lint/style/noRestrictedImports';
 
 type Fixture = { readonly path: string; readonly specifier: string };
 
-const coreFixture = (slug: string, specifier: string): Fixture => ({
-  path: `packages/core/src/${slug}.ts`,
-  specifier,
-});
+const fixtureIn =
+  (folder: string) =>
+  (specifier: string): Fixture => ({
+    path: `${folder}/src/imports-${specifier.replaceAll(/[^a-z0-9]+/gi, '-')}.ts`,
+    specifier,
+  });
 
+const coreFixture = fixtureIn('packages/core');
+
+// One specifier per pattern in the packages/core override of biome.json, a subpath for each
+// `/**` pattern, so narrowing any pattern fails a named case.
 const bannedInCore: readonly Fixture[] = [
-  coreFixture('imports-pg', 'pg'),
-  coreFixture('imports-drizzle-orm', 'drizzle-orm'),
-  coreFixture('imports-drizzle-orm-pg-core', 'drizzle-orm/pg-core'),
-  coreFixture('imports-resend', 'resend'),
-  coreFixture('imports-aws-sdk-client-sqs', '@aws-sdk/client-sqs'),
-];
+  // AWS
+  '@aws-sdk/client-sqs',
+  '@aws-sdk/client-sqs/dist-es/index.js',
+  '@aws-lambda-powertools/logger',
+  '@aws-crypto/sha256-js',
+  '@aws/lambda-invoke-store',
+  '@smithy/smithy-client',
+  'aws-sdk',
+  'aws-sdk/clients/sqs',
+  'aws-lambda',
+  'aws-cdk-lib/aws-sqs',
+  'aws4',
+  'aws4fetch',
+  'amazon-cognito-identity-js',
+  // Postgres
+  'pg',
+  'pg/lib/client',
+  'pg-pool',
+  'pg-protocol/dist/messages',
+  'postgres',
+  'postgres/cjs/src/index.js',
+  'postgres-array',
+  'drizzle-orm',
+  'drizzle-orm/pg-core',
+  'drizzle-kit',
+  '@neondatabase/serverless',
+  '@vercel/postgres',
+  '@vercel/postgres/kysely',
+  '@electric-sql/pglite',
+  '@electric-sql/pglite/vector',
+  '@databases/pg',
+  '@testcontainers/postgresql',
+  '@supabase/supabase-js',
+  'prisma',
+  '@prisma/client',
+  'kysely',
+  'knex',
+  'slonik',
+  'sequelize',
+  'typeorm',
+  '@mikro-orm/postgresql',
+  // Resend
+  'resend',
+  'resend/build/src/index.js',
+  '@resend/webhooks',
+  'react-email',
+  '@react-email/components',
+].map(coreFixture);
 
-const allowedInCore = coreFixture('imports-zod', 'zod');
+// Near misses and what core really imports: the patterns must not catch them.
+const allowedInCore: readonly Fixture[] = ['zod', 'fast-check', 'vitest', 'node:crypto'].map(
+  coreFixture,
+);
+
+// packages/shared shares the packages/core override, so one case per ecosystem pins that.
+const bannedInShared: readonly Fixture[] = ['@aws-sdk/client-sqs', 'postgres', 'resend'].map(
+  fixtureIn('packages/shared'),
+);
 
 const awsImportsAwsSdk: Fixture = {
   path: 'packages/aws/src/imports-aws-sdk-client-sqs.ts',
@@ -46,7 +107,8 @@ const awsDeepImport: Fixture = {
 
 const fixtures: readonly Fixture[] = [
   ...bannedInCore,
-  allowedInCore,
+  ...allowedInCore,
+  ...bannedInShared,
   awsImportsAwsSdk,
   awsDeepImport,
 ];
@@ -103,9 +165,21 @@ describe('packages/core import boundary (ADR-013)', () => {
     },
   );
 
-  it('importing zod in packages/core raises no restricted-import error, so pure code still lints', () => {
-    expect(restrictedImportCount(allowedInCore)).toBe(0);
-  });
+  it.each(allowedInCore)(
+    'importing $specifier in packages/core raises no restricted-import error, so pure code still lints',
+    (fixture) => {
+      expect(restrictedImportCount(fixture)).toBe(0);
+    },
+  );
+});
+
+describe('packages/shared import boundary (ADR-013)', () => {
+  it.each(bannedInShared)(
+    'importing $specifier in packages/shared raises noRestrictedImports, so the lint stage fails',
+    (fixture) => {
+      expect(restrictedImportCount(fixture)).toBe(1);
+    },
+  );
 });
 
 describe('biome.json override scoping', () => {

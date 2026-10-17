@@ -75,7 +75,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [x] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
   - [x] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity (for `projectRecipient`, of the sticky states), oracle agreement (ADR-003).
   - [x] `packages/core` address normalization and mask functions ([PII & retention](data-modeling.md#pii--retention)); evidence: fast-check properties (masks idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token, no control character) and the two-recipient property (a bounce naming one recipient leaves the other's outcome unchanged).
-  - [x] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage.
+  - [x] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage ([import-boundaries.test.ts](../packages/core/src/import-boundaries.test.ts), one fixture per banned pattern).
   - [x] `sim` history generator with seed, duplicate and shuffle knobs; `pnpm sim` prints the projection of a generated, shuffled history, identical for a fixed seed and run namespace.
   - [x] README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
   - [x] RS-U10, RS-U11, RS-U12 and RS-U19 proved safe either way by named property and schema tests, each [Unverified] row citing its test.

@@ -42,9 +42,10 @@ scope) run as one script in a `pnpm verify` stage, proven the way build-checklis
 the lint stage: a deliberate-violation fixture fails it
 ([imports-and-tsconfig.md](imports-and-tsconfig.md#lint-enforcement-biome)).
 
-1. `core` and `shared` import no AWS, Postgres or Resend:
+1. `core` and `shared` import no AWS, Postgres or Resend (Biome carries the full list,
+   [Lint enforcement](imports-and-tsconfig.md#lint-enforcement-biome); this grep is the quick look):
    ```sh
-   git grep -nE "from ['\"](@aws-sdk/|pg['\"]|drizzle-orm|resend['\"])" -- packages/core packages/shared
+   git grep -nE "from ['\"](@aws|aws-|aws4|amazon-|@smithy/|pg['\"/-]|postgres|drizzle-|@neondatabase/|@vercel/postgres|@electric-sql/pglite|@databases/pg|@testcontainers/postgresql|@supabase/|@?prisma|kysely|knex|slonik|sequelize|typeorm|@mikro-orm/|@?resend|@?react-email)" -- packages/core packages/shared
    ```
 2. `core` imports no workspace package:
    ```sh

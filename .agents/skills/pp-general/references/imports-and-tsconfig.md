@@ -127,7 +127,7 @@ The installed compiler is TypeScript 7.0.2 (the native compiler; root `devDepend
 ## Lint enforcement (Biome)
 
 A ban without enforcement drifts. These are configured in `biome.json` (Biome 2.5.15). The
-`packages/core` bans and the `packages/aws` override are pinned by
+`packages/core` and `packages/shared` bans and the `packages/aws` override are pinned by
 [`packages/core/src/import-boundaries.test.ts`](../../../../packages/core/src/import-boundaries.test.ts),
 which runs the installed Biome with the committed `biome.json` over deliberate-violation fixtures in
 a temp directory (unit tier). The worker and ingest bans were observed to fire by hand with
@@ -135,7 +135,7 @@ throwaway violating files. Check a rule name against the installed version befor
 
 | Ban | Biome rule |
 | --- | --- |
-| `@aws-sdk/*`, `pg`, `drizzle-orm`, `resend` in `packages/core` and `packages/shared` | [`style/noRestrictedImports`](https://biomejs.dev/linter/rules/no-restricted-imports/), `patterns` (since v2.2.0) |
+| Any AWS, Postgres or Resend package, root or subpath, in `packages/core` and `packages/shared`. AWS: `@aws-*/**`, `@aws/**`, `@smithy/**`, `aws-*`, `aws4*`, `amazon-*`. Postgres: `pg`, `pg-*`, `postgres`, `postgres-*`, `drizzle-*`, `@neondatabase/**`, `@vercel/postgres`, `@electric-sql/pglite`, `@databases/pg`, `@testcontainers/postgresql`, `@supabase/**`, `prisma`, `@prisma/**`, `kysely`, `knex`, `slonik`, `sequelize`, `typeorm`, `@mikro-orm/**`. Resend: `resend`, `@resend/**`, `react-email`, `@react-email/**`. Each unscoped name is banned with its `/**` subpaths; one fixture per pattern in `import-boundaries.test.ts` | [`style/noRestrictedImports`](https://biomejs.dev/linter/rules/no-restricted-imports/), `patterns` (since v2.2.0). A `group` glob matches the specifier exactly: `pg` does not cover `pg/lib/client`, so each name carries its `/**` twin (probed, 2.5.15) |
 | `@aws-sdk/*` anywhere but `packages/aws` | same rule |
 | `resend` anywhere but `packages/resend-client` and `packages/ingest` (ingest: `webhooks.verify` only, ADR-009) | same rule |
 | A deep import `@ledger/*/…` other than `/testing` | same rule, `patterns` |
