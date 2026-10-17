@@ -140,18 +140,21 @@ function brokenReason(file, target) {
   return LINE_ANCHOR.test(anchor) ? undefined : 'missing anchor';
 }
 
-/** Every checked link in `file` and the broken ones, each `{ line, target, reason }`. */
+/**
+ * Every checked link in `file` and the broken ones, each `{ line, target, reason }`. Matched over
+ * the whole text, not line by line: a hard-wrapped file breaks a link's text across lines.
+ */
 function checkFile(file) {
   const broken = [];
   let checked = 0;
-  for (const [index, line] of proseLines(readText(file)).entries()) {
-    for (const match of line.matchAll(INLINE_LINK)) {
-      const target = match[1].replace(/^<|>$/g, '');
-      if (!target || EXTERNAL.test(target)) continue;
-      checked += 1;
-      const reason = brokenReason(file, target);
-      if (reason) broken.push({ line: index + 1, target, reason });
-    }
+  const prose = proseLines(readText(file)).join('\n');
+  for (const match of prose.matchAll(INLINE_LINK)) {
+    const target = match[1].replace(/^<|>$/g, '');
+    if (!target || EXTERNAL.test(target)) continue;
+    checked += 1;
+    const reason = brokenReason(file, target);
+    const line = prose.slice(0, match.index).split('\n').length;
+    if (reason) broken.push({ line, target, reason });
   }
   return { checked, broken };
 }
@@ -167,7 +170,9 @@ function canaryProblem() {
       [
         '[valid](target.md#canary-target)',
         '[missing anchor](target.md#no-such-heading)',
-        '[missing file](no-such-file.md)',
+        // Wrapped across two lines, as hard-wrapped prose wraps a link.
+        '[missing',
+        'file](no-such-file.md)',
         '',
       ].join('\n'),
     );
