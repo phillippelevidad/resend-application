@@ -29,8 +29,48 @@ const REFERENCE_DEFINITION = /^ {0,3}\[(?!\^)(?:[^[\]]|\\[[\]])+\]:[ \t]*(<[^>]*
 // An HTML link or image, which Markdown passes through: <a href="…"> and <img src="…">.
 const HTML_LINK = /<(?:a|img)\b[^>]*?\s(?:href|src)\s*=\s*["']([^"']*)["']/gi;
 const EXPLICIT_ID = /<[^>]*?\b(?:id|name)\s*=\s*["']([^"']+)["']/gi;
+// Block starts that end the paragraph before them, so no code span crosses them: an ATX heading or
+// a table row is a block of its own line; a list item opens a block that may wrap.
+const ONE_LINE_BLOCK = /^ {0,3}(?:#{1,6}(?:\s|$)|\|)/;
+const LIST_ITEM = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:\s|$)/;
+const QUOTE_MARKERS = /^(?: {0,3}> ?)+/;
 
-/** Each line with code blanked out: fenced blocks entirely, inline code spans by equal runs. */
+/**
+ * `text` with every code span blanked to spaces, newlines kept (CommonMark): a run of n backticks
+ * opens a span, the next run of exactly n closes it, and a run never closed is literal text. A
+ * backslash escapes a backtick outside a span only.
+ */
+function blankCodeSpans(text) {
+  let result = '';
+  let at = 0;
+  while (at < text.length) {
+    if (text[at] === '\\') {
+      result += text.slice(at, at + 2);
+      at += 2;
+      continue;
+    }
+    if (text[at] !== '`') {
+      result += text[at];
+      at += 1;
+      continue;
+    }
+    let end = at;
+    while (text[end] === '`') end += 1;
+    const closer = new RegExp(`(?<!\`)\`{${end - at}}(?!\`)`, 'g');
+    closer.lastIndex = end;
+    const close = closer.exec(text);
+    const stop = close ? close.index + close[0].length : end;
+    result += close ? text.slice(at, stop).replace(/[^\n]/g, ' ') : text.slice(at, stop);
+    at = stop;
+  }
+  return result;
+}
+
+/**
+ * Each line with code blanked out: fenced blocks entirely, then code spans paragraph by paragraph.
+ * A span may wrap across lines, but never past a blank line or a block start, so a stray backtick
+ * cannot pair with one in a later paragraph and hide the links between.
+ */
 function proseLines(text) {
   const lines = text.split(/\r?\n/);
   const out = [];
@@ -49,8 +89,33 @@ function proseLines(text) {
       out.push('');
       continue;
     }
-    out.push(line.replace(/(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g, (span) => ' '.repeat(span.length)));
+    out.push(line);
   }
+  let block = [];
+  let quoted = false;
+  const flush = () => {
+    const blanked = blankCodeSpans(block.map((index) => out[index]).join('\n')).split('\n');
+    for (const [offset, index] of block.entries()) out[index] = blanked[offset];
+    block = [];
+  };
+  for (const [index, line] of out.entries()) {
+    const markers = QUOTE_MARKERS.exec(line);
+    const content = markers ? line.slice(markers[0].length) : line;
+    const blank = !content.trim();
+    if (
+      blank ||
+      Boolean(markers) !== quoted ||
+      LIST_ITEM.test(content) ||
+      ONE_LINE_BLOCK.test(content)
+    ) {
+      flush();
+    }
+    quoted = Boolean(markers);
+    if (blank) continue;
+    block.push(index);
+    if (ONE_LINE_BLOCK.test(content)) flush();
+  }
+  flush();
   return out;
 }
 
@@ -179,10 +244,19 @@ function canaryProblem() {
       probe,
       [
         '[valid](target.md#canary-target)',
-        '[missing anchor](target.md#no-such-heading)',
+        '',
+        // A stray backtick must not pair with the next paragraph's and hide the link there.
+        'A stray ` tick.',
+        '',
+        '[missing anchor](target.md#no-such-heading) before `code`.',
+        '',
         // Wrapped across two lines, as hard-wrapped prose wraps a link.
         '[missing',
         'file](no-such-file.md)',
+        '',
+        // A code span wrapped across two lines holds no link.
+        'Not a link: `[x](',
+        'no-such-file.md)`.',
         '',
       ].join('\n'),
     );
