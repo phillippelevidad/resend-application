@@ -487,6 +487,7 @@ Every reliability claim, and the test that carries it (PP §20):
 | Masks idempotent, length-preserving, no digit, ≤ 3 revealed, no `\p{Cc}` (`address-masking`) | `mask-text.prop.test.ts`, `mask-address.prop.test.ts`, `mask-from.prop.test.ts`; ratified examples in `normalize-address.test.ts` and each mask's unit cases | property, unit |
 | Core boundary; override scoping (`core-import-boundary`) | `import-boundaries.test.ts` | unit |
 | Sim determinism, knobs, masks-only stdout, bad flags (`simulator`) | `sim/src/main.e2e.test.ts` | e2e |
+| The knobs reorder and repeat what is projected (`simulator`) | `sim/src/arrange-events.test.ts` | unit |
 | Secret scan catches each rule and the repo is clean (`verify-gate`) | the `secrets` stage's canary and repo scan, every run | gate |
 | Link check catches missing anchor and file (`verify-gate`) | the `links` stage's canary, every run | gate |
 
