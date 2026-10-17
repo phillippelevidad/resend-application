@@ -18,6 +18,9 @@ const copiedConfig = [
   'packages/core/package.json',
   'packages/shared/package.json',
   'packages/aws/package.json',
+  'packages/worker/package.json',
+  'packages/resend-client/package.json',
+  'packages/ingest/package.json',
 ];
 
 const restrictedImportRule = 'lint/style/noRestrictedImports';
@@ -105,10 +108,33 @@ const awsDeepImport: Fixture = {
   specifier: '@ledger/db/src/x.ts',
 };
 
+// The base list (ADR-012): resend and its subpaths, and Resend's npm scope, are rejected in every
+// package but resend-client and ingest. packages/worker stands for the base list, packages/aws for
+// an override that replaces it and so must restate the ban.
+const resendBannedOutsideClient: readonly Fixture[] = [
+  ...['resend', 'resend/build/src/index.js', '@resend/webhooks'].map(fixtureIn('packages/worker')),
+  ...['resend', 'resend/build/src/index.js'].map(fixtureIn('packages/aws')),
+];
+
+const resendAllowed: readonly Fixture[] = [
+  ...['resend', 'resend/build/src/index.js'].map(fixtureIn('packages/resend-client')),
+  fixtureIn('packages/ingest')('resend'),
+];
+
+// The base list's AWS ban holds in worker, and the resend-client and ingest override restates it.
+const awsSdkBannedOutsideAws: readonly Fixture[] = [
+  'packages/worker',
+  'packages/resend-client',
+  'packages/ingest',
+].map((folder) => fixtureIn(folder)('@aws-sdk/client-sqs'));
+
 const fixtures: readonly Fixture[] = [
   ...bannedInCore,
   ...allowedInCore,
   ...bannedInShared,
+  ...resendBannedOutsideClient,
+  ...resendAllowed,
+  ...awsSdkBannedOutsideAws,
   awsImportsAwsSdk,
   awsDeepImport,
 ];
@@ -190,4 +216,29 @@ describe('biome.json override scoping', () => {
   it('a deep @ledger/db import in packages/aws still raises noRestrictedImports, because the override restates that pattern', () => {
     expect(restrictedImportCount(awsDeepImport)).toBe(1);
   });
+});
+
+describe('resend import boundary (ADR-012)', () => {
+  it.each(resendBannedOutsideClient)(
+    'importing $specifier at $path raises noRestrictedImports, so only resend-client calls Resend',
+    (fixture) => {
+      expect(restrictedImportCount(fixture)).toBe(1);
+    },
+  );
+
+  it.each(resendAllowed)(
+    'importing $specifier at $path raises no restricted-import error, because its override exempts it',
+    (fixture) => {
+      expect(restrictedImportCount(fixture)).toBe(0);
+    },
+  );
+});
+
+describe('@aws-sdk import boundary (ADR-013)', () => {
+  it.each(awsSdkBannedOutsideAws)(
+    'importing $specifier at $path raises noRestrictedImports, so only packages/aws imports the AWS SDK',
+    (fixture) => {
+      expect(restrictedImportCount(fixture)).toBe(1);
+    },
+  );
 });

@@ -359,8 +359,9 @@ the properties and for `sim` (the simulator would stop checking the model the pr
 
 `packages/core/src/import-boundaries.test.ts` (unit tier):
 
-1. Copies `biome.json`, `packages/core/package.json` and `packages/aws/package.json` into a temp
-   directory under `os.tmpdir()`, at the same relative paths.
+1. Copies `biome.json` and the `package.json` of each package a fixture sits in (`core`, `shared`,
+   `aws`, `worker`, `resend-client`, `ingest`) into a temp directory under `os.tmpdir()`, at the
+   same relative paths.
 2. Writes one fixture file per case.
 3. Runs Biome from there: the running `node` binary on the repo's
    `node_modules/@biomejs/biome/bin/biome`, with `lint --vcs-enabled=false --reporter=json`. Not
@@ -389,6 +390,12 @@ this test runs the same binary and the same committed `biome.json` the lint stag
 If Biome stops linting from the temp directory, apply stops and reports. No fallback is invented.
 
 ### D18 — `secrets` stage
+
+The enforced ban is wider than these cases: the AWS, Postgres and Resend package families, subpaths
+included, listed in [pp-general → Lint enforcement](../../../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome),
+in `packages/core` and `packages/shared`, with one fixture per pattern. The test also pins the
+`resend` ban (root, subpaths, `@resend/**`) in `packages/worker` and `packages/aws`, its exemption
+in `packages/resend-client` and `packages/ingest`, and the `@aws-sdk/*` ban in those three.
 
 `scripts/secret-scan.mjs` uses Node built-ins only, spawns `docker` and `git` with argument arrays
 (no shell), and runs after `docker`. Image:
@@ -457,7 +464,8 @@ different command from the local one).
 missing anchor in it and one link to a missing file. It must report exactly one `missing anchor`
 and one `missing file`. The check:
 
-- extracts inline links and images;
+- extracts inline links and images, reference definitions, and HTML `<a href>` / `<img src>`,
+  outside fenced code blocks and inline code spans;
 - skips `http(s):` and `mailto:`;
 - resolves each path from the file that holds it, to an existing file or directory;
 - matches each anchor against GitHub-style heading slugs (lowercase, drop characters other than

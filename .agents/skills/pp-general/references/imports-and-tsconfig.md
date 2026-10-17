@@ -126,18 +126,22 @@ The installed compiler is TypeScript 7.0.2 (the native compiler; root `devDepend
 
 ## Lint enforcement (Biome)
 
-A ban without enforcement drifts. These are configured in `biome.json` (Biome 2.5.15). The
-`packages/core` and `packages/shared` bans and the `packages/aws` override are pinned by
+A ban without enforcement drifts. These are configured in `biome.json` (Biome 2.5.15): a base
+list, and three folder overrides (`packages/core` with `packages/shared`, `packages/aws`, and
+`packages/resend-client` with `packages/ingest`). `packages/worker` and every other folder get the
+base list. Each list is pinned by
 [`packages/core/src/import-boundaries.test.ts`](../../../../packages/core/src/import-boundaries.test.ts),
 which runs the installed Biome with the committed `biome.json` over deliberate-violation fixtures in
-a temp directory (unit tier). The worker and ingest bans were observed to fire by hand with
-throwaway violating files. Check a rule name against the installed version before changing it ([version rule](../SKILL.md#check-the-installed-version-not-memory)).
+a temp directory (unit tier): the core and shared bans; in `packages/worker` (the base list),
+`resend`, its subpaths, `@resend/**` and `@aws-sdk/*` raise the rule; in `packages/aws`, `resend`
+and its subpaths still raise it; in `packages/resend-client` and `packages/ingest`, `resend`
+raises nothing and `@aws-sdk/*` still raises it. Check a rule name against the installed version before changing it ([version rule](../SKILL.md#check-the-installed-version-not-memory)).
 
 | Ban | Biome rule |
 | --- | --- |
 | Any AWS, Postgres or Resend package, root or subpath, in `packages/core` and `packages/shared`. AWS: `@aws-*/**`, `@aws/**`, `@smithy/**`, `aws-*`, `aws4*`, `amazon-*`. Postgres: `pg`, `pg-*`, `postgres`, `postgres-*`, `drizzle-*`, `@neondatabase/**`, `@vercel/postgres`, `@electric-sql/pglite`, `@databases/pg`, `@testcontainers/postgresql`, `@supabase/**`, `prisma`, `@prisma/**`, `kysely`, `knex`, `slonik`, `sequelize`, `typeorm`, `@mikro-orm/**`. Resend: `resend`, `@resend/**`, `react-email`, `@react-email/**`. Each unscoped name is banned with its `/**` subpaths; one fixture per pattern in `import-boundaries.test.ts` | [`style/noRestrictedImports`](https://biomejs.dev/linter/rules/no-restricted-imports/), `patterns` (since v2.2.0). A `group` glob matches the specifier exactly: `pg` does not cover `pg/lib/client`, so each name carries its `/**` twin (probed, 2.5.15) |
 | `@aws-sdk/*` anywhere but `packages/aws` | same rule |
-| `resend` anywhere but `packages/resend-client` and `packages/ingest` (ingest: `webhooks.verify` only, ADR-009) | same rule |
+| `resend`, its subpaths (`resend/**`) and Resend's npm scope (`@resend/**`) anywhere but `packages/resend-client` and `packages/ingest` (ingest: `webhooks.verify` only, ADR-009) | same rule, `patterns` |
 | A deep import `@ledger/*/…` other than `/testing` | same rule, `patterns` |
 | A relative path leaving the package | Not configured in Biome; carried by [review grep 10](boundaries.md#review-greps) |
 | An undeclared package import | [`correctness/noUndeclaredDependencies`](https://biomejs.dev/linter/rules/no-undeclared-dependencies/): checks the closest `package.json` only, which is the per-package check wanted |
@@ -147,8 +151,8 @@ throwaway violating files. Check a rule name against the installed version befor
 None of these is in Biome's recommended set, so each is enabled explicitly. A folder-scoped
 `noRestrictedImports` entry in Biome `overrides` replaces the base ban list rather than merging
 with it, so `biome.json` repeats each folder's full list (the deep-import pattern included):
-`import-boundaries.test.ts` pins it (in `packages/aws`, `@aws-sdk/client-sqs` raises nothing and a
-deep `@ledger/db/src/x.ts` import still raises the rule). Where Biome does not carry a ban, the
+`import-boundaries.test.ts` pins it (in `packages/aws`, `@aws-sdk/client-sqs` raises nothing while a
+deep `@ledger/db/src/x.ts` import and `resend` still raise the rule). Where Biome does not carry a ban, the
 [review greps](boundaries.md#review-greps) do.
 
 ## Engines

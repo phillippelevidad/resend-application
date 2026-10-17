@@ -49,10 +49,11 @@
         "noRestrictedImports": {
           "level": "error",
           "options": {
-            "paths": {
-              "resend": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
-            },
             "patterns": [
+              {
+                "group": ["resend", "resend/**", "@resend/**"],
+                "message": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
+              },
               {
                 "group": ["@aws-sdk/*", "@aws-sdk/**"],
                 "message": "Only packages/aws may import @aws-sdk/* (ADR-013)."
@@ -160,10 +161,11 @@
             "noRestrictedImports": {
               "level": "error",
               "options": {
-                "paths": {
-                  "resend": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
-                },
                 "patterns": [
+                  {
+                    "group": ["resend", "resend/**", "@resend/**"],
+                    "message": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
+                  },
                   {
                     "group": ["@ledger/*/**", "!@ledger/*/testing"],
                     "message": "Import a workspace package by its name only; the one allowed subpath is /testing."

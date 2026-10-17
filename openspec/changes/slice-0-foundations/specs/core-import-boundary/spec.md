@@ -9,7 +9,7 @@ proves it on every run.
 ## ADDED Requirements
 
 ### Requirement: Core rejects infrastructure imports
-The lint configuration the lint stage runs SHALL report a restricted-import error for any import in `packages/core` of `pg`, `drizzle-orm` or a `drizzle-orm/*` subpath, `resend`, or any `@aws-sdk/*` package (ADR-013).
+The lint configuration the lint stage runs SHALL report a restricted-import error for any import in `packages/core` of `pg`, `drizzle-orm` or a `drizzle-orm/*` subpath, `resend`, or any `@aws-sdk/*` package (ADR-013). These are the minimum: the enforced ban is the wider AWS, Postgres and Resend family list, subpaths included, in pp-general → Lint enforcement (`.agents/skills/pp-general/references/imports-and-tsconfig.md`), pinned by `packages/core/src/import-boundaries.test.ts`.
 
 #### Scenario: Each banned import
 - **WHEN** a file under `packages/core/src/` imports `pg`, `drizzle-orm`, `drizzle-orm/pg-core`, `resend` or `@aws-sdk/client-sqs`
