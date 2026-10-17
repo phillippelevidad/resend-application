@@ -39,11 +39,11 @@ type Step = {
 export const baseInstant = Date.parse('2026-10-16T12:00:00.000Z');
 
 // RS-34: Resend's test addresses only.
-const testLocalParts = ['delivered', 'bounced', 'complained', 'suppressed'] as const;
+export const testLocalParts = ['delivered', 'bounced', 'complained', 'suppressed'] as const;
 
 // C0, DEL and C1 (data-modeling → PII & retention), none of which `trim()` removes, so a control
 // character changes the mask but never the recipient key.
-const controlCharacters = ['\u0007', '\u001b', '\u007f', '\u009b'] as const;
+export const controlCharacters = ['\u0007', '\u001b', '\u007f', '\u009b'] as const;
 
 // RS-28, RS-35, RS-U12: the documented values, the example's `Temporary`, any string, and none.
 // `Permanent` is weighted up, so a `Permanent` and a soft bounce often meet on one recipient (D5).
@@ -123,7 +123,7 @@ function recipientPool(namespace: string, emailIndex: number, min: number, max: 
 
 // The same recipient as Resend might spell it: case and surrounding whitespace vary, the key
 // (`normalizeAddress`) does not.
-function spelling(address: string) {
+export function spelling(address: string) {
   return fc.constantFrom(address, address.toUpperCase(), ` ${address}\t`);
 }
 

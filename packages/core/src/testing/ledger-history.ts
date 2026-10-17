@@ -2,7 +2,16 @@ import fc from 'fast-check';
 import type { EmailEventType } from '../email-event-types.ts';
 import type { LedgerEvent } from '../ledger-event.ts';
 import { normalizeAddress } from '../normalize-address.ts';
-import { baseInstant, type EmailHistory, emailHistory } from './email-history.ts';
+// The test local parts (RS-34), control characters and spellings are `emailHistory`'s own, so the
+// two generators cannot drift apart.
+import {
+  baseInstant,
+  controlCharacters,
+  type EmailHistory,
+  emailHistory,
+  spelling,
+  testLocalParts,
+} from './email-history.ts';
 
 // D15: a multi-email ledger, the input of `projectRecipient` and of `pnpm sim`. Built on
 // `emailHistory`, so it inherits every world that generator covers (RS-U10, RS-U11, RS-U12, RS-U19,
@@ -18,12 +27,6 @@ export type LedgerHistoryOptions = {
 export type LedgerHistory = {
   emails: EmailHistory[];
 };
-
-// RS-34: Resend's test addresses only.
-const testLocalParts = ['delivered', 'bounced', 'complained', 'suppressed'] as const;
-
-// C0, DEL and C1, as in `emailHistory`: they change the mask, never the recipient key.
-const controlCharacters = ['\u0007', '\u001b', '\u007f', '\u009b'] as const;
 
 // The `created_at` pool `emailHistory` draws from by default, so instants tie across emails too and
 // `projectRecipient`'s `(at, rank, svix_id)` tie-breaks run.
@@ -53,11 +56,6 @@ function sharedPool(namespace: string) {
         return `${local}${control ?? ''}${tag}@resend.dev`;
       }),
     );
-}
-
-// The same recipient as Resend might spell it; the key (`normalizeAddress`) does not vary.
-function spelling(address: string) {
-  return fc.constantFrom(address, address.toUpperCase(), ` ${address}\t`);
 }
 
 function pairEvent(
