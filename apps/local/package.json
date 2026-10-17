@@ -6,7 +6,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "node --watch --env-file-if-exists=../../.env.local src/main.ts",
-    "start": "node --env-file-if-exists=../../.env.local src/main.ts"
+    "start": "node --env-file-if-exists=../../.env.local src/main.ts",
+    "setup": "node --env-file-if-exists=../../.env.local src/setup/main.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",

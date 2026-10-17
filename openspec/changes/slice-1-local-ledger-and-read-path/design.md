@@ -410,7 +410,7 @@ local credential for no evidence (lens clause 2).
 
 ### D31 — `pnpm db:setup`
 
-`pnpm --filter @ledger/app-local setup` → `node --env-file-if-exists=../../.env.local src/setup/main.ts`:
+`pnpm --filter @ledger/app-local run setup` (`run` is required: `setup` is a pnpm built-in) → `node --env-file-if-exists=../../.env.local src/setup/main.ts`:
 (1) read `.env.local` (created if missing) and, for each of `DATABASE_URL` (compose,
 `127.0.0.1:55432`), `LEDGER_ADDRESS_HASH_KEY` (32 random bytes, lowercase hex),
 `LEDGER_SIMULATOR_SECRET` (`whsec_` + base64 of 32 random bytes), `LEDGER_URL`

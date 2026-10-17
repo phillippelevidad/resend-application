@@ -19,6 +19,7 @@
     "dev:stop": "node scripts/dev-stop.mjs",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose stop postgres",
+    "db:setup": "pnpm --filter @ledger/app-local run setup",
     "db:generate": "pnpm --filter @ledger/db exec drizzle-kit generate",
     "synth": "pnpm --filter @ledger/infra synth",
     "sim": "node --env-file-if-exists=.env.local sim/src/main.ts"
