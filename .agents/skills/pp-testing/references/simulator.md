@@ -68,8 +68,10 @@ its `svix_id`, and `+label`
 - **Everything generated derives from the seed** (ids also from the namespace): the history, its
   ids, the duplicates and the shuffle, drawn from the shared arbitraries with `fc.sample(arbitrary, { seed, numRuns })`
   (`sample` takes fast-check's `Parameters`,
-  [fast-check → Runners](https://fast-check.dev/docs/core-blocks/runners/)). Never `Math.random`,
-  `Date.now` or `randomUUID` in generated data.
+  [fast-check → Runners](https://fast-check.dev/docs/core-blocks/runners/)). Each `fc.sample` call
+  restarts the generator from its seed, so every draw after the history takes its own seed derived
+  from the run's (`sim/src/derive-seed.ts`); two draws on one seed read one stream and come out
+  correlated. Never `Math.random`, `Date.now` or `randomUUID` in generated data.
 - **The slice 0 evidence is determinism itself:** `pnpm sim` prints the projection of a generated,
   shuffled history, identical for a fixed seed and namespace
   ([slice 0](../../../../.ai/build-checklist.md#0--foundations)).

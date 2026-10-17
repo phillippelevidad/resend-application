@@ -320,8 +320,11 @@ make `--duplicates 0.3` repeat at least one event.
   values.
 - **Generation:** the history is `fc.sample(ledgerHistory({ namespace }), { seed, numRuns: 1 })[0]`.
   Duplicates repeat a seeded `⌊r·n⌋` of its `n` events. The shuffle is a seeded permutation drawn by
-  `fc.sample` from the same seed. The projection is `projectEmail` per email, then
-  `projectRecipient` per recipient key.
+  `fc.sample`. Each `fc.sample` call restarts the generator from its seed, so the duplicates and the
+  shuffle each draw on their own seed, derived from the run's seed (splitmix32), not on the run's
+  seed itself: on it they would read the stream that built the history and come out correlated with
+  it and with each other. The projection is `projectEmail` per email, then `projectRecipient` per
+  recipient key.
 - **Output** (stdout, `\n`-terminated), exit `0`:
   - line 1: `sim seed=<seed> namespace=<namespace>`;
   - line 2: `history emails=<m> events=<n> duplicates=<d> shuffled=<true|false>`, where `n` counts
@@ -334,10 +337,12 @@ make `--duplicates 0.3` repeat at least one event.
 The JSON block is identical with or without `--shuffle` / `--duplicates` for one seed and namespace:
 order independence, shown at the terminal.
 
-**As built:** `sim/src/main.ts` is the entry point and composes four one-export modules
+**As built:** `sim/src/main.ts` is the entry point and composes five one-export modules
 (pp-general → coding-standards): `read-sim-flags.ts` (`readSimFlags`, the flags and their
 `sim: <flag> <reason>` errors), `sample-once.ts` (`sampleOnce`, one seeded `fc.sample` draw),
-`arrange-events.ts` (`arrangeEvents`, the seeded duplicates and permutation) and
+`derive-seed.ts` (`deriveSeed`, a draw's own seed from the run's seed), `arrange-events.ts`
+(`arrangeEvents`, the seeded duplicates and permutation; their independence is
+`arrange-events.test.ts`) and
 `project-ledger.ts` (`projectLedger`, the per-email and per-recipient projection, masks only).
 
 `sim` declares `"@ledger/core": "workspace:*"` under `dependencies`, because `main.ts` imports it at
