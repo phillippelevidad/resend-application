@@ -426,11 +426,13 @@ id = "postgres-url"
 regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#]+'''
 [[rules.allowlists]]
 regexTarget = "match"
-regexes = ['''@(?:localhost|127\.0\.0\.1)''']
+regexes = ['''@(?:localhost|127\.0\.0\.1)$''']
 ```
 
 Each rule also carries a `description`. The allowlist covers the compose and Testcontainers
-throwaway credentials.
+throwaway credentials. It is anchored at the end of the match, which stops before any `:port` or
+`/db`: unanchored, it also allowlisted a real host that merely starts with `localhost.` or
+`127.0.0.1.` (probed in `wf-after-apply-check`, 2026-10-17).
 
 **Authority:** Ships 3; [architecture.md → Technology](../../../.ai/architecture.md#technology)
 (secret scan); [about.md → Risk appetite](../../../.ai/about.md#risk-appetite).
