@@ -1,4 +1,5 @@
 import {
+  compareCodeUnits,
   type EmailRecipientState,
   type EmailState,
   projectEmail,
@@ -39,11 +40,6 @@ export type StoredLedger = {
 export type Invariant2Result =
   | { pass: true; emails: number; recipients: number; line: string }
   | { pass: false; emailIds: string[]; line: string };
-
-// By code unit, so the fail line's order never depends on a locale.
-function compareCodeUnits(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
 // D37: the ground truth projected as the ledger would, every email and every recipient it names.
 // A duplicate adds no truth, so the history's distinct events are the whole input.

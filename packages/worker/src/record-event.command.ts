@@ -1,4 +1,5 @@
 import {
+  compareCodeUnits,
   type EmailRecipientState,
   ingestEnvelopeSchema,
   maskAddress,
@@ -34,9 +35,6 @@ export type RecordEventInput = { body: string };
 export type RecordEventOutcome = 'projected' | 'duplicate' | 'unprojectable';
 
 type ProjectableRow = Extract<LedgerRow, { projectable: true }>;
-
-// ADR-004 orders recipient rows by `address_hash`, compared by code unit, never by a locale.
-const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 const toRecipientState = (row: EmailRecipientRow): EmailRecipientState => ({
   emailId: row.emailId,

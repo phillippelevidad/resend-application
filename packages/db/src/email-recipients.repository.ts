@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '@ledger/core';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Executor, Transaction } from './executor.ts';
 import {
@@ -15,10 +16,6 @@ export type EmailRecipientValues = Omit<
 // ADR-004 orders recipient rows by `address_hash`, compared by code unit. `COLLATE "C"` makes
 // Postgres order them the same way whatever the database's default collation.
 const byAddressHash = sql`${emailRecipients.addressHash} collate "C"`;
-
-function compareCodeUnits(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
 export const emailRecipientsRepository = {
   // C9: under the email lock, each row is inserted if absent, then locked by `lockRows`. Inserted

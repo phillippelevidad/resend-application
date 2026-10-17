@@ -1,5 +1,6 @@
 // @ledger/core: event types, projectEmail, projectRecipient, reaction rules. Pure, no I/O (ADR-013).
 // The package's one public surface. Test arbitraries are not here: they ship through `./testing`.
+export { compareCodeUnits } from './compare-code-units.ts';
 export { type Deliverability, deliverabilitySchema } from './deliverability.schema.ts';
 export { type EmailEvent, emailEventSchema } from './email-event.schema.ts';
 export { type EmailEventType, emailEventTypes } from './email-event-types.ts';
