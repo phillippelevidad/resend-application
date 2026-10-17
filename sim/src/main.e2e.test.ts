@@ -152,6 +152,10 @@ describe('pnpm sim (sim/src/main.ts)', () => {
         expect(stdout).not.toContain(escaped.slice(1, -1));
       }
     }
+    // A raw local part over a masked domain is a partial leak the whole-value checks above miss.
+    // Every `+label` holds the namespace, and a masked local part reveals at most 3 characters.
+    expect(pii.some(({ value }) => value.includes('+walk-'))).toBe(true);
+    expect(stdout.toLowerCase()).not.toContain('+walk-');
   });
 
   it.each([
