@@ -140,7 +140,8 @@ command and the Testcontainers harness follow the same order
   ([integrations.md → \[Unverified\]](../../../../.ai/integrations.md#unverified)). Evidence: an
   integration test where an idle transaction holds a lock and the worker still commits (slice 2).
 - An identity column's sequence needs no separate grant for `INSERT` (`[Unverified]`, unlike
-  `serial`); the harness inserting as the runtime role proves it in slice 1.
+  `serial`); the harness inserting as the runtime role proves it in slice 2, whose `api_tokens` is
+  the first identity column.
 - Evidence: the integration test where the runtime role gets `permission denied` on
   `DELETE FROM webhook_events` and on `CREATE TABLE` (slice 2,
   [build-checklist](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws)).
