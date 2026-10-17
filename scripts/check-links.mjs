@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The `links` stage of `pnpm verify` (design D19): every relative link and image in a Markdown
-// file must resolve to an existing file or directory, and every `#anchor` to a heading slug or an
-// explicit `id`/`name` in its target.
+// file (inline, reference definition, or HTML `<a href>` / `<img src>`) must resolve to an existing
+// file or directory, and every `#anchor` to a heading slug or an explicit `id`/`name` in its target.
 //
 //   node scripts/check-links.mjs              checks README.md
 //   node scripts/check-links.mjs <file> …     checks the named files instead
@@ -23,6 +23,11 @@ const LINE_ANCHOR = /^L\d+(?:C\d+)?(?:-L\d+(?:C\d+)?)?$/;
 // brackets (an image inside a link); the destination is <…> or a run without spaces.
 const INLINE_LINK =
   /!?\[(?:[^[\]]|\[[^[\]]*\])*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
+// A reference definition, `[label]: dest`, the target of every `[text][label]` link. A footnote
+// (`[^1]: note`) is not one.
+const REFERENCE_DEFINITION = /^ {0,3}\[(?!\^)(?:[^[\]]|\\[[\]])+\]:[ \t]*(<[^>]*>|\S+)/gm;
+// An HTML link or image, which Markdown passes through: <a href="…"> and <img src="…">.
+const HTML_LINK = /<(?:a|img)\b[^>]*?\s(?:href|src)\s*=\s*["']([^"']*)["']/gi;
 const EXPLICIT_ID = /<[^>]*?\b(?:id|name)\s*=\s*["']([^"']+)["']/gi;
 
 /** Each line with code blanked out: fenced blocks entirely, inline code spans by equal runs. */
@@ -148,7 +153,12 @@ function checkFile(file) {
   const broken = [];
   let checked = 0;
   const prose = proseLines(readText(file)).join('\n');
-  for (const match of prose.matchAll(INLINE_LINK)) {
+  const matches = [
+    ...prose.matchAll(INLINE_LINK),
+    ...prose.matchAll(REFERENCE_DEFINITION),
+    ...prose.matchAll(HTML_LINK),
+  ].sort((a, b) => a.index - b.index);
+  for (const match of matches) {
     const target = match[1].replace(/^<|>$/g, '');
     if (!target || EXTERNAL.test(target)) continue;
     checked += 1;
