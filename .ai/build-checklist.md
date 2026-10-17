@@ -64,7 +64,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 0 — Foundations
 
-- **Status:** `[~]`
+- **Status:** `[x]`
 - **Goal:** A monorepo where the projection logic is proven by property tests, the simulator generates histories, and CI gates every push.
 - **Depends on:** — (foundational).
 - **Refs:** [ADR-003](architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [resend.md → Event types and payloads](resend.md#event-types-and-payloads-rs-25rs-30) · [features.md → Ledger & projections](features.md#ledger--projections) · [features.md → discover](features.md#adopter-lifecycle)

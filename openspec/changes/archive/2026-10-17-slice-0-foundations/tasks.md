@@ -1,10 +1,10 @@
 # Tasks — slice 0: Foundations
 
 Each `D<n>` below is a decision in [design.md](design.md), which carries what to build; the
-pre-proposal ([2026-10-16-slice-0-foundations.md](../../../.ai/pre-proposals/2026-10-16-slice-0-foundations.md),
+pre-proposal ([2026-10-16-slice-0-foundations.md](../../../../.ai/pre-proposals/2026-10-16-slice-0-foundations.md),
 *PP*) keeps its authority trail. Load `pp-workflow`, `pp-general`, `pp-backend` (core) and
 `pp-testing` before code. Every group ends with `pnpm check` exiting 0, then a commit staged by path
-and pushed ([root AGENTS.md → Commit and push as you go](../../../AGENTS.md#commit-and-push-as-you-go)).
+and pushed ([root AGENTS.md → Commit and push as you go](../../../../AGENTS.md#commit-and-push-as-you-go)).
 A group that touches an e2e test also runs `pnpm test:e2e`. Each group also lands the doc updates
 and `Ships` ticks its own evidence triggers. A doc task's check is that every link it adds resolves
 to a file that exists in the same commit.

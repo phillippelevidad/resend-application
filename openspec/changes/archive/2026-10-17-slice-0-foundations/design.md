@@ -3,7 +3,7 @@
 ## Context
 
 See [proposal.md → Why](proposal.md#why). The pre-proposal
-[2026-10-16-slice-0-foundations.md](../../../.ai/pre-proposals/2026-10-16-slice-0-foundations.md)
+[2026-10-16-slice-0-foundations.md](../../../../.ai/pre-proposals/2026-10-16-slice-0-foundations.md)
 (*PP*) is decision-complete and checked. Each decision below keeps its PP number (D1–D21) and
 carries everything `opsx:apply` needs to build it; the PP keeps the full authority trail and the
 contradictions C1–C10. This design adds no decision the PP did not settle.
@@ -125,7 +125,7 @@ checked 2026-10-16), for the ten outbound types plus `received`. Save each as
 in resend.md, never absorbed (C1).
 
 **Authority:** ADR-003 ("Event-specific payload objects are optional in the Zod schemas");
-[resend.md → Event types and payloads](../../../.ai/resend.md#event-types-and-payloads-rs-25rs-30);
+[resend.md → Event types and payloads](../../../../.ai/resend.md#event-types-and-payloads-rs-25rs-30);
 C1 for the fixtures.
 **Why:** an over-strict schema skips real events, which is lost state (tie-break: correctness
 first). **Alternative rejected:** a union including a catch-all member for unknown types. It blurs
@@ -180,7 +180,7 @@ error class, and pp-general bans `throw new Error(` in `packages/`).
 
 ### D4 / D5 — Output shapes and the deciding event
 
-`EmailState` (the [`email_state`](../../../.ai/data-modeling.md#email_state--current-state-per-email)
+`EmailState` (the [`email_state`](../../../../.ai/data-modeling.md#email_state--current-state-per-email)
 columns):
 
 - `{ emailId; status: EmailStatus | null; fromMasked: string | null; subjectMasked: string | null; openCount; clickCount; firstOpenedAt: Date | null; firstClickedAt: Date | null; lastEventAt: Date | null; eventCount; recipients: EmailRecipientState[] }`.
@@ -194,7 +194,7 @@ columns):
   `firstClickedAt` and `lastEventAt`, as data-modeling ratifies them. No per-type last timestamp is
   added.
 
-`EmailRecipientState` (the [`email_recipients`](../../../.ai/data-modeling.md#email_recipients--outcome-per-email-and-recipient)
+`EmailRecipientState` (the [`email_recipients`](../../../../.ai/data-modeling.md#email_recipients--outcome-per-email-and-recipient)
 columns plus C3's six signal fields), `recipients` sorted by `recipientKey`:
 
 - `{ emailId; recipientKey; addressMasked; status: EmailStatus | null; statusAt: Date | null; bounceType: string | null; bounceSubType: string | null; stickySignal: StickySignal | null; stickySignalAt: Date | null; stickySignalSvixId: string | null; softSignal: SoftSignal | null; softSignalAt: Date | null; softSignalSvixId: string | null }`.
@@ -249,7 +249,7 @@ signal. `addressMasked` comes from the row with the smallest `emailId`.
 The output does not depend on RS-U12's answer, and a misread costs at most one non-sticky state
 until the next delivery.
 
-**Authority:** [`recipient_state`](../../../.ai/data-modeling.md#recipient_state--deliverability-per-address)
+**Authority:** [`recipient_state`](../../../../.ai/data-modeling.md#recipient_state--deliverability-per-address)
 (sticky set; `soft_bouncing` clears on a later `delivered`; recompute from `email_recipients` rows);
 ADR-003 (hard bounce from `bounce.type = Permanent` only); RS-U12 owed by slice 0.
 **Alternatives rejected:** deriving deliverability from a row's `status`; enumerating soft values
@@ -268,7 +268,7 @@ ADR-003 (hard bounce from `bounce.type = Permanent` only); RS-U12 owed by slice 
   without it; the arbitrary generates both, and the `suppressed` outcome is identical. The test
   cites RS-U19.
 
-**Authority:** ADR-003's **Conditional** clause; [resend.md → Unverified](../../../.ai/resend.md#unverified)
+**Authority:** ADR-003's **Conditional** clause; [resend.md → Unverified](../../../../.ai/resend.md#unverified)
 (each row owed by slice 0 "safe either way"). **Alternative rejected:** settling any of them by a
 live send now (Ask-first, and slice 1 and 4 own the experiments).
 
@@ -292,8 +292,8 @@ live send now (Ask-first, and slice 1 and 4 own the experiments).
   `maskAddress`, and `<` and `>` are kept. Otherwise `maskAddress(f)`. Splitting at the last `<`
   keeps the length, and the second pass splits at the same place, so the mask stays idempotent.
 
-**Authority:** [data-modeling → PII & retention](../../../.ai/data-modeling.md#pii--retention)
-(the mask table and rules) and [Modeling conventions](../../../.ai/data-modeling.md#modeling-conventions-canonical)
+**Authority:** [data-modeling → PII & retention](../../../../.ai/data-modeling.md#pii--retention)
+(the mask table and rules) and [Modeling conventions](../../../../.ai/data-modeling.md#modeling-conventions-canonical)
 (one normalization function in core).
 **Why `*` is a token character:** with `*` as a separator, `del******` re-tokenizes to `del` and
 idempotence fails. Mapping control characters before tokenizing keeps them from acting as
@@ -364,8 +364,8 @@ runtime, and `fast-check` under `devDependencies` as approved. Biome's `noUndecl
 runs with default options, which accept a devDependency import from `sim/src/main.ts` (probed
 2026-10-16).
 
-**Authority:** [pp-testing → properties-and-arbitraries](../../../.agents/skills/pp-testing/references/properties-and-arbitraries.md#what-they-generate)
-and [simulator.md → Seed and determinism](../../../.agents/skills/pp-testing/references/simulator.md#seed-and-determinism),
+**Authority:** [pp-testing → properties-and-arbitraries](../../../../.agents/skills/pp-testing/references/properties-and-arbitraries.md#what-they-generate)
+and [simulator.md → Seed and determinism](../../../../.agents/skills/pp-testing/references/simulator.md#seed-and-determinism),
 which leaves each knob's mechanism to this slice. **Alternative rejected:** separate generators for
 the properties and for `sim` (the simulator would stop checking the model the properties check).
 
@@ -392,12 +392,12 @@ an override's list **replaces** the base list. That is what Biome 2.5.15 reporte
 2026-10-16; the test pins it and settles the about.md bullet.
 
 The enforced ban is wider than these cases: the AWS, Postgres and Resend package families, subpaths
-included, listed in [pp-general → Lint enforcement](../../../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome),
+included, listed in [pp-general → Lint enforcement](../../../../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome),
 in `packages/core` and `packages/shared`, with one fixture per pattern. The test also pins the
 `resend` ban (root, subpaths, `@resend/**`) in `packages/worker` and `packages/aws`, its exemption
 in `packages/resend-client` and `packages/ingest`, and the `@aws-sdk/*` ban in those three.
 
-**Authority:** Ships 7; ADR-013; [about.md → Open questions](../../../.ai/about.md#open-questions)
+**Authority:** Ships 7; ADR-013; [about.md → Open questions](../../../../.ai/about.md#open-questions)
 ("unproven until the deliberate-violation fixture lands"). The bullet says "fails the lint stage":
 this test runs the same binary and the same committed `biome.json` the lint stage runs.
 
@@ -460,8 +460,8 @@ throwaway credentials. It is anchored at the end of the match, which stops befor
 `/db`: unanchored, it also allowlisted a real host that merely starts with `localhost.` or
 `127.0.0.1.` (probed in `wf-after-apply-check`, 2026-10-17).
 
-**Authority:** Ships 3; [architecture.md → Technology](../../../.ai/architecture.md#technology)
-(secret scan); [about.md → Risk appetite](../../../.ai/about.md#risk-appetite).
+**Authority:** Ships 3; [architecture.md → Technology](../../../../.ai/architecture.md#technology)
+(secret scan); [about.md → Risk appetite](../../../../.ai/about.md#risk-appetite).
 
 **Why a mirror clone:** in a worktree `.git` is a file pointing outside any mount, so a mounted
 checkout has no history. A mirror carries every ref and avoids Windows `.git` lock files. **Why the

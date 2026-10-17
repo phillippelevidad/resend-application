@@ -2,19 +2,19 @@
 
 ## Why
 
-Slice 0 is the root of the spine ([build-checklist → 0](../../../.ai/build-checklist.md#0--foundations)).
+Slice 0 is the root of the spine ([build-checklist → 0](../../../../.ai/build-checklist.md#0--foundations)).
 Every later slice builds on its outputs: slice 1's worker commits `projectEmail` / `projectRecipient`
 output under row locks, slice 1's `sim` run checks invariant 2 against those functions, and the read
 API returns the masks. Pure `packages/core` code is the cheapest place to prove them, by property
 tests in milliseconds with no I/O
-([ADR-003](../../../.ai/architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set),
-[ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)). Once a projection reaches a
+([ADR-003](../../../../.ai/architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set),
+[ADR-013](../../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)). Once a projection reaches a
 kept deploy, changing it trips the rebuild deferral
-([Deferred (YAGNI)](../../../.ai/architecture.md#deferred-yagni)). The secret scan must exist before
+([Deferred (YAGNI)](../../../../.ai/architecture.md#deferred-yagni)). The secret scan must exist before
 slice 1 brings the first `.env.local` with `DATABASE_URL` and signing secrets.
 
 The decision-complete brief is the checked pre-proposal
-[2026-10-16-slice-0-foundations.md](../../../.ai/pre-proposals/2026-10-16-slice-0-foundations.md)
+[2026-10-16-slice-0-foundations.md](../../../../.ai/pre-proposals/2026-10-16-slice-0-foundations.md)
 (cited below as *PP*). Every decision it settles (D1–D21, C1–C10) is carried forward unchanged.
 
 ## What Changes
@@ -26,7 +26,7 @@ The card's `Ships` list, verbatim, with the state each bullet is in:
 3. `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` extending the default ruleset (`[extend] useDefault = true`) and adding rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
 4. `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
 5. `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity (for `projectRecipient`, of the sticky states), oracle agreement (ADR-003).
-6. `packages/core` address normalization and mask functions ([PII & retention](../../../.ai/data-modeling.md#pii--retention)); evidence: fast-check properties (masks idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token, no control character) and the two-recipient property (a bounce naming one recipient leaves the other's outcome unchanged).
+6. `packages/core` address normalization and mask functions ([PII & retention](../../../../.ai/data-modeling.md#pii--retention)); evidence: fast-check properties (masks idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token, no control character) and the two-recipient property (a bounce naming one recipient leaves the other's outcome unchanged).
 7. Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage.
 8. `sim` history generator with seed, duplicate and shuffle knobs; `pnpm sim` prints the projection of a generated, shuffled history, identical for a fixed seed and run namespace.
 9. README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
@@ -100,7 +100,7 @@ None.
   `WALKTHROUGH.md` in this folder. None loosens a rule (PP §22): the precedence order is an owner
   ruling, and the others are fact corrections or evidence links.
 
-**Ask-first items** ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions)). Each was
+**Ask-first items** ([root AGENTS.md → Permissions](../../../../AGENTS.md#permissions)). Each was
 approved by the owner on 2026-10-16 in one itemized round (PP §7, approvals table):
 
 | Item | Exact scope approved | PP §7 row |
@@ -112,6 +112,6 @@ approved by the owner on 2026-10-16 in one itemized round (PP §7, approvals tab
 
 `"@ledger/core": "workspace:*"` in `sim`'s `dependencies` is a boundary declaration, not a
 third-party dependency, so it is not Ask-first
-([pp-general → adding-things](../../../.agents/skills/pp-general/references/adding-things.md), owner
+([pp-general → adding-things](../../../../.agents/skills/pp-general/references/adding-things.md), owner
 ruling O-09). Anything outside these rows (another package, another image, a `ci.yml` edit) stops for
 the owner at apply. No migration, public contract, AWS resource or live Resend write is crossed.

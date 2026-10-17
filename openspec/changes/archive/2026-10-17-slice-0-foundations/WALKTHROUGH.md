@@ -28,7 +28,7 @@ gh auth status
 
 ## Path A — `pnpm verify` stage `secrets`: the full history is clean, and the custom rules fire
 
-**Walked as:** [Reviewer](../../../.ai/about.md#target-personas)
+**Walked as:** [Reviewer](../../../../.ai/about.md#target-personas)
 
 1. **Run the secret scan alone.**
 
@@ -52,7 +52,7 @@ gh auth status
 
 ## Path B — `pnpm verify` stage `links`: the README a developer discovers Ledger through holds no broken link
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas)
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas)
 
 1. **Check the README's links.**
 
@@ -105,7 +105,7 @@ gh auth status
 
 ## Path C — `pnpm sim` printing a projection: same seed, same projection, whatever the order
 
-**Walked as:** [Reviewer](../../../.ai/about.md#target-personas)
+**Walked as:** [Reviewer](../../../../.ai/about.md#target-personas)
 
 1. **Run the simulator with a fixed seed and namespace.**
 
@@ -184,7 +184,7 @@ gh auth status
 
 ## Path D — the CI run on a pushed commit: `pnpm verify` green in CI, `secrets` and `links` included
 
-**Walked as:** [Reviewer](../../../.ai/about.md#target-personas)
+**Walked as:** [Reviewer](../../../../.ai/about.md#target-personas)
 
 1. **Read the latest CI run on the branch and the commit it ran on.**
 
@@ -242,5 +242,5 @@ gh auth status
 
 | Not reachable | Carried by |
 | --- | --- |
-| A local `pnpm verify` run, and the unit, property and e2e suites: gates, never walked ([rsa-manual-test hard rule 7](../../../.agents/skills/rsa-manual-test/SKILL.md#hard-rules-must)) | [`wf-after-apply-check`](../../../.agents/skills/wf-after-apply-check/SKILL.md) |
-| `pnpm sim` against a live process, invariants 1 and 2 | [slice 1](../../../.ai/build-checklist.md#1--local-ledger-and-read-path) |
+| A local `pnpm verify` run, and the unit, property and e2e suites: gates, never walked ([rsa-manual-test hard rule 7](../../../../.agents/skills/rsa-manual-test/SKILL.md#hard-rules-must)) | [`wf-after-apply-check`](../../../../.agents/skills/wf-after-apply-check/SKILL.md) |
+| `pnpm sim` against a live process, invariants 1 and 2 | [slice 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path) |
