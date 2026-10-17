@@ -93,8 +93,12 @@ its `svix_id`, and `+label`
   pins it and spawns every run with `LEDGER_URL` removed.
 - **Labels are mandatory in `pnpm sim`:** it always passes `labelEveryAddress: true`, so every
   address carries `+<namespace>-<n>` and the history gains the walk probe `<namespace>-probe`
-  (`delivered+<namespace>@` and `bounced+<namespace>@resend.dev`). `ledgerHistory`'s default stays
-  unlabelled so core's properties keep exercising bare addresses.
+  (`delivered+<namespace>@` and `bounced+<namespace>@resend.dev`) plus one
+  `<namespace>-observed-<local>` email per test address, replaying `testAddressSequences`
+  ([RS-39](../../../../.ai/resend.md#facts)) to `<local>+<namespace>-10@resend.dev`. Those
+  sequences hold event types and bounce type and sub-type only, never an id, timestamp or address
+  captured from a delivery. `ledgerHistory`'s default stays unlabelled so core's properties keep
+  exercising bare addresses.
 - Knobs are the ones the Ships lists name: the seed, `--duplicates <ratio>` and `--shuffle`
   (slices 0–1), `--burst 10000/10s`, `--chaos db-outage` and the poison run (slice 3),
   `--chaos worker-crash:0.05` and `--chaos dispatcher-crash:0.05` (slice 6)

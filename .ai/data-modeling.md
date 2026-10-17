@@ -539,7 +539,10 @@ _Evidence: pending (slice 6)._
   (or a complaint or delivery) on a multi-recipient email list only the impacted recipients? RS-27
   says so, and `email_recipients` is exact under that reading. If the list were complete, no
   projection could pin a bounce to one recipient. Slice 1 MUST settle it with one Ask-first
-  two-recipient send. `[Unverified]`
+  two-recipient send. Observed 2026-10-17: from `onboarding@resend.dev` with no verified domain,
+  Resend kept only the first recipient (a second `to` and a `cc` were dropped), so that send cannot
+  produce a multi-recipient email; it needs a verified sending domain
+  ([about.md → Project domain](about.md#open-questions), owner decision). `[Unverified]`
 
 ## Deferred
 

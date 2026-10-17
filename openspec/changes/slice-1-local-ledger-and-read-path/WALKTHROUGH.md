@@ -39,12 +39,12 @@ pnpm dev:full
   one line and no secret.
 - **This walk creates:** one sim run namespace's ledger and projection rows (A1, reused by A2);
   the file `${TMPDIR:-/tmp}/ledger-walk-a1.out` (A1); for Path D, a temporary Resend webhook per
-  `listen` session, one signing secret in `.env.local`, and three test emails' rows. Teardown
+  `listen` session, one signing secret in `.env.local`, and four test emails' rows. Teardown
   removes the file and the webhooks. Ledger rows are never deleted (the ledger is immutable); every
   sim id carries the run's namespace, so no later run collides with them.
 - **Ask-first steps:** D2 (a `listen` session, which creates a webhook), D3 (owner-run: reads a
-  signing secret), D4 (three test sends), D8 (a second `listen` session), T1 (only if D8 left a
-  webhook behind). Paths A, B and C make no live call.
+  signing secret), D4 (four test sends), D8 (hard-kills the `listen` session), T1 (deletes the
+  webhook D8 left behind). Paths A, B and C make no live call.
 
 ## Path A — `pnpm sim` → local ingest → worker → `ledger email`: the live run passes invariants 1 and 2
 
@@ -66,8 +66,9 @@ pnpm dev:full
      "emails": [
    ```
 
-   then the projection JSON (masks only; the email ids are `<namespace>-email-<i>` plus
-   `<namespace>-probe`), and it ends exactly
+   then the projection JSON (masks only; the email ids are `<namespace>-email-<i>`,
+   `<namespace>-probe` and one `<namespace>-observed-<address>` per test address, replaying
+   [RS-39](../../../.ai/resend.md#facts)'s sequences), and it ends exactly
 
    ```text
    }
@@ -414,8 +415,10 @@ pnpm dev:full
 
 Owner-run or run with the owner's yes in this conversation. Test addresses only
 ([RS-32](../../../.ai/resend.md#facts)). Never paste a signing secret, an API key, a webhook id or
-the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18, RS-U21 and RS-U22
-([resend.md → Unverified](../../../.ai/resend.md#unverified)); record each result there.
+the tunnel URL into a run file: write `<redacted:kind>`. The owner's run of 2026-10-17
+(resend-cli 2.26.0, sends from `onboarding@resend.dev`, no verified domain) settled RS-U15, RS-U18
+and RS-U22 as [RS-39, RS-40 and RS-41](../../../.ai/resend.md#facts), and RS-U14 as RS-42; RS-U21
+stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations below are that run's.
 
 1. **Start a public tunnel to port 4318 (owner-run, the owner's tunnel tool).**
 
@@ -437,7 +440,9 @@ the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18,
 
    Expect: the session stays in the foreground and registers a temporary webhook on the owner's
    Resend account (RS-33). The Resend CLI reference shows no sample output, so the run records the
-   lines it prints, with the webhook id as `<redacted:webhook-id>`. Leave it running until T2.
+   lines it prints, with the webhook id as `<redacted:webhook-id>`. With its stdout piped, the
+   2026-10-17 session printed one JSON line per event, carrying `type`, `payload` and
+   `forwarded.status` (the status local ingest returned). Leave it running until D8.
    **Ask-first:** one `listen` session: creates a temporary webhook on the owner's Resend account.
 
 3. **Load the session's signing secret and restart `apps/local` (owner-run).**
@@ -459,13 +464,16 @@ the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18,
    **Ask-first:** owner-run read of the temporary webhook, because its response carries the
    signing secret (RS-05); no agent runs `resend webhooks get` or `list`.
 
-4. **Send three test emails: one to two recipients, then two single sends.**
+4. **Send four test emails: one to two recipients, then three single sends.**
 
    ```bash
    export "$(grep '^RESEND_API_KEY=' .env.local)"
    curl -s -w '\n%{http_code}\n' -X POST 'https://api.resend.com/emails' \
      -H "Authorization: Bearer $RESEND_API_KEY" -H 'Content-Type: application/json' \
      -d '{"from":"onboarding@resend.dev","to":["delivered@resend.dev","bounced@resend.dev"],"subject":"walk D4 two recipients","html":"<p>walk</p>"}'
+   curl -s -w '\n%{http_code}\n' -X POST 'https://api.resend.com/emails' \
+     -H "Authorization: Bearer $RESEND_API_KEY" -H 'Content-Type: application/json' \
+     -d '{"from":"onboarding@resend.dev","to":["bounced@resend.dev"],"subject":"walk D4 bounced","html":"<p>walk</p>"}'
    curl -s -w '\n%{http_code}\n' -X POST 'https://api.resend.com/emails' \
      -H "Authorization: Bearer $RESEND_API_KEY" -H 'Content-Type: application/json' \
      -d '{"from":"onboarding@resend.dev","to":["complained@resend.dev"],"subject":"walk D4 complained","html":"<p>walk</p>"}'
@@ -475,11 +483,13 @@ the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18,
    ```
 
    Expect: each prints a JSON body carrying the new email's `id`, then `200`
-   ([Send Email](https://resend.com/docs/api-reference/emails/send-email)); keep the first id as
-   `<two-recipient email id>`. A `403` with `validation_error` means test addresses are not exempt
-   from the own-address rule (RS-34): RS-U14 is negative, Ships 11–12 block, record it and go to
-   Teardown.
-   **Ask-first:** three live sends from the owner's Resend account (count against quota, RS-32).
+   ([Send Email](https://resend.com/docs/api-reference/emails/send-email)); test addresses are
+   exempt from the own-address rule ([RS-42](../../../.ai/resend.md#facts)). Keep the first id as
+   `<two-recipient email id>` and the second as `<bounced email id>`. Without a verified domain
+   Resend keeps only the first `to` recipient, so the two-recipient email reaches
+   `delivered@resend.dev` alone (RS-U21's observation); the second send is what reaches
+   `bounced@resend.dev`.
+   **Ask-first:** four live sends from the owner's Resend account (count against quota, RS-32).
 
 5. **Watch the session forward each event to local ingest.**
 
@@ -487,14 +497,16 @@ the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18,
    # no command: read the D2 terminal and the pnpm dev:full terminal
    ```
 
-   Expect: the `listen` terminal shows each event (`email.sent`, `email.delivered`,
-   `email.bounced`, `email.complained`, `email.suppressed`, … in no promised order) and the status
-   local ingest returned. `200` settles RS-U22 positive: the `pnpm dev:full` terminal logs
+   Expect: the `listen` terminal shows each event in no promised order, with `forwarded.status`
+   `200` for every one ([RS-41](../../../.ai/resend.md#facts)); the `pnpm dev:full` terminal logs
    `"message":"ingest.accepted"` with `"svix_id":"msg_<…>"` and the event's `"type"` per delivery.
-   `401` with `"message":"ingest.request_rejected"` settles RS-U22 negative; record it, then D6 and
-   D7 read `email_not_found` and `recipient_not_found`. Record each address's ordered event types
-   and bounce type (RS-U15), and whether `email.bounced`'s `data.to` lists only
-   `bounced@resend.dev` (RS-U21).
+   By `created_at`, each address's events are [RS-39](../../../.ai/resend.md#facts)'s:
+   `delivered@` `email.sent`, `email.delivered`; `bounced@` `email.sent`, `email.bounced` with
+   `bounce.type` `Permanent` and `subType` `General`; `complained@` `email.sent`,
+   `email.complained`, `email.delivered`; `suppressed@` `email.suppressed` only. Every event's
+   `data.to` lists one recipient. A `401` with `"message":"ingest.request_rejected"` means the
+   session's secret is not in `LEDGER_WEBHOOK_SECRETS` (D3); D6 and D7 then read `email_not_found`
+   and `recipient_not_found`.
 
 6. **Read the two-recipient email back.**
 
@@ -502,10 +514,14 @@ the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18,
    pnpm -s ledger email <two-recipient email id> --json; echo "exit=$?"
    ```
 
-   Expect: `exit=0`; `"object": "email"`, and `recipients` holds two rows:
-   `"address_masked": "del******@r*****.d**"` with `"status": "delivered"`, and
-   `"address_masked": "bo*****@r*****.d**"` with `"status": "bounced"` and the observed
-   `bounce_type` / `bounce_sub_type` (RS-U21 positive). Anything else is recorded as observed.
+   Expect, without a verified domain: `exit=0`; `"object": "email"`, and `recipients` holds one
+   row, `"address_masked": "del******@r*****.d**"` with `"status": "delivered"` (D4: Resend kept
+   only the first recipient). That leaves RS-U21 [Unverified](../../../.ai/resend.md#unverified):
+   settling it needs this send from a verified domain, an owner decision
+   ([about.md → Open questions](../../../.ai/about.md#open-questions)). From a verified domain,
+   expect two rows, the second `"address_masked": "bo*****@r*****.d**"` with
+   `"status": "bounced"` and `bounce_type` / `bounce_sub_type` (RS-U21 positive); anything else is
+   recorded as observed.
 
 7. **Look up the two addresses.**
 
@@ -516,44 +532,45 @@ the tunnel URL into a run file: write `<redacted:kind>`. Settles RS-U15, RS-U18,
 
    Expect: `recipient        del******@r*****.d**` and `deliverability   ok`, `exit=0`; then
    `recipient        bo*****@r*****.d**` and `deliverability   hard_bounced` with
-   `caused by        <two-recipient email id>` if the bounce's `type` was `Permanent`, `exit=0`.
-   A database that held these addresses before the walk may show an earlier `since`.
+   `caused by        <bounced email id>` (the bounce's `type` is `Permanent`, RS-39), `exit=0`.
+   A database that held these addresses before the walk may show an earlier `since` and another
+   cause.
 
-8. **Run a second `listen` session and close its terminal window instead of pressing Ctrl+C.**
+8. **End the `listen` session with a hard kill instead of Ctrl+C.**
 
    ```bash
-   export "$(grep '^RESEND_API_KEY=' .env.local)"
-   resend webhooks listen --url <tunnel> --port 4319
+   # kill the D2 process without a graceful exit (or close its terminal window)
    ```
 
-   Expect: the session starts like D2 (on port `4319`, since D2 holds `4318`); close the window.
-   Then, owner-run in the owner's own terminal, `resend webhooks list`, and report only the number
-   of webhooks whose endpoint is a tunnel URL: `1` (only D2's session) settles RS-U18 negative;
-   `2` settles it positive, and T1 deletes the leftover.
-   **Ask-first:** a second `listen` session (creates a temporary webhook); the list is owner-run
-   because its response may carry signing secrets (RS-05).
+   Expect: the session ends at once. Then, owner-run in the owner's own terminal,
+   `resend webhooks list`, and report only the number of webhooks whose endpoint is a tunnel URL:
+   `1`, `enabled` ([RS-40](../../../.ai/resend.md#facts): a hard kill leaves the webhook behind),
+   and T1 deletes it. The plan was a second, short session killed this way; on 2026-10-17 the
+   owner approved hard-killing the first instead, so a graceful Ctrl+C exit (which the CLI's help
+   says deletes the webhook, RS-33) was not exercised.
+   **Ask-first:** ends the session; the list is owner-run because its response may carry signing
+   secrets (RS-05).
 
 ## Teardown
 
-1. **Delete the webhook D8 left behind, only if D8 counted `2`.**
+1. **Delete the webhook D8 left behind.**
 
    ```bash
    resend webhooks delete <leftover webhook id>
    ```
 
-   Expect: exit `0`; an owner-run `resend webhooks list` then counts `1` tunnel webhook (D2's).
+   Expect: exit `0`; an owner-run `resend webhooks list` then counts `0` tunnel webhooks.
    **Ask-first:** deletes a webhook on the owner's Resend account
    ([Delete Webhook](https://resend.com/docs/api-reference/webhooks/delete-webhook)).
 
-2. **Stop the first `listen` session with Ctrl+C, then stop the tunnel.**
+2. **Stop the tunnel.**
 
    ```bash
-   # Ctrl+C in the D2 terminal, then in the D1 terminal
+   # Ctrl+C in the D1 terminal
    ```
 
-   Expect: the session exits and deletes its temporary webhook ("cleans up on exit", RS-33); an
-   owner-run `resend webhooks list` counts `0` tunnel webhooks. The session's secret left in
-   `LEDGER_WEBHOOK_SECRETS` now belongs to a deleted webhook; the owner may clear it.
+   Expect: the tunnel exits. The session's secret left in `LEDGER_WEBHOOK_SECRETS` now belongs to
+   a deleted webhook; the owner may clear it.
 
 3. **Stop the local stack and remove A1's output file.**
 

@@ -4,7 +4,7 @@ import { readSimConfig } from './sim.config.ts';
 // Throwaway values: none is a real secret, URL or key.
 const live = {
   LEDGER_URL: 'http://127.0.0.1:3200',
-  LEDGER_SIMULATOR_SECRET: 'whsec_c2ltdWxhdG9yLXRlc3Qtc2VjcmV0',
+  LEDGER_SIMULATOR_SECRET: `whsec_${Buffer.from('simulator-test-secret').toString('base64')}`,
   DATABASE_URL: 'postgres://user:secret-password@127.0.0.1:55432/ledger',
   LEDGER_ADDRESS_HASH_KEY: '0a'.repeat(32),
 };

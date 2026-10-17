@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { maskAddress, maskFrom, maskText, normalizeAddress } from '@ledger/core';
-import { ledgerHistory } from '@ledger/core/testing';
+import { ledgerHistory, testAddressSequences } from '@ledger/core/testing';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
@@ -58,7 +58,7 @@ async function closedPort(): Promise<number> {
 // Throwaway values for the live prerequisites: none is a real secret, and nothing connects to the
 // database before the first request is answered.
 const livePrerequisites = {
-  LEDGER_SIMULATOR_SECRET: 'whsec_c2ltdWxhdG9yLXRlc3Qtc2VjcmV0',
+  LEDGER_SIMULATOR_SECRET: `whsec_${Buffer.from('simulator-test-secret').toString('base64')}`,
   DATABASE_URL: 'postgres://ledger:ledger@127.0.0.1:1/ledger',
   LEDGER_ADDRESS_HASH_KEY: '0a'.repeat(32),
 };
@@ -235,9 +235,14 @@ describe('pnpm sim (sim/src/main.ts)', () => {
       expect(normalizeAddress(address)).toMatch(/\+walk(-\d+)?@resend\.dev$/);
     }
 
-    // The printed document is that history's: the probe is in it, and every printed mask is the
-    // mask of a labelled address.
-    expect(emailIds(stdout)).toContain('walk-probe');
+    // The printed document is that history's: the probe and, D39, one email per observed
+    // test-address sequence are in it, and every printed mask is the mask of a labelled address.
+    expect(emailIds(stdout)).toEqual(
+      expect.arrayContaining([
+        'walk-probe',
+        ...Object.keys(testAddressSequences).map((local) => `walk-observed-${local}`),
+      ]),
+    );
     const masks = new Set(addresses.map((address) => maskAddress(normalizeAddress(address))));
     const printed = JSON.parse(parts(stdout).json) as {
       emails: { recipients: { addressMasked: string }[] }[];

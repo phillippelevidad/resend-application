@@ -12,6 +12,7 @@ import {
   spelling,
   testLocalParts,
 } from './email-history.ts';
+import { testAddressSequences } from './test-address-sequences.ts';
 
 // D15: a multi-email ledger, the input of `projectRecipient` and of `pnpm sim`. Built on
 // `emailHistory`, so it inherits every world that generator covers (RS-U10, RS-U11, RS-U12, RS-U19,
@@ -20,13 +21,14 @@ import {
 export type LedgerHistoryOptions = {
   // Prefix of every id, so two namespaces never share an email, `svix_id` or `+label`.
   namespace?: string;
-  // D38: every address `<local>+<namespace>-<n>@resend.dev`, plus the walk probe email. Off by
-  // default, so core's properties keep exercising bare addresses; `pnpm sim` always turns it on.
+  // D38: every address `<local>+<namespace>-<n>@resend.dev`, plus the walk probe email and, D39,
+  // one email per observed test-address sequence. Off by default, so core's properties keep
+  // exercising bare addresses; `pnpm sim` always turns it on.
   labelEveryAddress?: boolean;
 };
 
-// Shape: one entry per email, sorted by `emailIndex`, then the walk probe when addresses are
-// labelled; each email's events in generated order (the properties and `sim` permute them). Ids are
+// Shape: one entry per email, sorted by `emailIndex`, then, when addresses are labelled, the walk
+// probe and the observed emails in `testLocalParts` order; each email's events in generated order (the properties and `sim` permute them). Ids are
 // unique across the whole history.
 export type LedgerHistory = {
   emails: EmailHistory[];
@@ -176,6 +178,37 @@ function walkProbe(namespace: string): EmailHistory {
   };
 }
 
+// The `+<namespace>-<n>` counter of the observed emails' addresses: one past the generated pool's
+// 0–9, so no generated or probe address equals one and each sequence projects on its own.
+const observedLabel = 10;
+
+// D39: one email per test address, replaying its observed sequence (RS-39) one second apart in
+// observed order, under fresh namespaced ids. The `suppressed@` address takes a `+label` here too,
+// though Resend does not support one on it (RS-32): the sim never sends to Resend.
+function observedEmails(namespace: string): EmailHistory[] {
+  return testLocalParts.map((local) => {
+    const emailId = `${namespace}-observed-${local}`;
+    const to = [`${local}+${namespace}-${observedLabel}@resend.dev`];
+    return {
+      emailId,
+      events: testAddressSequences[local].map(({ type, bounce }, counter) =>
+        pairEvent(
+          emailId,
+          `${namespace}-svix-observed-${local}-${counter}`,
+          type,
+          to,
+          new Date(baseInstant + counter * 1000),
+          {
+            from: 'onboarding@resend.dev',
+            subject: 'Ledger observed sequence',
+            ...(bounce === undefined ? {} : { bounce: { ...bounce } }),
+          },
+        ),
+      ),
+    };
+  });
+}
+
 export function ledgerHistory(options: LedgerHistoryOptions = {}): fc.Arbitrary<LedgerHistory> {
   const namespace = options.namespace ?? 'core';
   const labelEveryAddress = options.labelEveryAddress ?? false;
@@ -203,10 +236,13 @@ export function ledgerHistory(options: LedgerHistoryOptions = {}): fc.Arbitrary<
               .chain((history) => withPair(history, emailIndex, namespace, pair)),
           ),
         )
-        // The probe is fixed, so appending it draws nothing and leaves the generated emails as they
-        // were. Built per value, so no two histories share an event object.
+        // The probe and the observed emails are fixed, so appending them draws nothing and leaves
+        // the generated emails as they were. Built per value, so no two histories share an event
+        // object.
         .map((emails) => ({
-          emails: labelEveryAddress ? [...emails, walkProbe(namespace)] : emails,
+          emails: labelEveryAddress
+            ? [...emails, walkProbe(namespace), ...observedEmails(namespace)]
+            : emails,
         }))
     );
   });

@@ -565,8 +565,8 @@ account are Ask-first.
 | Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19, the slice's library bullets |
-| 1 | RS-U21, RS-U22 | RS-U15, RS-U18, the slice's library bullets |
-| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06 | RS-U07, RS-U14, AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
+| 1 | RS-U21 (open: needs a verified-domain send, card `[!]`), ~~RS-U22~~ → RS-41 | ~~RS-U15~~ → RS-39, ~~RS-U18~~ → RS-40, the slice's library bullets |
+| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06 | RS-U07, ~~RS-U14~~ → RS-42 (settled early, slice 1), AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
 | 3 | PG-U07 | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 5 | — | The slice's library bullets |

@@ -7,3 +7,8 @@ export {
   ledgerHistory,
 } from './testing/ledger-history.ts';
 export { type SignWebhookInput, type SvixHeaders, signWebhook } from './testing/sign-webhook.ts';
+export {
+  type ObservedEvent,
+  type TestAddressSequences,
+  testAddressSequences,
+} from './testing/test-address-sequences.ts';

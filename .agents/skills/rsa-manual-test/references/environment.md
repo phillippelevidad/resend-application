@@ -100,12 +100,12 @@ Each one produces a convincing wrong verdict.
 - **Reproduce with the printed seed.** Reuse its run namespace only on a fresh database
   ([simulator.md → Seed and determinism](../../pp-testing/references/simulator.md#seed-and-determinism)).
 - **Test sends count against quota** ([RS-32](../../../../.ai/resend.md#facts)), and `resend.dev`
-  sends reach only the account owner's address ([RS-34](../../../../.ai/resend.md#facts)); whether
-  test addresses are exempt is [RS-U14](../../../../.ai/resend.md#unverified).
-- **`resend webhooks listen` creates a webhook** and needs your own public URL (RS-33). Killed
-  without Ctrl+C it may leave the webhook behind ([RS-U18](../../../../.ai/resend.md#unverified)).
-  Until [RS-U22](../../../../.ai/resend.md#unverified) is settled, forwarded deliveries may reach
-  local ingest only as `401`s.
+  sends reach only the account owner's address ([RS-34](../../../../.ai/resend.md#facts)), except
+  the test addresses ([RS-42](../../../../.ai/resend.md#facts)).
+- **`resend webhooks listen` creates a webhook** and needs your own public URL (RS-33). A hard
+  kill (no Ctrl+C) leaves the webhook behind, `enabled` ([RS-40](../../../../.ai/resend.md#facts)).
+  Forwarded deliveries verify once that session's secret is in `LEDGER_WEBHOOK_SECRETS`
+  ([RS-41](../../../../.ai/resend.md#facts)); until then local ingest answers them `401`.
 - **Listing webhooks may return signing secrets** (RS-05): never paste the response; record counts.
   `resend webhooks list` and `resend webhooks get <id>` are owner-run, in the owner's own terminal,
   never through an agent transcript; the owner copies the secret into `LEDGER_WEBHOOK_SECRETS` in

@@ -24,7 +24,7 @@ export const localConfigSchema = z
       .string({ error: 'must be set' })
       .regex(addressHashKeyPattern, { error: 'must be 64 lowercase hex characters' })
       .transform((hex) => new Uint8Array(Buffer.from(hex, 'hex'))),
-    // Comma-separated, one per `resend webhooks listen` session (RS-U22), tried in this order (D9).
+    // Comma-separated, one per `resend webhooks listen` session (RS-41), tried in this order (D9).
     LEDGER_WEBHOOK_SECRETS: z
       .preprocess(emptyAsUnset, z.string().optional())
       .transform((list) => (list === undefined ? [] : list.split(',').map((entry) => entry.trim())))

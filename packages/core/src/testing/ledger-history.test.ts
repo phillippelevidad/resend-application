@@ -153,7 +153,8 @@ describe('ledgerHistory with labelEveryAddress (D38)', () => {
   it('labels every generated address with the namespace and a counter, so no generated address equals a probe address', () => {
     for (const history of walk) {
       for (const { emailId, events } of history.emails) {
-        if (emailId === 'walk-probe') {
+        // The probe and the observed emails are fixed; their own tests check their addresses.
+        if (emailId === 'walk-probe' || emailId.startsWith('walk-observed-')) {
           continue;
         }
         for (const key of events.flatMap((event) => event.recipientKeys ?? [])) {
@@ -176,7 +177,8 @@ describe('ledgerHistory with labelEveryAddress (D38)', () => {
 
   it('appends the walk probe: sent to both, delivered to the first, a Permanent General bounce to the second', () => {
     for (const history of walk) {
-      const probe = history.emails.at(-1);
+      // D39: the observed emails follow it.
+      const probe = history.emails.at(-1 - testLocalParts.length);
       expect(probe?.emailId).toBe('walk-probe');
       const shape = probe?.events.map((event) => ({
         svixId: event.svixId,

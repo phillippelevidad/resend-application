@@ -12,7 +12,7 @@ const startupTimeoutMs = 15_000;
 // The secret is built at run time, so no `whsec_` literal sits in the source (the gitleaks rule).
 const placeholderEnv = {
   DATABASE_URL: 'postgres://127.0.0.1:9/ledger',
-  LEDGER_ADDRESS_HASH_KEY: '0123456789abcdef'.repeat(4),
+  LEDGER_ADDRESS_HASH_KEY: '0a'.repeat(32),
   LEDGER_SIMULATOR_SECRET: `whsec_${Buffer.from('ledger-local-e2e-placeholder').toString('base64')}`,
 };
 
