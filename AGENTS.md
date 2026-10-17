@@ -145,9 +145,10 @@ This table is the canonical layout (adapted from the frozen
 `package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
-scaffolds hold: `packages/api`'s routeless `createApi()`, served by `apps/api`
-(`handle(createApi())`) and `apps/local` (`@hono/node-server`, loopback-only); `apps/cli`'s program
-with no commands and `apps/mcp`'s server with no tools; `infra`'s two empty stacks.
+scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools and `infra`'s two empty
+stacks. `apps/api`'s handler is an `export {}` stub until slice 2: `createApi(deps)` needs a
+database, a logger and the address-hash key, which only slice 2's composition root supplies, so
+until then `apps/local` alone serves the read API (`@hono/node-server`, loopback-only).
 
 | Project | Role | Logic lands |
 | --- | --- | --- |
@@ -242,12 +243,17 @@ pnpm openapi:export   # writes packages/sdk/openapi.json from packages/api's rou
                       # change that alters a route (a changed contract is Ask-first)
 
 # Local stack
-pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts this repo's running
-                   # server, fails on any other process holding the API port;
+pnpm dev:full      # deps, Docker, compose Postgres, pnpm db:setup, build, apps/local; adopts this
+                   # repo's running server, fails on any other process holding the API port;
                    # prints LEDGER READY or LEDGER START FAILED: <reason>
 pnpm dev:stop      # compose stop; stops the dev server only if it belongs to this repo
 pnpm dev           # apps/local under node --watch, loading .env.local if present
 pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
+pnpm db:setup      # (pnpm --filter @ledger/app-local run setup; `setup` alone is a pnpm built-in)
+                   # writes each of DATABASE_URL, LEDGER_ADDRESS_HASH_KEY, LEDGER_SIMULATOR_SECRET,
+                   # LEDGER_URL, LEDGER_TOKEN to .env.local only when unset or empty, printing
+                   # names, never values; ensures the runtime role, applies pending migrations;
+                   # ends `db:setup: ready` or `db:setup: failed: <reason>` (exit 1). Rerun-safe
 pnpm db:generate --name <what-it-does>   # drizzle-kit generate in packages/db, flags passed
                    # through (--custom for a grant); writes packages/db/drizzle/, read the SQL
 pnpm deps          # pnpm install only when the lockfile or a package.json changed
@@ -270,7 +276,10 @@ pnpm -s ledger recipient <address> [--json]   # the address goes in the request 
                    # without -s (pnpm's banner then precedes the output)
 
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
-pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3200; --port, --host (loopback only)
+pnpm --filter @ledger/app-local start   # ingest (POST /webhooks/resend), worker and read API in one
+                                        # process on 127.0.0.1:3200; --port, --host (loopback only);
+                                        # needs DATABASE_URL, LEDGER_ADDRESS_HASH_KEY and at least one
+                                        # of LEDGER_WEBHOOK_SECRETS, LEDGER_SIMULATOR_SECRET
 pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```

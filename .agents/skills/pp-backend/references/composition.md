@@ -63,9 +63,18 @@ in the package.
 
 `apps/local/src/main.ts` composes the same factories with local adapters (the in-process queue,
 `@hono/node-server`, from slice 2B the Postgres queue), so no app imports another (ADR-013). It
-gives each function it composes its own size-1 pool, so a dispatcher batch holding its connection
-across sends never blocks the worker or the read API. How it mounts `POST /webhooks/resend` beside
-the read API is the slice 1 pre-proposal's.
+gives each function it composes that touches the database its own size-1 pool (ingest has none,
+ADR-001), so a dispatcher batch holding its connection across sends never blocks the worker or the
+read API.
+
+**The ingest mount.** One `fetch` serves the process: `POST /webhooks/resend` goes to
+`ingestFetch(ingest)` (`apps/local/src/ingest-fetch.ts`), every other method and path to the read
+API's `api.fetch`, mirroring the HTTP API's routes on AWS. `ingestFetch` is event adaptation only:
+it reads the request body as bytes decoded as UTF-8 (the signature covers the exact body, RS-01),
+passes the three lowercase `svix-*` headers, and returns ingest's status and fixed body under
+`@ledger/ingest`'s `INGEST_CONTENT_TYPE` ([Ingest boundary](../../../../.ai/api-contract.md#ingest-boundary)). The
+read API never mounts ingest, so an unmatched path, `GET /webhooks/resend` included, answers
+`404 route_not_found` from the API's `notFound`.
 
 ## Ports
 

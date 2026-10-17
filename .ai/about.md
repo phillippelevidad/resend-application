@@ -40,8 +40,8 @@ Applied at scoping time by the [decision lens](../AGENTS.md#decision-lens--evide
 ## What this project must demonstrate
 
 Each row is a requirement from a public Resend role post or a published Resend value, with where
-the repo will prove it. Nothing is built yet, so **every row is a gap until its evidence lands**.
-The slice that lands it updates this column with a link.
+the repo will prove it. **A row is a gap until its evidence lands**: the slice that lands it
+updates this column with a link.
 
 Sources: [Backend Engineer](https://resend.com/careers/df2fe05d-87ca-4e87-a66d-50bb2c9c4859) (BE) ·
 [Software Engineer, Developer Tools](https://resend.com/careers/53d3710a-2d55-42ac-ba90-cdfd306bf560) (DT) ·
@@ -55,7 +55,7 @@ handbook pages linked per row. Checked 2026-10-15.
 | Infrastructure as code (AWS CDK); serverless background work on Lambda | BE; stack | `infra/` CDK app; one-command deploy and teardown |
 | Operate what you build: monitoring, safe deploys, incident recovery, runbooks | BE; [incidents](https://resend.com/handbook/engineering/how-we-handle-incidents), [on-call](https://resend.com/handbook/engineering/how-we-handle-on-call-rotations) | CloudWatch alarms in CDK; runbook; budget alarms + kill switch ([aws.md](aws.md#budget-alarms)) |
 | Idempotency, retries, rate limits, partial failure | DT | Outbox `dedupe_key` + Resend idempotency keys; `packages/resend-client` rate-limit tests; `--chaos worker-crash` and `--chaos dispatcher-crash` never duplicate an alert |
-| One contract across SDK, CLI, MCP and docs; clear errors; backward compatibility | DT; Philosophy ("predictable by design") | One read-API contract ([api-contract.md](api-contract.md)); the [error shape](../AGENTS.md#error-shape); semver at M3 |
+| One contract across SDK, CLI, MCP and docs; clear errors; backward compatibility | DT; Philosophy ("predictable by design") | One read-API contract ([api-contract.md](api-contract.md)); the [error shape](../AGENTS.md#error-shape); the SDK and the read API checked against each other on real rows, success paths and error codes ([sdk-contract.int.test.ts](../apps/local/src/sdk-contract.int.test.ts), slice 1); semver at M3 |
 | AI agents as users, with their own discovery and security needs | DT | MCP read-only by default; operate tools unregistered without scope; redaction tests on tool output |
 | Zero friction; documentation is the product | Philosophy | Newcomer deploy target in [Success metrics](#success-metrics); recovery through the Headless Webhook API with no dashboard step; 0 unlinked claims |
 | Ship a minimal version early, in small PRs, after a written design | [shipping](https://resend.com/handbook/engineering/how-we-ship-new-features), [PRs](https://resend.com/handbook/engineering/how-we-handle-pull-requests), [RFCs](https://resend.com/handbook/engineering/how-we-use-rfcs) | [docs/idea.md](../docs/idea.md) as the RFC; v0 per slice; PR history |

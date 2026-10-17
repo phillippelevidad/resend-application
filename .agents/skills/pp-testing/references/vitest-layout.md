@@ -111,9 +111,14 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
   The SQS adapter only enqueues (the ESM receives), so it runs the enqueue cases only; the
   receive-and-settle cases run against the in-process and Postgres-backed queues
   ([pp-backend → Ports](../../pp-backend/references/composition.md#ports)).
-- Where the SDK ↔ API contract tests live is the slice 1 pre-proposal's. Constraint:
-  `packages/sdk` never depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
-  so they do not live in `packages/sdk`. They read real rows, so they are `*.int.test.ts`.
+- The SDK ↔ API contract tests live in `apps/local/src/sdk-contract.int.test.ts`. `packages/sdk`
+  never depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
+  so they do not live in `packages/sdk`; `apps/local` already composes the API, and takes
+  `@ledger/sdk` as a `workspace:*` dev dependency for them. They read real rows, so they are
+  `*.int.test.ts`: `createApi(deps)` under `@hono/node-server` on `127.0.0.1:0` over a harness
+  clone, rows seeded through the worker's `RecordEventCommand`, every call through
+  `createLedgerClient` (slice 1: both operations' success paths, `email_not_found`,
+  `recipient_not_found`, `validation_failed`, `route_not_found`).
 
 ## Review greps
 

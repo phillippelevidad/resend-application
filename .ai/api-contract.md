@@ -25,8 +25,11 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
   error code is additive, but it is still Ask-first because it extends the contract.
   - **Public environment variables** are the ones a user sets, in the shell or `.env.local`, for the
     CLI, SDK, MCP server, simulator, or the deploy and setup commands: `LEDGER_URL`,
-    `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`,
-    `AWS_PROFILE`, and any such variable added later.
+    `LEDGER_TOKEN`, `LEDGER_SIMULATOR_SECRET`, `LEDGER_WEBHOOK_SECRETS` (local Resend signing
+    secrets, comma-separated `whsec_` values, one per `resend webhooks listen` session),
+    `LEDGER_ADDRESS_HASH_KEY` (the address-hash key, 64 hex characters, written once by
+    `pnpm db:setup` and never changed; [data-modeling.md → PII & retention](data-modeling.md#pii--retention)),
+    `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`, `AWS_PROFILE`, and any such variable added later.
   - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
     mapping UUID, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
     `as const` object per function, imported by `infra/src/function-env.ts`, which sets each value
