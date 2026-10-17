@@ -31,9 +31,14 @@ export type DeadListEntry = {
 export type InProcessQueueDeps = {
   clock: ClockPort;
   logger: Logger;
-  // How the queue waits for a redelivery; `FakeClock.sleep` in tests.
-  sleep?: (ms: number) => Promise<void>;
+  // How the queue waits for a redelivery; `FakeClock.sleep` in tests. The signal aborts a wait an
+  // enqueue cut short, so no abandoned timer outlives it.
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 };
+
+// An aborted wait settles quietly: the enqueue that aborted it has already woken the pump.
+const realSleep = (ms: number, signal: AbortSignal): Promise<void> =>
+  sleepFor(ms, undefined, { signal }).catch(() => {});
 
 // D8: slice 1's queue, in memory, in the local process (ADR-013). At-least-once and in no order, as
 // SQS standard is (ADR-002): a message is acknowledged only when the consumer leaves it out of
@@ -43,7 +48,7 @@ export type InProcessQueueDeps = {
 export class InProcessQueueAdapter implements QueuePort {
   readonly #clock: ClockPort;
   readonly #logger: Logger;
-  readonly #sleep: (ms: number) => Promise<void>;
+  readonly #sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   #waiting: Stored[] = [];
   readonly #deadList: DeadListEntry[] = [];
   #consumer: QueueConsumer | undefined;
@@ -51,7 +56,7 @@ export class InProcessQueueAdapter implements QueuePort {
   #wake: (() => void) | undefined;
   #lastId = 0;
 
-  constructor({ clock, logger, sleep = (ms) => sleepFor(ms) }: InProcessQueueDeps) {
+  constructor({ clock, logger, sleep = realSleep }: InProcessQueueDeps) {
     this.#clock = clock;
     this.#logger = logger;
     this.#sleep = sleep;
@@ -100,11 +105,14 @@ export class InProcessQueueAdapter implements QueuePort {
         }
         if (this.#waiting.length === 0) return;
         const nextVisibleAt = Math.min(...this.#waiting.map((stored) => stored.visibleAt));
+        const wait = new AbortController();
         await new Promise<void>((resolve) => {
           this.#wake = resolve;
-          void this.#sleep(nextVisibleAt - now).then(resolve);
+          void this.#sleep(nextVisibleAt - now, wait.signal).then(resolve);
         });
         this.#wake = undefined;
+        // Woken by an enqueue before the timer fired: cancel it rather than leave it pending.
+        wait.abort();
       }
     } finally {
       this.#pumping = false;
