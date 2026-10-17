@@ -517,8 +517,8 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
    Expect, without a verified domain: `exit=0`; `"object": "email"`, and `recipients` holds one
    row, `"address_masked": "del******@r*****.d**"` with `"status": "delivered"` (D4: Resend kept
    only the first recipient). That leaves RS-U21 [Unverified](../../../.ai/resend.md#unverified):
-   settling it needs this send from a verified domain, an owner decision
-   ([about.md → Open questions](../../../.ai/about.md#open-questions)). From a verified domain,
+   settling it needs this send from the project's verified sending domain
+   → [slice 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws). From a verified domain,
    expect two rows, the second `"address_masked": "bo*****@r*****.d**"` with
    `"status": "bounced"` and `bounce_type` / `bounce_sub_type` (RS-U21 positive); anything else is
    recorded as observed.
@@ -588,7 +588,7 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
 
 | Not reachable | Carried by |
 | --- | --- |
-| Bearer-token enforcement, `ledger health`, `ledger worker resume` (named in the `database_unavailable` hint), the deployed ingest | [slice 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws) |
+| Bearer-token enforcement, `ledger health`, `ledger worker resume` (named in the `database_unavailable` hint), the deployed ingest, RS-U21's two-recipient send from the verified domain | [slice 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws) |
 | A DLQ and its inspection | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws), [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
 | The runbook the error `docs` links point at | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
 | `ingest.rejected`, the rotation runbook, the retired-secret test, `ledger gaps` (named in the not-found hints) | [slice 4](../../../.ai/build-checklist.md#4--recovery) |

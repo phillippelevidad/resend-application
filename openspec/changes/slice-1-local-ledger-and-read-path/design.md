@@ -927,6 +927,7 @@ each has a decided fallback, and its about.md bullet records the finding:
   bullets PP §22 adds, resolved at install).
 - How the installed `drizzle-orm` encodes a top-level JSON `null` in a `jsonb` insert (D17; the
   worker int test pins it, the risk above holds the fallback).
-- RS-U14, RS-U15, RS-U18, RS-U21, RS-U22: settled by the owner's experiments (D36). The code paths
+- RS-U14, RS-U15, RS-U18, RS-U21, RS-U22: settled by the owner's experiments (D36); RS-U21 moved
+  to slice 2 by the owner on 2026-10-17, since it needs a verified sending domain. The code paths
   are safe either way; the outcomes change resend.md, the fixtures (D39) and possibly the card's
   status, not the design.

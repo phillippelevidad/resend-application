@@ -10,8 +10,9 @@ through `@hono/aws-lambda`. Slice 4's replays dedupe on the `svix_id` key this s
 ingest, the worker transaction and the read path: the integration tier runs against real Postgres
 in seconds with no AWS account ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)).
 A migration is cheap to regenerate only until it is merged to `main` or applied to a kept database.
-Two `[Unverified]` rows MUST settle here: RS-U21 decides whether `email_recipients` is exact, and
-RS-U22 decides whether real events verify locally at all
+One `[Unverified]` row MUST settle here: RS-U22 decides whether real events verify locally at all
+(RS-U21, which decides whether `email_recipients` is exact, moved to slice 2 by the owner on
+2026-10-17: it needs the project's verified sending domain)
 ([Open questions owed by slice](../../../.ai/architecture.md#open-questions-owed-by-slice)).
 
 The decision-complete brief is the checked pre-proposal
@@ -34,7 +35,7 @@ itself has landed since `04dc19e`).
 8. Minimal read API (OpenAPI, Zod), SDK, `ledger email <email_id>` and `ledger recipient <address>` with `--json` in the error shape, auth skipped only on loopback; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
 9. `pnpm openapi:export` writes the committed `packages/sdk/openapi.json`, and a `pnpm verify` stage fails when it or the generated SDK types drift ([ADR-011](../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)); evidence: the stage fails on a stale fixture.
 10. `pnpm sim --duplicates 0.2 --shuffle` against the local process (`apps/local`) passes invariants 1 and 2.
-11. RS-U21 settled by the Ask-first two-recipient send to `delivered@resend.dev` and `bounced@resend.dev`, observed through `resend webhooks listen`, with the result in resend.md.
+11. ~~RS-U21 settled by the Ask-first two-recipient send to `delivered@resend.dev` and `bounced@resend.dev`, observed through `resend webhooks listen`, with the result in resend.md.~~ Moved to slice 2 by the owner on 2026-10-17: from `onboarding@resend.dev` Resend keeps only the first recipient, so the send needs the project's verified sending domain, which is still propagating.
 12. RS-U15 recorded from the Ask-first test-address sends, with simulator fixtures mirroring the observed sequences; RS-U18 checked by a read-only `GET /webhooks` after an interrupted `listen` session.
 13. RS-U22 settled in the first approved `listen` session: the temporary webhook's secret read with `resend webhooks get <id>`, loaded into the local secret set, and one forwarded delivery verified by local ingest, with the result in resend.md.
 

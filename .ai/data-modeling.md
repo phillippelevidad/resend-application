@@ -73,7 +73,7 @@ and the sweep reads `outbox.next_attempt_at`.
 - Projection logic lives in `packages/core`. `packages/db` only loads events and writes the results.
 - Per-recipient state folds each event's **own** `data.to` (RS-27), never the email's first-seen
   recipient list. RS-27 documents `to` as the *impacted* recipients, so a bounce reaches only the
-  recipient it names, and a healthy co-recipient keeps its outcome. Slice 1 MUST confirm that reading
+  recipient it names, and a healthy co-recipient keeps its outcome. Slice 2 MUST confirm that reading
   (RS-U21).
 
 ### Idempotency keys
@@ -351,7 +351,7 @@ _Evidence: the slice 0 item and the slice 1 schema and worker items hold; the ot
 - **Locking:** the row is written under the email's lock.
 
 _Schema: [`packages/db/src/schema/email-recipients.ts`](../packages/db/src/schema/email-recipients.ts)._
-_Evidence: the slice 0 item and the slice 1 schema and worker items hold; the other slice 1 items are pending._
+_Evidence: the slice 0 and slice 1 items hold; the slice 2 item is pending._
 - Slice 0: a property test that a two-recipient email whose bounce names one recipient leaves the
   other recipient's outcome unchanged, in
   [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
@@ -361,9 +361,10 @@ _Evidence: the slice 0 item and the slice 1 schema and worker items hold; the ot
 - Slice 1 (worker): the committed rows equal `projectEmail`'s recipients over the stored events,
   in any arrival order, in
   [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts).
-- Slice 1: sim invariant 2; RS-U21 settled by the Ask-first two-recipient send.
+- Slice 1: sim invariant 2.
+- Slice 2: RS-U21 settled by the Ask-first two-recipient send from the project's verified domain.
 
-- **Slices:** 0 — Foundations; 1 — Local ledger and read path
+- **Slices:** 0 — Foundations; 1 — Local ledger and read path; 2 — Durable ingest on AWS
 
 ### `recipient_state` — deliverability per address
 
@@ -538,11 +539,12 @@ _Evidence: pending (slice 6)._
 - **Recipients listed in `data.to` per event ([RS-U21](resend.md#unverified)).** Does a bounce
   (or a complaint or delivery) on a multi-recipient email list only the impacted recipients? RS-27
   says so, and `email_recipients` is exact under that reading. If the list were complete, no
-  projection could pin a bounce to one recipient. Slice 1 MUST settle it with one Ask-first
-  two-recipient send. Observed 2026-10-17: from `onboarding@resend.dev` with no verified domain,
-  Resend kept only the first recipient (a second `to` and a `cc` were dropped), so that send cannot
-  produce a multi-recipient email; it needs a verified sending domain
-  ([about.md → Project domain](about.md#open-questions), owner decision). `[Unverified]`
+  projection could pin a bounce to one recipient. Slice 2 MUST settle it with one Ask-first
+  two-recipient send (moved from slice 1; owner, 2026-10-17). Observed 2026-10-17: from
+  `onboarding@resend.dev` with no verified domain, Resend kept only the first recipient (a second
+  `to` and a `cc` were dropped), so that send cannot produce a multi-recipient email; it needs the
+  project's verified sending domain ([about.md → Project domain](about.md#open-questions)).
+  `[Unverified]`
 
 ## Deferred
 

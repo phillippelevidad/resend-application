@@ -565,8 +565,8 @@ account are Ask-first.
 | Slice | MUST settle | MAY close safe either way |
 | --- | --- | --- |
 | 0 | — | RS-U10 (sort key with tie-breaks), RS-U11, RS-U12, RS-U19, the slice's library bullets |
-| 1 | RS-U21 (open: needs a verified-domain send, card `[!]`), ~~RS-U22~~ → RS-41 | ~~RS-U15~~ → RS-39, ~~RS-U18~~ → RS-40, the slice's library bullets |
-| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06 | RS-U07, ~~RS-U14~~ → RS-42 (settled early, slice 1), AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
+| 1 | ~~RS-U22~~ → RS-41 | ~~RS-U15~~ → RS-39, ~~RS-U18~~ → RS-40, the slice's library bullets |
+| 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06, RS-U21 (moved from slice 1) | RS-U07, ~~RS-U14~~ → RS-42 (settled early, slice 1), AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
 | 3 | PG-U07 | RS-U08 |
 | 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
 | 5 | — | The slice's library bullets |
@@ -581,9 +581,12 @@ installed version in one step, and the skill file states its fallback.
 **Moved, with reasons:** RS-U08 from slice 2 to slice 3, because the measured ingest p99
 comes from the burst run there. PG-U03 from slice 2 to slice 4, because the hourly
 reconciler is the first idle waker: before it, an idle stack never opens a connection (ADR-015).
+RS-U21 from slice 1 to slice 2, because from `onboarding@resend.dev` Resend keeps only the first
+recipient, so the two-recipient send needs the project's verified sending domain, bought but not
+yet verified while its DNS propagates (owner, 2026-10-17).
 RS-U20 is new in this step (a replayed delivery passes the 5-minute timestamp window); it rides on
 the RS-U01 experiment. RS-U21 is new in bootstrap step 8 (per-event `data.to` lists only the
-impacted recipients); it rides on the RS-U15 sends. PG-U06 (the pooler honors role-level
+impacted recipients). PG-U06 (the pooler honors role-level
 timeouts) and PG-U07 (Neon's storage-limit error) are new in the 2026-10-16 architecture review;
 PG-U07 MAY settle in slice 2 and MUST by slice 3's first storage-budget measurement.
 
