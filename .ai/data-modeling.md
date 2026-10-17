@@ -245,8 +245,11 @@ AWS-12):
   address or `address_hash`, a subject, request or response headers, a token or secret, the raw
   payload or any part of it.
 
-**Evidence:** pending — slice 1: a logger unit test feeding a failing message with a test address
-and a `CHECK` violation finds no log line holding the address or subject.
+**Evidence:** slice 1: a logger unit test logs a worker failure whose cause is a `CHECK` violation
+(`23514`) quoting a test address, a parse failure quoting a subject, and a payload under a
+non-allowed key, and finds no line holding the address or subject, `pg_code` and `error_name`
+present, and every non-scalar dropped
+([create-logger.test.ts](../packages/shared/src/create-logger.test.ts)).
 
 ## Tables
 

@@ -17,7 +17,7 @@ are [pp-backend → Ports](../../pp-backend/references/composition.md#ports)'s.
 | `resend-client` itself | The [fake Resend API](#the-fake-resend-api): a local `node:http` server | `nock`, `msw`, a patched `fetch` |
 | A `packages/aws` adapter | Its [port contract](#aws-adapters) with the SDK client stubbed | An SQS fake in a consumer's test |
 | Postgres | The [harness](postgres-harness.md): real Postgres | A mocked client, a stubbed repository |
-| Logger | The real logger, its output captured; how it takes a stream is the slice 1 pre-proposal's | Asserting the logger was called; assert the line |
+| Logger | The real logger, its output captured: `createLogger({ functionName, stream })` with a sink (`{ write: (chunk) => lines.push(chunk) }`) gets the same format and allow-list over a Winston Stream transport, one JSON line per call ([logging-and-pii.md](../../pp-general/references/logging-and-pii.md#logger), D15) | Asserting the logger was called; assert the line |
 | Event source control, queue attributes, function invoke, DLQ, secret reading ([ports](../../pp-backend/references/composition.md#ports)) | A stateful fake from `@ledger/shared/testing` holding what the port reads and writes (`enabled`, depth, a scripted invoke answer); the test asserts the resulting state (`enabled: false` after an outage) | A recorded-call stub asserting "disable was called" |
 | SDK, for CLI and MCP tests | A fake SDK ([pp-cli](../../pp-cli/SKILL.md#output-and-exit-codes), [pp-mcp](../../pp-mcp/SKILL.md#tool-registration-and-least-privilege)) | The database |
 

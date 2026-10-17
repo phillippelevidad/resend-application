@@ -85,7 +85,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 1 — Local ledger and read path
 
-- **Status:** `[ ]`
+- **Status:** `[~]`
 - **Goal:** Real and simulated Resend events, verified locally, land once in a Postgres ledger, project into email and recipient state, and are read through the read API, SDK and CLI.
 - **Depends on:** 0.
 - **Refs:** [ADR-001](architecture.md#adr-001--verify-then-enqueue) · [ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them) · [ADR-019](architecture.md#adr-019--application-and-surface-stack) · [webhook_events](data-modeling.md#webhook_events--the-immutable-ledger) · [email_state](data-modeling.md#email_state--current-state-per-email) · [email_recipients](data-modeling.md#email_recipients--outcome-per-email-and-recipient) · [recipient_state](data-modeling.md#recipient_state--deliverability-per-address) · [PII & retention](data-modeling.md#pii--retention) · [email.get](api-contract.md#emailget) · [recipient.get](api-contract.md#recipientget) · [Ingest boundary](api-contract.md#ingest-boundary) · [J2](features.md#j2--support-lookup)
@@ -96,7 +96,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [ ] Recipient rows locked in sorted `address_hash` order after the email lock; evidence: concurrency integration test with two emails sharing a recipient.
   - [ ] Projections hold masks and keyed address hashes only, under an address-hash key the setup script generates once into `.env.local` ([PII & retention](data-modeling.md#pii--retention)); evidence: integration test finding no raw address or subject in any projection row.
   - [ ] Unknown and non-email event types, and schema-failing payloads of known types, stored raw, projection skipped, metric emitted; evidence: unit test.
-  - [ ] The shared logger emits only the fields in [data-modeling.md → Log fields](data-modeling.md#log-fields), never a payload or an error's `message` / `detail` from parsing or Postgres; evidence: unit test feeding a failing message with a test address and a `CHECK` violation, asserting no log line holds the address or subject.
+  - [x] The shared logger emits only the fields in [data-modeling.md → Log fields](data-modeling.md#log-fields), never a payload or an error's `message` / `detail` from parsing or Postgres; evidence: unit test feeding a failing message with a test address and a `CHECK` violation, asserting no log line holds the address or subject.
   - [ ] Minimal read API (OpenAPI, Zod), SDK, `ledger email <email_id>` and `ledger recipient <address>` with `--json` in the error shape, auth skipped only on loopback; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
   - [ ] `pnpm openapi:export` writes the committed `packages/sdk/openapi.json`, and a `pnpm verify` stage fails when it or the generated SDK types drift ([ADR-011](architecture.md#adr-011--one-contract-many-surfaces)); evidence: the stage fails on a stale fixture.
   - [ ] `pnpm sim --duplicates 0.2 --shuffle` against the local process (`apps/local`) passes invariants 1 and 2.

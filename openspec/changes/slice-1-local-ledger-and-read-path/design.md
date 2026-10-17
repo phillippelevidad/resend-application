@@ -69,7 +69,7 @@ boundaries in root [AGENTS.md](../../../AGENTS.md#module-boundaries); and the `p
 | | `error-codes.ts` → `errorCodes`, `errorCodeSchema`, `errorRegistry`, `RUNBOOK_BASE_URL` | D4 |
 | | `ingest-envelope.schema.ts` → `ingestEnvelopeSchema`, `eventSourceSchema`, `IngestEnvelope` | D12 |
 | | `testing/sign-webhook.ts` → `signWebhook`; `testing/test-address-sequences.ts` → `testAddressSequences` (public via `./testing`) | D37, D39 |
-| `packages/shared` | `ledger-error.ts` → `LedgerError`; `config-error.ts` → `ConfigError`; `load-config.ts` → `loadConfig` | D5, D6 |
+| `packages/shared` | `ledger.error.ts` → `LedgerError`; `config.error.ts` → `ConfigError` (pp-general's `.error.ts` suffix); `load-config.ts` → `loadConfig` | D5, D6 |
 | | `create-logger.ts` → `createLogger`, `errorFields`, `LogFields` | D15 |
 | | `queue.port.ts` → `QueuePort`; `clock.port.ts` → `ClockPort`; `metrics.port.ts` → `MetricsPort`; `log-metrics.adapter.ts` → the logger-backed metrics writer | D7, D16 |
 | | `in-process-queue.adapter.ts` → `InProcessQueueAdapter` | D8 |
