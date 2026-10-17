@@ -85,7 +85,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 1 — Local ledger and read path
 
-- **Status:** `[~]`
+- **Status:** `[x]`
 - **Goal:** Real and simulated Resend events, verified locally, land once in a Postgres ledger, project into email and recipient state, and are read through the read API, SDK and CLI.
 - **Depends on:** 0.
 - **Refs:** [ADR-001](architecture.md#adr-001--verify-then-enqueue) · [ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [ADR-018](architecture.md#adr-018--migrations-run-from-the-deploy-command-before-the-code-that-needs-them) · [ADR-019](architecture.md#adr-019--application-and-surface-stack) · [webhook_events](data-modeling.md#webhook_events--the-immutable-ledger) · [email_state](data-modeling.md#email_state--current-state-per-email) · [email_recipients](data-modeling.md#email_recipients--outcome-per-email-and-recipient) · [recipient_state](data-modeling.md#recipient_state--deliverability-per-address) · [PII & retention](data-modeling.md#pii--retention) · [email.get](api-contract.md#emailget) · [recipient.get](api-contract.md#recipientget) · [Ingest boundary](api-contract.md#ingest-boundary) · [J2](features.md#j2--support-lookup)

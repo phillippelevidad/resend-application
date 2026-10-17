@@ -3,7 +3,7 @@
 ## Context
 
 See [proposal.md → Why](proposal.md#why). The pre-proposal
-[2026-10-17-slice-1-local-ledger-and-read-path.md](../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md)
+[2026-10-17-slice-1-local-ledger-and-read-path.md](../../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md)
 (*PP*) is decision-complete and checked (16 repairs, nothing left for the owner). Each decision
 below keeps its PP number (D1–D43) and carries what `opsx:apply` needs to build it. The PP keeps the
 full authority trail and the contradictions C1–C16. Everything the build needs is in this file:
@@ -33,8 +33,8 @@ State on `HEAD` (PP §5, re-checked 2026-10-17: only the PP and this change have
   `openapi-typescript` is installed.
 
 Binding constraints: ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-008, ADR-009, ADR-011,
-ADR-013, ADR-016, ADR-018, ADR-019 ([Decisions](../../../.ai/architecture.md#decisions)); the module
-boundaries in root [AGENTS.md](../../../AGENTS.md#module-boundaries); and the `pp-general`,
+ADR-013, ADR-016, ADR-018, ADR-019 ([Decisions](../../../../.ai/architecture.md#decisions)); the module
+boundaries in root [AGENTS.md](../../../../AGENTS.md#module-boundaries); and the `pp-general`,
 `pp-backend`, `pp-database`, `pp-testing`, `pp-cli` and `pp-workflow` skills.
 
 ## Goals / Non-Goals
@@ -126,7 +126,7 @@ accepted (object, array, string, number, boolean, `null`). Pure core.
 
 ### D4 — Error registry mirror
 
-`errorCodes` is the `as const` tuple of every [registry](../../../.ai/api-contract.md#error-codes)
+`errorCodes` is the `as const` tuple of every [registry](../../../../.ai/api-contract.md#error-codes)
 code plus `route_not_found`; `errorRegistry` maps each to its HTTP status (`null` for run-outcome
 and client-side codes), default `message`, `hint` and `docs`. `docs` is the Resend page the registry
 names or `` `${RUNBOOK_BASE_URL}#${code}` ``, where `RUNBOOK_BASE_URL` is the `origin` remote's
@@ -187,7 +187,7 @@ Ingest constructs `new Resend('ingest-verifies-only')` once at factory time, wit
 RS-02 and this decision. The constant never reaches a request (ingest makes no API call) and does
 not match the `re_` gitleaks rule. *Rejected:* importing `standardwebhooks` directly, a second
 dependency for the same call when
-[integrations.md → Locked rules](../../../.ai/integrations.md#locked-rules-must) rule 1 names
+[integrations.md → Locked rules](../../../../.ai/integrations.md#locked-rules-must) rule 1 names
 `webhooks.verify`.
 
 ### D11 — Fixed bodies
@@ -248,7 +248,7 @@ guard instead of `ON CONFLICT`; any other lock order.
 `stream`, a Winston Console transport to stdout; with one (any `{ write(chunk) }`), a Winston Stream
 transport for tests (C15). One format for both: `level`, RFC 3339 `timestamp`, `function_name`,
 `cold_start` when set; only the exact keys of
-[Log fields](../../../.ai/data-modeling.md#log-fields) plus `*_count` / `*_ms` keys with number
+[Log fields](../../../../.ai/data-modeling.md#log-fields) plus `*_count` / `*_ms` keys with number
 values; under an allowed key only a string, number or boolean; everything else dropped.
 `errorFields(err)` → `{ error_name, error_code?, pg_code? }`, walking `cause` for the first SQLSTATE
 and the first `LedgerError` code, never reading `message`, `detail` or `params`. `apps/local` builds
@@ -258,7 +258,7 @@ one logger each for `ingest`, `worker` and `api`. The constant messages are list
 ### D16 — Metrics
 
 `MetricsPort` has `count(name, value)` and `duration(name, ms)`, `name` a union of the
-[Technology](../../../.ai/architecture.md#technology) set. The one implementation writes through the
+[Technology](../../../../.ai/architecture.md#technology) set. The one implementation writes through the
 logger: the message is the metric name, the field `value_count` or `value_ms`, beside any
 allow-listed ids. Emitted: `ingest.accepted`, `worker.duplicates`, `worker.payload_sanitized`,
 `projection.unknown_event_type`, `worker.processing_lag`. *Rejected:* an EMF writer now (no Lambda
@@ -320,7 +320,7 @@ runs `drizzle-kit generate` in `packages/db` with flags passed through.
 `headerName: ''` and the injected generator (`crypto.randomUUID` in `apps/local`); no response
 header; no token middleware in this slice. Two routes built with `createRoute`, the operation id as
 `operationId`, responses `200`, `400`, `404`, `500`, `503`: `email.get` and `recipient.get`, at the
-paths and verbs [api-contract.md](../../../.ai/api-contract.md#emailget) gives them. Each calls one
+paths and verbs [api-contract.md](../../../../.ai/api-contract.md#emailget) gives them. Each calls one
 reader and one mapper. OpenAPI `info`: title `Ledger read API`, version `0.0.0`. Response bodies are
 [Surfaces](#surfaces)'.
 
@@ -379,7 +379,7 @@ an optional token slice 2 would have to make required; a per-walk `export`.
 `ledger email <email_id> [--json]` and `ledger recipient <address> [--json]`, no `argParser`, no
 CLI-side validation; `cli.config.ts` and `run-operation.ts` hold the shared config-load → SDK call →
 render → exit path. Exit codes and streams follow
-[pp-cli → Output and exit codes](../../../.agents/skills/pp-cli/SKILL.md#output-and-exit-codes) and
+[pp-cli → Output and exit codes](../../../../.agents/skills/pp-cli/SKILL.md#output-and-exit-codes) and
 [Surfaces → CLI behavior](#cli-behavior).
 
 ### D33 — Local start
@@ -659,7 +659,7 @@ factory: `createDatabase({ url, max: 1 })` → `{ db, pool }`, with `pool.on('er
 | Verified, enqueue failed | `503` | `unavailable` |
 
 All are `text/plain; charset=utf-8`. No registry code applies
-([Ingest boundary](../../../.ai/api-contract.md#ingest-boundary)).
+([Ingest boundary](../../../../.ai/api-contract.md#ingest-boundary)).
 
 ### `email.get` → SDK `emails.get(emailId)` → CLI `ledger email <email_id> [--json]`
 
@@ -695,7 +695,7 @@ Actor: support / on-call engineer (J2); scope `read`. `200` body (masks only; ev
   non-throwing parse in the reader.
 - Never returned: the payload, `to`, raw `from` / `subject`, bounce `message` / `diagnosticCode`,
   `address_hash`, the signal columns
-  ([Redaction](../../../.ai/api-contract.md#conventions)).
+  ([Redaction](../../../../.ai/api-contract.md#conventions)).
 - If `email_state` is absent but timeline rows exist (every event unprojectable), the response is
   `200` with `status: null`, zero counts and `recipients: []`.
 
@@ -742,7 +742,7 @@ caused by        <cause_email_id>
 
 ### Error codes raised
 
-In the [error shape](../../../AGENTS.md#error-shape); `docs` for each is
+In the [error shape](../../../../AGENTS.md#error-shape); `docs` for each is
 `` `${RUNBOOK_BASE_URL}#<code>` `` (D4).
 
 | Code | HTTP | Where | `message` | `hint` |
@@ -762,7 +762,7 @@ raised in slice 1 (no token store).
 
 ### CLI behavior
 
-From [pp-cli → Output and exit codes](../../../.agents/skills/pp-cli/SKILL.md#output-and-exit-codes):
+From [pp-cli → Output and exit codes](../../../../.agents/skills/pp-cli/SKILL.md#output-and-exit-codes):
 
 - Success: exit `0`; stdout carries the layout, or under `--json` exactly `data`.
 - Registry error: exit `1`. Under `--json`, `{ "error": … }` on stdout. Otherwise stderr gets the
@@ -784,7 +784,7 @@ error's `message` / `detail`.
 ## Walkthrough plan
 
 `WALKTHROUGH.md` in this folder, in
-[the format](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). Personas
+[the format](../../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). Personas
 reaching slice 1: **Reviewer** (the simulator and CLI), **Support / on-call engineer** (J2 through
 `ledger email` and `ledger recipient`), **Application developer** (recipient lookup over HTTP,
 ingest's boundary, the real-traffic loop). Not reaching it: **Operator** (health, gaps, reconcile
@@ -863,11 +863,11 @@ T1 (if a webhook is left over).
 
 | Not reachable | Carried by |
 | --- | --- |
-| Bearer-token enforcement, `ledger health`, the deployed ingest | [slice 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws) |
-| A DLQ and its inspection | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws), [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
-| `ingest.rejected`, the rotation runbook, the retired-secret test | [slice 4](../../../.ai/build-checklist.md#4--recovery) |
-| MCP tools, `ledger explain` | [slice 5](../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
-| `docker compose up` local mode | [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| Bearer-token enforcement, `ledger health`, the deployed ingest | [slice 2](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws) |
+| A DLQ and its inspection | [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws), [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| `ingest.rejected`, the rotation runbook, the retired-secret test | [slice 4](../../../../.ai/build-checklist.md#4--recovery) |
+| MCP tools, `ledger explain` | [slice 5](../../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
+| `docker compose up` local mode | [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
 
 ## Risks / Trade-offs
 

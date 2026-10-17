@@ -2,21 +2,21 @@
 
 ## Why
 
-Slice 1 is the next spine card ([build-checklist → 1](../../../.ai/build-checklist.md#1--local-ledger-and-read-path))
+Slice 1 is the next spine card ([build-checklist → 1](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path))
 and the first slice that stores anything. Every later slice writes through what it lands: slice 2
 swaps the in-process queue for SQS behind the same queue port and serves the same `createApi` app
 through `@hono/aws-lambda`. Slice 4's replays dedupe on the `svix_id` key this slice migrates. Slice
 5's MCP tools call the SDK methods this slice generates. Locally is the cheapest point to prove
 ingest, the worker transaction and the read path: the integration tier runs against real Postgres
-in seconds with no AWS account ([ADR-013](../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)).
+in seconds with no AWS account ([ADR-013](../../../../.ai/architecture.md#adr-013--pure-core-and-local-mode)).
 A migration is cheap to regenerate only until it is merged to `main` or applied to a kept database.
 One `[Unverified]` row MUST settle here: RS-U22 decides whether real events verify locally at all
 (RS-U21, which decides whether `email_recipients` is exact, moved to slice 2 by the owner on
 2026-10-17: it needs the project's verified sending domain)
-([Open questions owed by slice](../../../.ai/architecture.md#open-questions-owed-by-slice)).
+([Open questions owed by slice](../../../../.ai/architecture.md#open-questions-owed-by-slice)).
 
 The decision-complete brief is the checked pre-proposal
-[2026-10-17-slice-1-local-ledger-and-read-path.md](../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md)
+[2026-10-17-slice-1-local-ledger-and-read-path.md](../../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md)
 (cited below as *PP*). Every decision it settles (D1–D43, C1–C16, R1–R16) is carried forward
 unchanged.
 
@@ -27,13 +27,13 @@ itself has landed since `04dc19e`).
 
 1. Local ingest verifies signature and timestamp on the raw body against the configured secret set, first match wins, and returns `200` with a fixed body or `401`; evidence: unit tests with old, new and both signatures, forged and stale requests.
 2. `packages/db` Drizzle schema and expand-only migrations for `webhook_events`, `email_state`, `email_recipients` and `recipient_state`; CI applies every migration to a fresh Postgres before the integration tests (ADR-018).
-3. Worker runs one transaction per message behind the in-process queue port, deduplicating on `svix_id` (ADR-004, ADR-013); evidence: Testcontainers tests for a duplicate insert, a crash between steps, and a NUL payload stored with U+FFFD, projected and committed ([Immutable ledger](../../../.ai/data-modeling.md#immutable-ledger)).
+3. Worker runs one transaction per message behind the in-process queue port, deduplicating on `svix_id` (ADR-004, ADR-013); evidence: Testcontainers tests for a duplicate insert, a crash between steps, and a NUL payload stored with U+FFFD, projected and committed ([Immutable ledger](../../../../.ai/data-modeling.md#immutable-ledger)).
 4. Recipient rows locked in sorted `address_hash` order after the email lock; evidence: concurrency integration test with two emails sharing a recipient.
-5. Projections hold masks and keyed address hashes only, under an address-hash key the setup script generates once into `.env.local` ([PII & retention](../../../.ai/data-modeling.md#pii--retention)); evidence: integration test finding no raw address or subject in any projection row.
+5. Projections hold masks and keyed address hashes only, under an address-hash key the setup script generates once into `.env.local` ([PII & retention](../../../../.ai/data-modeling.md#pii--retention)); evidence: integration test finding no raw address or subject in any projection row.
 6. Unknown and non-email event types, and schema-failing payloads of known types, stored raw, projection skipped, metric emitted; evidence: unit test.
-7. The shared logger emits only the fields in [data-modeling.md → Log fields](../../../.ai/data-modeling.md#log-fields), never a payload or an error's `message` / `detail` from parsing or Postgres; evidence: unit test feeding a failing message with a test address and a `CHECK` violation, asserting no log line holds the address or subject.
+7. The shared logger emits only the fields in [data-modeling.md → Log fields](../../../../.ai/data-modeling.md#log-fields), never a payload or an error's `message` / `detail` from parsing or Postgres; evidence: unit test feeding a failing message with a test address and a `CHECK` violation, asserting no log line holds the address or subject.
 8. Minimal read API (OpenAPI, Zod), SDK, `ledger email <email_id>` and `ledger recipient <address>` with `--json` in the error shape, auth skipped only on loopback; evidence: SDK ↔ API contract tests and CLI `--json` output tests.
-9. `pnpm openapi:export` writes the committed `packages/sdk/openapi.json`, and a `pnpm verify` stage fails when it or the generated SDK types drift ([ADR-011](../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)); evidence: the stage fails on a stale fixture.
+9. `pnpm openapi:export` writes the committed `packages/sdk/openapi.json`, and a `pnpm verify` stage fails when it or the generated SDK types drift ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)); evidence: the stage fails on a stale fixture.
 10. `pnpm sim --duplicates 0.2 --shuffle` against the local process (`apps/local`) passes invariants 1 and 2.
 11. ~~RS-U21 settled by the Ask-first two-recipient send to `delivered@resend.dev` and `bounced@resend.dev`, observed through `resend webhooks listen`, with the result in resend.md.~~ Moved to slice 2 by the owner on 2026-10-17: from `onboarding@resend.dev` Resend keeps only the first recipient, so the send needs the project's verified sending domain, which is still propagating.
 12. RS-U15 recorded from the Ask-first test-address sends, with simulator fixtures mirroring the observed sequences; RS-U18 checked by a read-only `GET /webhooks` after an interrupted `listen` session.
@@ -120,7 +120,7 @@ Mapped in PP §23.
   `scripts/openapi-drift.mjs` (new), root `package.json`, `biome.json`, `vitest.config.ts`,
   `tsconfig.json`, `.env.example`.
 - **Public contract:** two read operations (`email.get`, `recipient.get`), already in
-  [api-contract.md](../../../.ai/api-contract.md#emailget) under slice 1; one new error code; two new
+  [api-contract.md](../../../../.ai/api-contract.md#emailget) under slice 1; one new error code; two new
   environment variables; two CLI commands already named in the contract.
 - **Schema:** four tables and two migrations, pure expand.
 - **No** AWS resource, no Resend API call from Ledger code (`webhooks.verify` is local crypto,
@@ -130,10 +130,10 @@ Mapped in PP §23.
   rsa-manual-test `environment.md`, and fact corrections in pp-backend, pp-database, pp-testing,
   pp-cli and pp-general references, plus `WALKTHROUGH.md` in this folder. One edit loosens on its
   face: the C14 move of two library bullets to slice 2. It goes through the independent-helper gate
-  ([root AGENTS.md → Never loosen a rule](../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built))
+  ([root AGENTS.md → Never loosen a rule](../../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built))
   and its verdict goes in the commit body.
 
-**Ask-first items** ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions)). Every row but
+**Ask-first items** ([root AGENTS.md → Permissions](../../../../AGENTS.md#permissions)). Every row but
 the last was approved by the owner on 2026-10-17 in one itemized round (PP §7, approvals table):
 
 | Item | Exact scope approved | PP §7 row |

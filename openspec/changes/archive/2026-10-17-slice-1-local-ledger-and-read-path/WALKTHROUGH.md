@@ -6,7 +6,7 @@ What one person does, in ~15 minutes, to prove this slice works.
 that carries it. A step without such a note that fails is a finding against this slice.
 
 Every `UI surfaces` entry on the
-[slice 1 card](../../../.ai/build-checklist.md#1--local-ledger-and-read-path) is reached: the local
+[slice 1 card](../../../../.ai/build-checklist.md#1--local-ledger-and-read-path) is reached: the local
 `POST /webhooks/resend` (A1, A2, C2, D5); `resend webhooks listen` (D2); `ledger email <email_id>`
 (A3, B1, B3, B5, B6, D6); `ledger recipient <address>` (B2, B4, D7);
 `pnpm sim --duplicates 0.2 --shuffle` (A1, A2).
@@ -48,7 +48,7 @@ pnpm dev:full
 
 ## Path A — `pnpm sim` → local ingest → worker → `ledger email`: the live run passes invariants 1 and 2
 
-**Walked as:** [Reviewer](../../../.ai/about.md#target-personas)
+**Walked as:** [Reviewer](../../../../.ai/about.md#target-personas)
 
 1. **Run the simulator live, with duplicates and shuffle.**
 
@@ -68,7 +68,7 @@ pnpm dev:full
 
    then the projection JSON (masks only; the email ids are `<namespace>-email-<i>`,
    `<namespace>-probe` and one `<namespace>-observed-<address>` per test address, replaying
-   [RS-39](../../../.ai/resend.md#facts)'s sequences), and it ends exactly
+   [RS-39](../../../../.ai/resend.md#facts)'s sequences), and it ends exactly
 
    ```text
    }
@@ -172,8 +172,8 @@ pnpm dev:full
 
 ## Path B — J2 support lookup: `ledger email` and `ledger recipient`, human and `--json`, every error shape
 
-**Walked as:** [Support / on-call engineer](../../../.ai/about.md#target-personas)
-([J2](../../../.ai/features.md#j2--support-lookup))
+**Walked as:** [Support / on-call engineer](../../../../.ai/about.md#target-personas)
+([J2](../../../../.ai/features.md#j2--support-lookup))
 
 1. **Read the probe in the human layout.**
 
@@ -340,7 +340,7 @@ pnpm dev:full
 
 ## Path C — the HTTP surface: recipient lookup, the ingest boundary, an unknown route, the loopback guard
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas)
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas)
 
 1. **Look up a recipient over HTTP.**
 
@@ -372,7 +372,7 @@ pnpm dev:full
 
    Expect: each prints `unauthorized` then `401` (body `text/plain; charset=utf-8`, no registry
    `code`: ingest is not an operation,
-   [Ingest boundary](../../../.ai/api-contract.md#ingest-boundary)). The timestamp is the current
+   [Ingest boundary](../../../../.ai/api-contract.md#ingest-boundary)). The timestamp is the current
    second, so the first `401` is the signature's, not staleness (RS-02). The `pnpm dev:full`
    terminal logs, per request,
    `{"level":"warn","timestamp":"<iso>","function_name":"ingest","message":"ingest.request_rejected"}`
@@ -407,18 +407,18 @@ pnpm dev:full
    Nothing listens on port `3299` afterwards, and the server on `3200` is untouched. (Without
    `-s`, pnpm adds its script banner and an `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL` line.)
    → **Why it matters.** Auth is skipped only because the bind is loopback
-   ([Conventions → Auth in slice 1](../../../.ai/api-contract.md#conventions)).
+   ([Conventions → Auth in slice 1](../../../../.ai/api-contract.md#conventions)).
 
 ## Path D — real Resend traffic, locally: `resend webhooks listen` → local ingest → `ledger email`
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas)
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas)
 
 Owner-run or run with the owner's yes in this conversation. Test addresses only
-([RS-32](../../../.ai/resend.md#facts)). Never paste a signing secret, an API key, a webhook id or
+([RS-32](../../../../.ai/resend.md#facts)). Never paste a signing secret, an API key, a webhook id or
 the tunnel URL into a run file: write `<redacted:kind>`. The owner's run of 2026-10-17
 (resend-cli 2.26.0, sends from `onboarding@resend.dev`, no verified domain) settled RS-U15, RS-U18
-and RS-U22 as [RS-39, RS-40 and RS-41](../../../.ai/resend.md#facts), and RS-U14 as RS-42; RS-U21
-stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations below are that run's.
+and RS-U22 as [RS-39, RS-40 and RS-41](../../../../.ai/resend.md#facts), and RS-U14 as RS-42; RS-U21
+stays [Unverified](../../../../.ai/resend.md#unverified) (D6). The expectations below are that run's.
 
 1. **Start a public tunnel to port 4318 (owner-run, the owner's tunnel tool).**
 
@@ -484,7 +484,7 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
 
    Expect: each prints a JSON body carrying the new email's `id`, then `200`
    ([Send Email](https://resend.com/docs/api-reference/emails/send-email)); test addresses are
-   exempt from the own-address rule ([RS-42](../../../.ai/resend.md#facts)). Keep the first id as
+   exempt from the own-address rule ([RS-42](../../../../.ai/resend.md#facts)). Keep the first id as
    `<two-recipient email id>` and the second as `<bounced email id>`. Without a verified domain
    Resend keeps only the first `to` recipient, so the two-recipient email reaches
    `delivered@resend.dev` alone (RS-U21's observation); the second send is what reaches
@@ -498,9 +498,9 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
    ```
 
    Expect: the `listen` terminal shows each event in no promised order, with `forwarded.status`
-   `200` for every one ([RS-41](../../../.ai/resend.md#facts)); the `pnpm dev:full` terminal logs
+   `200` for every one ([RS-41](../../../../.ai/resend.md#facts)); the `pnpm dev:full` terminal logs
    `"message":"ingest.accepted"` with `"svix_id":"msg_<…>"` and the event's `"type"` per delivery.
-   By `created_at`, each address's events are [RS-39](../../../.ai/resend.md#facts)'s:
+   By `created_at`, each address's events are [RS-39](../../../../.ai/resend.md#facts)'s:
    `delivered@` `email.sent`, `email.delivered`; `bounced@` `email.sent`, `email.bounced` with
    `bounce.type` `Permanent` and `subType` `General`; `complained@` `email.sent`,
    `email.complained`, `email.delivered`; `suppressed@` `email.suppressed` only. Every event's
@@ -516,9 +516,9 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
 
    Expect, without a verified domain: `exit=0`; `"object": "email"`, and `recipients` holds one
    row, `"address_masked": "del******@r*****.d**"` with `"status": "delivered"` (D4: Resend kept
-   only the first recipient). That leaves RS-U21 [Unverified](../../../.ai/resend.md#unverified):
+   only the first recipient). That leaves RS-U21 [Unverified](../../../../.ai/resend.md#unverified):
    settling it needs this send from the project's verified sending domain
-   → [slice 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws). From a verified domain,
+   → [slice 2](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws). From a verified domain,
    expect two rows, the second `"address_masked": "bo*****@r*****.d**"` with
    `"status": "bounced"` and `bounce_type` / `bounce_sub_type` (RS-U21 positive); anything else is
    recorded as observed.
@@ -544,7 +544,7 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
 
    Expect: the session ends at once. Then, owner-run in the owner's own terminal,
    `resend webhooks list`, and report only the number of webhooks whose endpoint is a tunnel URL:
-   `1`, `enabled` ([RS-40](../../../.ai/resend.md#facts): a hard kill leaves the webhook behind),
+   `1`, `enabled` ([RS-40](../../../../.ai/resend.md#facts): a hard kill leaves the webhook behind),
    and T1 deletes it. The plan was a second, short session killed this way; on 2026-10-17 the
    owner approved hard-killing the first instead, so a graceful Ctrl+C exit (which the CLI's help
    says deletes the webhook, RS-33) was not exercised.
@@ -588,9 +588,9 @@ stays [Unverified](../../../.ai/resend.md#unverified) (D6). The expectations bel
 
 | Not reachable | Carried by |
 | --- | --- |
-| Bearer-token enforcement, `ledger health`, `ledger worker resume` (named in the `database_unavailable` hint), the deployed ingest, RS-U21's two-recipient send from the verified domain | [slice 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws) |
-| A DLQ and its inspection | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws), [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
-| The runbook the error `docs` links point at | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
-| `ingest.rejected`, the rotation runbook, the retired-secret test, `ledger gaps` (named in the not-found hints) | [slice 4](../../../.ai/build-checklist.md#4--recovery) |
-| MCP tools, `ledger explain` | [slice 5](../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
-| `docker compose up` local mode, and a queue that survives an `apps/local` restart | [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| Bearer-token enforcement, `ledger health`, `ledger worker resume` (named in the `database_unavailable` hint), the deployed ingest, RS-U21's two-recipient send from the verified domain | [slice 2](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws) |
+| A DLQ and its inspection | [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws), [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| The runbook the error `docs` links point at | [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
+| `ingest.rejected`, the rotation runbook, the retired-secret test, `ledger gaps` (named in the not-found hints) | [slice 4](../../../../.ai/build-checklist.md#4--recovery) |
+| MCP tools, `ledger explain` | [slice 5](../../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
+| `docker compose up` local mode, and a queue that survives an `apps/local` restart | [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |

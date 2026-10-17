@@ -1,6 +1,6 @@
 # Verification — 2026-10-17
 
-**Verdict:** not done — `Ships` 11 (RS-U21) is open: it needs a two-recipient send from a verified domain, an owner decision ([about.md → Project domain](../../../.ai/about.md#open-questions)); the card is `[!]` with that reason. Everything else is ready for `rsa-manual-test`.
+**Verdict:** not done — `Ships` 11 (RS-U21) is open: it needs a two-recipient send from a verified domain, an owner decision ([about.md → Project domain](../../../../.ai/about.md#open-questions)); the card is `[!]` with that reason. Everything else is ready for `rsa-manual-test`.
 **Update 2026-10-17:** the owner moved RS-U21 to slice 2 ("Move RS-U21 to a later slice. … Maybe it will be ready for slice 2."); no other blocker remains. Ready for `rsa-manual-test`, then `opsx:archive`; the card is `[~]` until the walk passes.
 **Gate:** `pnpm verify` exit 0, every stage run (`VERIFY PASSED`), on `2f1a231`.
 **Read:** `61e94cb...e13ea41`: 187 files, +19,253 / −1,140 (pnpm-lock and Drizzle `meta/` counted, not read) · the four change artifacts, REVIEW.md and WALKTHROUGH.md · `.ai/` about, api-contract, architecture, build-checklist, data-modeling, resend and `.env.example` diffs · pp-workflow, pp-general, pp-testing, plus pp-backend and pp-database rules on the surfaces read; the diff itself read by four surface helpers, each lead opened before acting.
