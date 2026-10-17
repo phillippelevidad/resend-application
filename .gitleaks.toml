@@ -17,10 +17,12 @@ regex = '''\bwhsec_[A-Za-z0-9+/]{20,}={0,2}'''
 [[rules]]
 id = "postgres-url"
 description = "Postgres connection URL that carries a password"
-regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#]+'''
+regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#'"`)>]+'''
 # The compose and Testcontainers throwaway credentials only ever point at the local host. Anchored
-# at the end of the match (which stops before any `:port` or `/db`), so a host that merely starts
-# with `localhost.` or `127.0.0.1.` is still reported.
+# at the end of the match (which stops before any `:port` or `/db`, and before a closing quote,
+# backtick, `)` or `>`, so a quoted local URL with no port still matches), so a host that merely
+# starts with `localhost.` or `127.0.0.1.` is still reported. `@` and `,` stay in the host class:
+# `@localhost@prod` and `@localhost,prod` name another host and are reported.
 [[rules.allowlists]]
 regexTarget = "match"
 regexes = ['''@(?:localhost|127\.0\.0\.1)$''']
