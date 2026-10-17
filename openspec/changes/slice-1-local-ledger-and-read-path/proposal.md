@@ -151,6 +151,7 @@ the last was approved by the owner on 2026-10-17 in one itemized round (PP §7, 
 | Error code `route_not_found` | `404`, raised by the `packages/api` not-found handler | `route_not_found` |
 | CI change | Two new stages in `scripts/verify.mjs` (`drift` after `typecheck`, `int` after `unit`); no `.github/workflows/ci.yml` edit | CI change |
 | Schema / migrations | The four tables of PP §8; migrations `create-ledger-tables` and `grant-ledger-tables`; unfrozen until merged to `main` | Schema |
+| Dependency `zod` in `apps/cli`, `apps/local` | `4.6.7` exact, `dependencies` of both, for `cli.config.ts` and `local.config.ts` (pp-general's config loader) | Approved by the owner at apply, 2026-10-17: "Approve zod in both apps" |
 | Live Resend writes | Each `resend webhooks listen` session; three test sends (`delivered@` + `bounced@` together, `complained@`, `suppressed@resend.dev`); any leftover-webhook deletion | Live Resend writes — **held: approved one at a time, when each runs** |
 
 `zod` `4.6.7` in `packages/shared`, `packages/db`, `packages/sdk` and `packages/worker`, and `hono`,

@@ -17,7 +17,8 @@
     "@ledger/ingest": "workspace:*",
     "@ledger/shared": "workspace:*",
     "@ledger/worker": "workspace:*",
-    "hono": "4.13.13"
+    "hono": "4.13.13",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@ledger/sdk": "workspace:*",
