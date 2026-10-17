@@ -32,13 +32,21 @@ export class GetEmailReader {
   }
 
   async execute(input: GetEmailInput): Promise<EmailRead> {
-    const timeline = await webhookEventsRepository.listTimeline(this.#db, input.emailId);
-    // The ledger is the truth: no row with this `email_id` means no event was recorded for it.
-    if (timeline.length === 0) {
-      throw new LedgerError('email_not_found', errorRegistry.email_not_found.message);
-    }
-    const state = await emailStateRepository.get(this.#db, input.emailId);
-    const recipients = await emailRecipientsRepository.listByEmail(this.#db, input.emailId);
-    return { emailId: input.emailId, state, recipients, timeline };
+    // One snapshot for the three reads: a worker commit between them would otherwise answer a
+    // timeline of n events beside the state of n + 1. REPEATABLE READ takes the snapshot at the
+    // first statement; transaction-scoped, so pooler-safe (integrations.md → Decision — Neon).
+    return this.#db.transaction(
+      async (tx) => {
+        const timeline = await webhookEventsRepository.listTimeline(tx, input.emailId);
+        // The ledger is the truth: no row with this `email_id` means no event was recorded for it.
+        if (timeline.length === 0) {
+          throw new LedgerError('email_not_found', errorRegistry.email_not_found.message);
+        }
+        const state = await emailStateRepository.get(tx, input.emailId);
+        const recipients = await emailRecipientsRepository.listByEmail(tx, input.emailId);
+        return { emailId: input.emailId, state, recipients, timeline };
+      },
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
+    );
   }
 }

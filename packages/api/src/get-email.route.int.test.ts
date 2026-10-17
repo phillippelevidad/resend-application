@@ -1,12 +1,13 @@
 import { hashAddress, maskAddress, maskFrom, maskText } from '@ledger/core';
 import {
+  createDatabase,
   emailRecipientsRepository,
   emailStateRepository,
   type NewWebhookEvent,
   webhookEventsRepository,
 } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
-import { createLogger } from '@ledger/shared';
+import { createLogger, type Logger } from '@ledger/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
 import type { EmailResponse } from './email-response.schema.ts';
@@ -354,4 +355,93 @@ describe('email.get', () => {
       });
     },
   );
+});
+
+describe('email.get reads one snapshot', () => {
+  const silentLogger: Logger = { info: () => {}, warn: () => {}, error: () => {} };
+
+  function named(url: string, applicationName: string): string {
+    const parsed = new URL(url);
+    parsed.searchParams.set('application_name', applicationName);
+    return parsed.toString();
+  }
+
+  // Polls, with a deadline, until the named session waits on a heavyweight lock. The owner only
+  // watches locks (pp-testing → harness).
+  async function waitUntilBlockedOnLock(applicationName: string): Promise<void> {
+    const deadline = performance.now() + 3_000;
+    while (performance.now() < deadline) {
+      const { rows } = await t.owner.execute<{ wait_event_type: string | null }>(
+        `select wait_event_type from pg_stat_activity where application_name = '${applicationName}'`,
+      );
+      if (rows.some((row) => row.wait_event_type === 'Lock')) {
+        return;
+      }
+    }
+    throw new TypeError(`${applicationName} never waited on a lock.`);
+  }
+
+  it('a worker commit between the reads does not answer a timeline of n events beside the state of n + 1', async () => {
+    const emailId = 'email-snapshot';
+    await seedBouncedEmail(emailId);
+    const reader = createDatabase({
+      url: named(t.runtimeUrl, 'email_get_reader'),
+      max: 1,
+      logger: silentLogger,
+    });
+    const worker = createDatabase({
+      url: named(t.runtimeUrl, 'email_get_worker'),
+      max: 1,
+      logger: silentLogger,
+    });
+    const readerApi = createApi({
+      db: reader.db,
+      logger: silentLogger,
+      addressHashKey,
+      requestId: () => 'req-email-snapshot',
+    });
+    try {
+      let answered: Promise<Response> | undefined;
+      // A fourth event and its recompute, committed while the read is in flight. The table lock
+      // parks the read after its timeline read and before its `email_state` read, so the commit
+      // lands between the two deterministically, never by timing.
+      await worker.db.transaction(async (tx) => {
+        await tx.execute('lock table email_state in access exclusive mode');
+        await webhookEventsRepository.insertIfAbsent(
+          tx,
+          ledgerRow(emailId, {
+            svixId: `msg_${emailId}_opened`,
+            type: 'email.opened',
+            createdAt: '2026-10-17T12:00:03.000Z',
+            to: [DELIVERED],
+          }),
+        );
+        await emailStateRepository.update(tx, emailId, {
+          status: 'bounced',
+          fromMasked: maskFrom(FROM),
+          subjectMasked: maskText(SUBJECT),
+          openCount: 1,
+          clickCount: 0,
+          firstOpenedAt: new Date('2026-10-17T12:00:03.000Z'),
+          firstClickedAt: null,
+          lastEventAt: new Date('2026-10-17T12:00:03.000Z'),
+          eventCount: 4,
+        });
+        answered = Promise.resolve(readerApi.request(`/emails/${emailId}`));
+        await waitUntilBlockedOnLock('email_get_reader');
+      });
+      if (answered === undefined) {
+        throw new TypeError('The read never started.');
+      }
+      const response = await answered;
+      const body = (await response.json()) as EmailResponse;
+
+      expect(response.status).toBe(200);
+      expect(body.timeline).toHaveLength(3);
+      expect(body.event_count).toBe(3);
+      expect(body.open_count).toBe(0);
+    } finally {
+      await Promise.all([reader.pool.end(), worker.pool.end()]);
+    }
+  });
 });
