@@ -1,17 +1,41 @@
+import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { serve } from '@hono/node-server';
 import { createApi } from '@ledger/api';
+import { createDatabase } from '@ledger/db';
+import { createIngest } from '@ledger/ingest';
+import {
+  type ClockPort,
+  ConfigError,
+  createLogger,
+  InProcessQueueAdapter,
+  type Logger,
+  LogMetricsAdapter,
+  loadConfig,
+} from '@ledger/shared';
+import { createWorker } from '@ledger/worker';
+import { ingestFetch } from './ingest-fetch.ts';
 import { isLoopbackHost } from './is-loopback-host.ts';
+import { configFailureMessage, type LocalConfig, localConfigSchema } from './local.config.ts';
 
-// Composition root for local mode (ADR-013): the same package factories the Lambdas use, served
-// by @hono/node-server. stdout carries only the listening line, which scripts wait for.
+// Composition root for local mode (ADR-013, D29): the same package factories the Lambdas use, in
+// one loopback process over the in-process queue, served by @hono/node-server. Every line is the
+// shared logger's JSON on stdout (design.md → Log output).
 
-function refuse(message: string, fields: Record<string, string> = {}): never {
-  process.stderr.write(`${JSON.stringify({ level: 'error', message, ...fields })}\n`);
-  process.exit(1);
+// One logger per composed function (D15), and one for the process's own lines (boot, listening).
+const processLogger = createLogger({ functionName: 'local' });
+
+type Flags = { port: number; host: string };
+
+// A refusal sets the exit code instead of calling `process.exit`, so the logger's line drains
+// before the process ends; nothing else is running yet to keep it alive.
+function refuse(logger: Logger, message: string): undefined {
+  logger.error(message);
+  process.exitCode = 1;
+  return undefined;
 }
 
-function readFlags(): { port: number; host: string } {
+function readFlags(): Flags | undefined {
   let values: { port: string; host: string };
   try {
     ({ values } = parseArgs({
@@ -24,34 +48,104 @@ function readFlags(): { port: number; host: string } {
       allowPositionals: false,
     }));
   } catch {
-    refuse('refusing to start: unknown or malformed flag; the flags are --port and --host');
+    return refuse(
+      processLogger,
+      'refusing to start: unknown or malformed flag; the flags are --port and --host',
+    );
   }
   if (!/^\d{1,5}$/.test(values.port) || Number(values.port) > 65535) {
-    refuse('refusing to start: --port must be an integer from 0 to 65535');
+    return refuse(processLogger, 'refusing to start: --port must be an integer from 0 to 65535');
   }
   // Auth is skipped in slice 1, so only a loopback bind is allowed (api-contract.md → Conventions).
   if (!isLoopbackHost(values.host)) {
-    refuse(
+    return refuse(
+      processLogger,
       'refusing to start: --host must be 127.0.0.1, ::1 or localhost because local mode skips auth',
     );
   }
   return { port: Number(values.port), host: values.host };
 }
 
-const { port, host } = readFlags();
-const api = createApi();
-
-const server = serve({ fetch: api.fetch, hostname: host, port }, () => {
-  // Log fields are allow-listed (data-modeling.md → Log fields): no url or port field.
-  process.stdout.write(`${JSON.stringify({ level: 'info', message: 'local server listening' })}\n`);
-});
-
-server.on('error', (error: NodeJS.ErrnoException) => {
-  refuse('local server failed to listen', { error_name: error.code ?? error.name });
-});
-
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.once(signal, () => {
-    server.close();
-  });
+// D29: one line per failing variable, naming it and never its value.
+function readConfig(): LocalConfig | undefined {
+  try {
+    return loadConfig(localConfigSchema, process.env);
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    for (const issue of error.issues) processLogger.error(configFailureMessage(issue.variable));
+    process.exitCode = 1;
+    return undefined;
+  }
 }
+
+function start({ port, host }: Flags, config: LocalConfig): void {
+  const clock: ClockPort = { now: () => new Date() };
+  const ingestLogger = createLogger({ functionName: 'ingest' });
+  const workerLogger = createLogger({ functionName: 'worker' });
+  const apiLogger = createLogger({ functionName: 'api' });
+
+  // ADR-005, D29: one size-1 pool per function that touches the database; ingest has none. Locally
+  // both connect with `DATABASE_URL` as the owner (D30). `pg` connects lazily, on the first query.
+  const workerDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: workerLogger });
+  const apiDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: apiLogger });
+
+  const queue = new InProcessQueueAdapter({ clock, logger: workerLogger });
+  const ingest = createIngest({
+    secrets: config.secrets,
+    queue,
+    clock,
+    logger: ingestLogger,
+    metrics: new LogMetricsAdapter(ingestLogger),
+  });
+  const worker = createWorker({
+    db: workerDatabase.db,
+    clock,
+    logger: workerLogger,
+    metrics: new LogMetricsAdapter(workerLogger),
+    addressHashKey: config.addressHashKey,
+  });
+  const api = createApi({
+    db: apiDatabase.db,
+    logger: apiLogger,
+    addressHashKey: config.addressHashKey,
+    requestId: randomUUID,
+  });
+
+  // D32: the ingest endpoint (api-contract.md → Ingest boundary) goes to ingest, as slice 2's HTTP
+  // API routes it; everything else reaches the read API, where an unmatched path answers
+  // `route_not_found`.
+  const handleIngest = ingestFetch(ingest);
+  const fetch = (request: Request): Response | Promise<Response> =>
+    request.method === 'POST' && new URL(request.url).pathname === '/webhooks/resend'
+      ? handleIngest(request)
+      : api.fetch(request);
+
+  queue.start(worker.processBatch);
+
+  const closePools = (): void => {
+    void workerDatabase.pool.end();
+    void apiDatabase.pool.end();
+  };
+
+  const server = serve({ fetch, hostname: host, port }, () => {
+    // Log fields are allow-listed (data-modeling.md → Log fields): no url or port field.
+    processLogger.info('local server listening');
+  });
+
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    processLogger.error('local server failed to listen', { error_name: error.code ?? error.name });
+    process.exitCode = 1;
+    closePools();
+  });
+
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => {
+      server.close();
+      closePools();
+    });
+  }
+}
+
+const flags = readFlags();
+const config = flags === undefined ? undefined : readConfig();
+if (flags !== undefined && config !== undefined) start(flags, config);
