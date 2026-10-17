@@ -11,7 +11,7 @@
 | Touches | `packages/core`, `packages/shared`, `packages/db`, `packages/ingest`, `packages/worker`, `packages/api`, `packages/sdk`, `apps/local`, `apps/cli`, `apps/api` (stubbed), `sim`, `scripts/`, root `package.json`, `biome.json`, `vitest.config.ts`, `tsconfig.json`, `.env.example`, `.ai/` docs, root `AGENTS.md`, six skills' text |
 | Earlier pre-proposal | None for this slice |
 | Branch | `worktree-slice-1` |
-| Checked | Not yet |
+| Checked | 2026-10-17 — 16 repaired, 0 for the owner |
 
 ## 1. Why now
 
@@ -73,7 +73,7 @@ Also out, each with its carrier:
   Ships 11–13 only: a Resend API key (`RESEND_API_KEY`) in the git-ignored `.env.local`, the Resend
   CLI installed, a public tunnel of the owner's choice for `listen --url` (RS-33), and approval of
   each `listen` session and each test send.
-- **Env vars:** `DATABASE_URL`, `LEDGER_ADDRESS_HASH_KEY`, `LEDGER_SIMULATOR_SECRET` and `LEDGER_URL` are written by `pnpm db:setup` when unset (D31). `LEDGER_WEBHOOK_SECRETS` is set by hand per `listen` session (D36). `LEDGER_TOKEN` takes any non-empty value in slice 1 (D27).
+- **Env vars:** `DATABASE_URL`, `LEDGER_ADDRESS_HASH_KEY`, `LEDGER_SIMULATOR_SECRET`, `LEDGER_URL` and `LEDGER_TOKEN` (a fixed placeholder; any non-empty value works in slice 1, D27) are written by `pnpm db:setup` when unset (D31). `LEDGER_WEBHOOK_SECRETS` is set by hand per `listen` session (D36).
 - **Open questions the slice depends on:** RS-U21 and RS-U22 (MUST settle), RS-U15 and RS-U18 (Ships 11–13). RS-U14 is slice 2's, but a negative answer blocks Ships 11–12 (§24).
 
 ## 5. Reality check — per-`Ships`-item verdict
@@ -109,12 +109,12 @@ and adds seven capabilities (§23).
 | C3 | [api-contract.md → email.get / recipient.get](../api-contract.md#emailget) list `database_unavailable` under **Slices: 1**. [pp-database → classification](../../.agents/skills/pp-database/references/schema-and-repositories.md#connection-error-classification): "Where it is applied … is the slice 2 pre-proposal's to settle", and "the slice 2 classification unit test pins each row" | api-contract.md (a doc beats a skill, [pp-general → Precedence](../../.agents/skills/pp-general/SKILL.md#precedence)) | Slice 1 lands the classifier in `packages/db` with its unit test and applies it in the read API's `onError` (D22). The worker's ADR-015 branch stays slice 2. pp-database's two sentences are corrected (§22). This moves evidence earlier and loosens nothing |
 | C4 | [architecture.md → Technology](../architecture.md#technology) lists `ingest.rejected{reason}` in the metric set. [pp-backend → ingest-and-worker](../../.agents/skills/pp-backend/references/ingest-and-worker.md#ingest-in-order) step 3 gives the `reason` mechanism to "the slice that ships the metric (slice 4)" | The skill's slice assignment: the Technology table fixes the set, not the slice | Slice 1 does not emit `ingest.rejected` (§3). No doc edit |
 | C5 | [data-modeling.md → `webhook_events`](../data-modeling.md#webhook_events--the-immutable-ledger) gives `type` as `text, no CHECK` with no nullability. ADR-004: schema-failing events are stored with "typed columns null where unreadable" | ADR-004 | `type` is nullable, null when the payload carries no string `type` (D17, §8). A `NOT NULL` would dead-letter a verified event for its content, which ADR-004 forbids. The field table gains the nullability (§22) |
-| C6 | `.env.example:12`: `LEDGER_SIMULATOR_SECRET` is "for a deployed stack … (ADR-016, slice 3)". [ADR-016](../architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret): "Locally (slices 1 and 2B), ingest reads an optional `LEDGER_SIMULATOR_SECRET` from `.env.local`" | ADR-016 | The `.env.example` comment is corrected (§22) |
+| C6 | `.env.example:11`: `LEDGER_SIMULATOR_SECRET` is "for a deployed stack … (ADR-016, slice 3)". [ADR-016](../architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret): "Locally (slices 1 and 2B), ingest reads an optional `LEDGER_SIMULATOR_SECRET` from `.env.local`" | ADR-016 | The `.env.example` comment is corrected (§22) |
 | C7 | [rsa-manual-test → environment.md](../../.agents/skills/rsa-manual-test/references/environment.md#surfaces-by-slice): "(no `bin` until slice 1)". [pp-cli → Stack and layout](../../.agents/skills/pp-cli/SKILL.md#stack-and-layout): "the npm bundle is slice 8's" | Neither binds a `bin` to slice 1; pp-cli gives the start mechanism to this pre-proposal | No `bin` in slice 1. A root `pnpm ledger` script runs the CLI with `.env.local` (D33). environment.md is corrected (§22) |
 | C8 | `packages/core` already exports `webhookEnvelopeSchema` for the Resend payload `{ type, created_at, data }` (`webhook-envelope.schema.ts:3-9`). ADR-001 calls the queue message `{svixId, receivedAt, source, rawBody, headers subset}` "the envelope" | Both, different things | The queue message gets its own `ingestEnvelopeSchema` (D12). The existing payload schema keeps its name: renaming it touches a done spec for no gain |
 | C9 | ADR-004 prose: "every projection row is created with `INSERT … ON CONFLICT DO NOTHING` before its `SELECT … FOR UPDATE`". [data-modeling.md → `email_recipients`](../data-modeling.md#email_recipients--outcome-per-email-and-recipient): "Locking: the row is written under the email's lock" | ADR-004, read literally | `email_recipients` rows are also inserted, then locked, then updated, after the `recipient_state` locks (D14). Under the email lock this adds no contention and no new lock order |
 | C10 | [pp-testing → simulator.md](../../.agents/skills/pp-testing/references/simulator.md#seed-and-determinism): namespaced `+label` addresses keep runs apart on a persistent store. `ledgerHistory`'s pool makes the label optional (`ledger-history.ts`, `fc.option(fc.nat(9))`), so bare `delivered@resend.dev` recipients fold every run into one `recipient_state` row, breaking invariant 2 on the second run against compose Postgres | simulator.md's intent | `ledgerHistory` gains an option that labels every address with the run's namespace, and `pnpm sim` always sets it (D38) |
-| C11 | Slice 0's done bullet 8: "`pnpm sim` prints the projection of a generated, shuffled history". Slice 1's `UI surfaces`: `pnpm sim --duplicates 0.2 --shuffle` "against the local process", with no target flag | Both, if the mode follows `LEDGER_URL` | `.env.example:8,18` already says `pnpm sim` reads `LEDGER_URL` and `DATABASE_URL` from slice 1. A run with `LEDGER_URL` set goes live; without it, slice 0's offline run is unchanged and its e2e test keeps passing (D37) |
+| C11 | Slice 0's done bullet 8: "`pnpm sim` prints the projection of a generated, shuffled history". Slice 1's `UI surfaces`: `pnpm sim --duplicates 0.2 --shuffle` "against the local process", with no target flag | Both, if the mode follows `LEDGER_URL` | `.env.example:7,16` already says `pnpm sim` reads `LEDGER_URL` and `DATABASE_URL` from slice 1. A run with `LEDGER_URL` non-empty goes live; empty or unset, slice 0's offline run is unchanged and its e2e test keeps passing (D37). Because `pnpm sim` loads `.env.local` and `db:setup` writes `LEDGER_URL` there, live is the default after setup and offline is `LEDGER_URL= pnpm sim` (D37; root AGENTS.md Commands, §22) |
 | C12 | `apps/api/src/api.handler.ts:6` serves `handle(createApi())`, and root AGENTS.md → Projects describes that scaffold. Slice 1's `createApi` takes its dependencies (D21), which `apps/api` cannot build before slice 2 | ADR-013 (apps compose; `apps/api`'s logic lands in slice 2) | `apps/api`'s handler becomes an `export {}` stub like `apps/ingest` and `apps/worker` until slice 2. The Projects text is corrected (§22) |
 | C13 | [pp-testing → harness](../../.agents/skills/pp-testing/references/postgres-harness.md#lifecycle-one-run) step 2: the role-ensure function "also applies the deploy command's role-level `idle_in_transaction_session_timeout` and `lock_timeout`". [integrations.md](../integrations.md#decision--neon): "values fixed by slice 2" | integrations.md | Slice 1's role-ensure creates the role only. Slice 2 adds the two `ALTER ROLE … SET`, their values and the idle-holder test. pp-testing's step 2 gains "(from slice 2)" (§22) |
 | C14 | [about.md → library bullets](../about.md#open-questions): "identity on `bigint`" and "whether an identity sequence needs no `INSERT` grant" are owed by slice 1. None of slice 1's four tables has an identity column (§8; [Base fields](../data-modeling.md#base-fields--the-checklist-for-every-new-model): natural PKs) | The code: nothing in slice 1 can check them | Both items move to slice 2, whose `api_tokens` is the first identity column. They sit in slice 1's "MAY close safe either way" column ([Open questions owed by slice](../architecture.md#open-questions-owed-by-slice)), so moving them is a fact correction. The edit still goes through the independent-helper gate at apply (§22) |
@@ -203,7 +203,11 @@ holds it, and pushing `{ messageId, body }`. It adds the local consumer the port
 `start(consumer)` delivers up to 10 messages per call, mirroring the ESM batch size (ADR-008),
 `consumer(messages) → { batchItemFailures }`. Failed messages are redelivered after 1 s, up to 5
 receives (ADR-008's `maxReceiveCount` default, AWS-09). They then move to an in-memory dead list with
-an error log line carrying `svix_id`. So no message is dropped without reaching a dead store, per the
+one error line, `queue.dead_lettered`, carrying `svix_id` and `receive_count`. The adapter records
+`envelope.svixId` beside each message at `enqueue` (the port is typed with core's `IngestEnvelope`;
+`packages/shared` may import `@ledger/core`, [boundaries](../../.agents/skills/pp-general/references/boundaries.md)
+review grep 3), because `messageId` is not an allow-listed log key ([Log fields](../data-modeling.md#log-fields))
+and a body that failed to parse has no readable id. So no message is dropped without reaching a dead store, per the
 Reliability core's No-loss design test. The `messageId` is a counter. Delivery is at-least-once and
 order is not preserved by contract (ADR-002, ADR-003). It lives in `packages/shared` because it does
 no I/O. Authority: ADR-013 ("slice 1 runs both in one local process … with an in-process implementation").
@@ -287,9 +291,12 @@ Each message gets its own result, and the failure list is built from those resul
    `project-email.projection.ts`), so no other `recipient_state` input changed.
 9. Commit. Emit `worker.processing_lag` (clock now − `receivedAt`, in ms).
 
-The placeholder values a lock insert writes (status null, counts 0, deliverability `ok`, the new
-event's mask) are overwritten in the same transaction before commit, so no other transaction ever
-reads them. No external call happens inside the transaction. A throw anywhere rolls everything back,
+The placeholder values a lock insert writes (status null, counts 0, `last_event_at` the new event's
+`event_created_at`, deliverability `ok`, the new event's mask) are overwritten in the same
+transaction before commit, so no other transaction ever reads them. Every placeholder value fits its
+column's `NOT NULL` (§8): a projectable event always has a non-null `event_created_at` (D17).
+`projectEmail` types `lastEventAt` as `Date | null` only for an empty fold; the `email_state`
+update runs after folding at least the new event, so a null there is a defect and throws. No external call happens inside the transaction. A throw anywhere rolls everything back,
 including the `webhook_events` insert. Authority: ADR-004, ADR-003, [data-modeling.md → Idempotency keys](../data-modeling.md#idempotency-keys),
 [pp-backend → commands-and-readers](../../.agents/skills/pp-backend/references/commands-and-readers.md#a-command-owns-its-transaction).
 Rules out: patching a projection; a read-then-write guard; any lock order but email → `recipient_state` sorted → `email_recipients` sorted.
@@ -388,11 +395,18 @@ registry status. Anything else, a run-outcome or a client-side code included, an
 `500 internal_error`, logged as `api.internal_error` with `request_id` and `errorFields`. The 415
 library bullet: the contract test sends `recipient.get` without `Content-Type`. If
 `@hono/zod-openapi` bypasses both hooks, `onError` or an explicit check maps it to `400 validation_failed`
-(field `body`) before the slice is done.
+(field `body`) before the slice is done. Authority: [pp-backend → read-api](../../.agents/skills/pp-backend/references/read-api.md#errors-one-onerror-one-defaulthook)
+("`defaultHook` … turns every request-validation failure into `400` with `validation_failed`";
+"anything else becomes `500 internal_error`, logged by `error_name` and `request_id`"; "a bypass is
+mapped before slice 1 is done"); [email.get](../api-contract.md#emailget) and
+[recipient.get](../api-contract.md#recipientget) (`database_unavailable` under **Slices: 1**, C3).
 
 **D23 — Unmatched path** (C16). `app.notFound` answers `404` with `route_not_found` in the error
 shape, for any method and path no route serves (Hono answers an unmatched method with not-found
-too). The code is owner-approved 2026-10-17 (§7).
+too). The code is owner-approved 2026-10-17 (§7). Authority: [pp-backend → read-api](../../.agents/skills/pp-backend/references/read-api.md#errors-one-onerror-one-defaulthook)
+("The slice 1 pre-proposal settles its response; adding a code is Ask-first");
+[pp-general → errors](../../.agents/skills/pp-general/references/errors.md#one-mapping-per-surface)
+("a raw framework error reaching a client is a defect"); the §7 approvals row.
 
 **D24 — Address lookup.** `recipient.get`'s body is `{ address: string }`. Valid means trimmed length
 3–320 with one `@` that has a non-empty part on each side. The reader hashes with `hashAddress`, so
@@ -419,8 +433,12 @@ through. Exports: `createLedgerClient`, `apiUnavailable`, `internalError`, the r
 ([sdk.md](../../.agents/skills/pp-backend/references/sdk.md#the-client)), and "the request shape never
 changes, so no client changes between slices" ([Conventions → Auth in slice 1](../api-contract.md#conventions)).
 So the CLI's config requires `LEDGER_URL` (a URL) and `LEDGER_TOKEN` (non-empty). In slice 1 any
-value works, because the loopback server skips the check. The walkthrough sets a placeholder. Rules
-out: an optional token that slice 2 would have to make required.
+value works, because the loopback server skips the check. `pnpm db:setup` writes the fixed
+placeholder `local-loopback-no-auth` into `.env.local` when the variable is unset (D31), so no walk
+exports one by hand. The value is a fixed string, so slice 2's setup, which mints a real token
+([Conventions → Auth](../api-contract.md#conventions): "the local setup command"), can recognize and
+replace it. Rules out: an optional token that slice 2 would have to make required; a per-walk
+`export` (lens clause 1).
 
 **D28 — CLI commands.** `apps/cli/src/commands/email-get.cli.ts` → `emailGetCli`
 (`ledger email <email_id> [--json]`) and `recipient-get.cli.ts` → `recipientGetCli`
@@ -459,8 +477,9 @@ runtime role.
 
 1. Read `.env.local` (created if missing). For each of `DATABASE_URL` (the compose URL,
    `127.0.0.1:55432`), `LEDGER_ADDRESS_HASH_KEY` (32 random bytes, hex), `LEDGER_SIMULATOR_SECRET`
-   (`whsec_` + base64 of 32 random bytes) and `LEDGER_URL` (`http://127.0.0.1:3200`): write it only
-   when unset or empty. Never overwrite a value.
+   (`whsec_` + base64 of 32 random bytes), `LEDGER_URL` (`http://127.0.0.1:3200`) and `LEDGER_TOKEN`
+   (the fixed placeholder `local-loopback-no-auth`, D27): write it only when unset or empty. Never
+   overwrite a value.
 2. Print one line per name written, never a value: `db:setup: wrote <NAME> to .env.local`.
 3. `prepareDatabase` against `DATABASE_URL`, with a random runtime password used only to create the
    role locally (D30).
@@ -490,10 +509,19 @@ document. No `bin` until slice 8. Authority: [pp-cli → Stack and layout](../..
 printed value passes through the output writer's `printable(value)`, which maps C0, DEL and C1 to
 `*`. Bounce types, ids and types are open strings from a payload, so this keeps a terminal escape
 out of human output. Masks already have that property (D13 of slice 0). `null` prints as `—`.
-Timestamps print as ISO 8601. Columns are padded with spaces. Layouts are in §12.
+Timestamps print as ISO 8601. Columns are padded with spaces. Layouts are in §12. Authority:
+[pp-cli](../../.agents/skills/pp-cli/SKILL.md) ("human output layouts → the slice 1 pre-proposal");
+[command-anatomy](../../.agents/skills/pp-cli/references/command-anatomy.md) (`renderEmail` "reads
+the masked `data` only"); [PII & retention → Masks](../data-modeling.md#pii--retention) (control
+characters map to `*` "so no mask carries a terminal escape into human CLI output", the rule
+`printable` extends to the unmasked open strings).
 
 **D35 — `apps/api` is stubbed** (C12): `api.handler.ts` becomes `export {}` with a comment pointing at
-slice 2. `infra` synthesizes no function yet, so nothing references it.
+slice 2. `infra` synthesizes no function yet, so nothing references it. Authority:
+[ADR-013](../architecture.md#adr-013--pure-core-and-local-mode) ("Each `apps/<fn>` is Lambda event
+adaptation plus its composition root"); root [AGENTS.md → Projects](../../AGENTS.md#projects)
+(`apps/api`'s logic lands in slice 2); `apps/api/src/api.handler.ts:6` (`handle(createApi())`, which
+no longer typechecks once `createApi` takes `deps`).
 
 ### Live Resend experiments
 
@@ -501,24 +529,38 @@ slice 2. `infra` synthesizes no function yet, so nothing references it.
 
 1. The owner starts a public tunnel to port 4318 (RS-33's default).
 2. **Ask-first:** `resend webhooks listen --url <tunnel URL> --forward-to http://127.0.0.1:3200/webhooks/resend`.
-3. Read-only: `resend webhooks list`, then `resend webhooks get <temporary id>`. The signing secret
-   is never pasted into the conversation, a log or a file other than `.env.local` (RS-05).
-4. The secret goes into `LEDGER_WEBHOOK_SECRETS` in `.env.local`, and `apps/local` is restarted.
+3. **Owner-run, in the owner's own terminal:** `resend webhooks list`, then
+   `resend webhooks get <temporary id>`. Both are read-only, but their responses carry signing
+   secrets (RS-05), so neither runs through an agent session, whose transcript would keep the
+   secret. The secret is never pasted into the conversation, a log or a file other than `.env.local`.
+4. The owner puts the secret into `LEDGER_WEBHOOK_SECRETS` in `.env.local` (the card's `Ops`: "per
+   `listen` session, that session's signing secret (RS-U22) in the git-ignored `.env.local`"), and
+   `apps/local` is restarted.
 5. **Ask-first** sends from `onboarding@resend.dev`: `delivered@resend.dev` + `bounced@resend.dev`
    in one email (RS-U21), then `complained@resend.dev`, then `suppressed@resend.dev` (RS-U15).
 6. Observe the `listen` stdout per event: type, `data.to`, `bounce.type` / `subType`. Observe
    ingest's `200` and `ledger email <id>`. That settles RS-U22: a forwarded delivery verified
    locally, or it `401`s, which is recorded as the answer.
 7. End the session with Ctrl+C. To settle RS-U18, a second, short approved session is killed without
-   Ctrl+C (its terminal is closed), then a read-only `resend webhooks list` follows. A leftover
-   webhook is deleted only on approval.
+   Ctrl+C (its terminal is closed), then an owner-run `resend webhooks list` (step 3's reason)
+   follows. A leftover webhook is deleted only on approval.
 
 Results go to resend.md: each settled row becomes a new `RS-NN` fact citing the experiment and date,
 and the `[Unverified]` row is struck through with a pointer, per resend.md's rules. No `svix_id`,
-email id or secret from these deliveries enters a tracked file.
+email id or secret from these deliveries enters a tracked file. Authority: the card's `Ops` line
+(each `listen` session and each test send approved; the secret load is the owner's);
+[integrations.md → Locked rules](../integrations.md#locked-rules-must) rule 8; RS-33 (`listen`
+"registers a temporary webhook", `--forward-to` "passes original Svix headers", `--port` 4318);
+RS-05 (create, retrieve and list return the signing secret); RS-32 (test addresses);
+[RS-U22](../resend.md#unverified)'s experiment, verbatim.
 
-**D37 — `pnpm sim` live mode** (C11). If `LEDGER_URL` is set (in the shell or `.env.local`), the run
-is live:
+**D37 — `pnpm sim` live mode** (C11). If `LEDGER_URL` is set **and non-empty** (in the shell or
+`.env.local`), the run is live. The root `sim` script already loads `.env.local`
+(`package.json`: `node --env-file-if-exists=.env.local sim/src/main.ts`), and `pnpm db:setup` writes
+`LEDGER_URL` there (D31), so after setup a bare `pnpm sim` is live by default. That is the card's
+`UI surfaces` command as written, with no target flag. An offline run is `LEDGER_URL= pnpm sim …`:
+a variable already set in the shell, even empty, wins over the file (`.env.example`'s header), and
+empty counts as unset here. The live run:
 
 1. Generate the history exactly as offline (D38). Print the two header lines and the projection
    JSON, recipient keys omitted as before. Keys are now keyed hashes, so the recipient order follows
@@ -543,8 +585,12 @@ is live:
 7. Exit `0` iff every checked invariant passed and `a = k`, else `1`.
 
 Live mode also requires `LEDGER_SIMULATOR_SECRET`, `DATABASE_URL` and `LEDGER_ADDRESS_HASH_KEY`. A
-missing one prints `sim: <NAME> is required when LEDGER_URL is set` and exits `2`. Without
-`LEDGER_URL`, slice 0's offline behavior is byte-for-byte unchanged. Authority: `.env.example`
+missing one prints `sim: <NAME> is required when LEDGER_URL is set` and exits `2`. If the first
+request fails on the network (nothing listening), the run stops before sending more and prints
+`sim: no Ledger answered at LEDGER_URL; start it with pnpm dev:full, or run LEDGER_URL= pnpm sim for an offline run`,
+exit `1`, never the URL's value. Without `LEDGER_URL`, or with it empty, slice 0's offline behavior
+is byte-for-byte unchanged; `sim/src/main.e2e.test.ts` spawns the process with `LEDGER_URL` removed
+from its environment, so a developer's shell cannot flip it live. Authority: `.env.example`
 (`LEDGER_URL` and `DATABASE_URL` "read by … `pnpm sim` (slice 1)"); ADR-016; [simulator.md → Ground truth and runs](../../.agents/skills/pp-testing/references/simulator.md#ground-truth-and-runs)
 ("How a run detects settling is the slice 1 pre-proposal's").
 
@@ -670,7 +716,7 @@ Conventions on all four tables:
 | `from_masked`, `subject_masked` | `text` | yes | Null when no projected event carries `from` / `subject` (`EmailState`). data-modeling lists them as `text`; the doc gains the nullability (§22) |
 | `open_count`, `click_count` | `integer` | no | Default `0` |
 | `first_opened_at`, `first_clicked_at` | `timestamptz` | yes | |
-| `last_event_at` | `timestamptz` | yes | Null only in the lock placeholder, overwritten in the same transaction |
+| `last_event_at` | `timestamptz` | no | data-modeling gives it as `timestamptz` with no null marker. The lock placeholder writes the new event's `event_created_at` (D14); the recompute overwrites it in the same transaction |
 | `event_count` | `integer` | no | Default `0` |
 | `created_at` | `timestamptz` | no | Default `now()` |
 | `updated_at` | `timestamptz` | no | Default `now()`. Set by the repository's `UPDATE`, no trigger |
@@ -1005,7 +1051,7 @@ and compose Postgres run locally at no cost.
 | `LEDGER_WEBHOOK_SECRETS` | **new, Ask-first** | `apps/local` ingest | `# Local Resend signing secrets, comma-separated whsec_ values; one per resend webhooks listen session (RS-U22).` |
 | `LEDGER_SIMULATOR_SECRET` | existing | `apps/local` ingest, `pnpm sim` | Comment corrected (C6): `# Simulator signing secret: written locally by pnpm db:setup; for a deployed stack, the stack's simulator secret (ADR-016, slice 3).` |
 | `LEDGER_URL` | existing | CLI, `pnpm sim` (selects live mode) | Comment gains "written locally by pnpm db:setup" |
-| `LEDGER_TOKEN` | existing | CLI | Comment: `# Required by the CLI; any value while the loopback server skips auth (slice 1), enforced from slice 2.` |
+| `LEDGER_TOKEN` | existing | CLI | Comment: `# Required by the CLI; locally pnpm db:setup writes a placeholder, which works while the loopback server skips auth (slice 1); enforced from slice 2.` |
 | `RESEND_API_KEY` | existing | the Resend CLI (owner experiments) | unchanged |
 
 No internal (CDK-set) variable is added.
@@ -1068,7 +1114,7 @@ No internal (CDK-set) variable is added.
 | R11 | `packages/api/src/get-email.route.int.test.ts` (int; mandatory redaction): the response holds no raw address or subject; plus timeline order, `email_not_found`, `validation_failed`. `get-recipient.route.int.test.ts`: lookup by address, `recipient_not_found`, masked echo, no `Content-Type` → `400 validation_failed` (the 415 bullet) | Mapper passthrough |
 | R12 (Ships 8) | `apps/local/src/sdk-contract.int.test.ts` (int, D41): SDK ↔ API over `@hono/node-server`, the success and error paths of both operations; `route_not_found` on an unmatched path. `packages/api/src/create-api.test.ts` (unit): a database at `127.0.0.1:1` → `503 database_unavailable`; an unexpected throw → `500 internal_error` with no internals. `packages/sdk/src/create-ledger-client.test.ts` (unit, `node:http` on `127.0.0.1`): a shapeless `502` → `api_unavailable`; a closed port → `api_unavailable`; an unknown `code` passes through | Error mapping at any surface |
 | R12 (Ships 8) | `apps/cli/src/commands/email-get.cli.test.ts`, `recipient-get.cli.test.ts` (unit, fake SDK): every row of [cli-tests → What every command's test asserts](../../.agents/skills/pp-cli/references/cli-tests.md#what-every-commands-test-asserts), plus: the recipient's address reaches the fake as the argument and no output line holds it; a missing `LEDGER_URL` → exit `2` naming it; a bounce type holding `\u001b` prints `*` in human output | Exit mapping; the masked echo |
-| R13 | `apps/local/src/main.e2e.test.ts` (e2e, updated): boots with a placeholder `DATABASE_URL` and key (no Docker: the pool connects lazily); `GET /` → `404 route_not_found` shape; unsigned `POST /webhooks/resend` → `401` `unauthorized`; `--host 0.0.0.0` → exit 1 (kept); missing `LEDGER_ADDRESS_HASH_KEY` → exit 1 naming it | Loopback guard; config assertion |
+| R13 | `apps/local/src/main.e2e.test.ts` (e2e, updated): boots with a placeholder `DATABASE_URL`, key and `LEDGER_SIMULATOR_SECRET` (D29's at-least-one-secret refinement would otherwise refuse the boot; no Docker: the pool connects lazily); `GET /` → `404 route_not_found` shape; unsigned `POST /webhooks/resend` → `401` `unauthorized`; `--host 0.0.0.0` → exit 1 (kept); missing `LEDGER_ADDRESS_HASH_KEY` → exit 1 naming it | Loopback guard; config assertion |
 | D31 | `apps/local/src/setup/merge-local-env.test.ts` (unit) | Overwriting a key |
 | D8 | `packages/shared/src/in-process-queue.adapter.test.ts` (unit, `FakeClock`): at-least-once; failures redelivered up to 5 receives then dead-listed with a log line; batch ≤ 10 | Silent drop |
 | Batch failure (Mandatory, worker failure path) | `packages/worker/src/create-worker.int.test.ts`: a batch of three where one body fails `ingestEnvelopeSchema` returns exactly that `messageId`; the other two commit | An empty or assumed failure list |
@@ -1103,19 +1149,21 @@ Not reaching it:
 
 Every `UI surfaces` entry is reached:
 
-- `POST /webhooks/resend` (local): A2, C2, D5.
+- `POST /webhooks/resend` (local): A1, A2, C2, D5.
 - `resend webhooks listen`: D2.
 - `ledger email`: A3, B1, B3, D6.
 - `ledger recipient`: B2, B4, D7.
-- `pnpm sim --duplicates 0.2 --shuffle`: A2.
+- `pnpm sim --duplicates 0.2 --shuffle`: A1, A2.
 
 **Before you start:** `pnpm install`; Docker running; `pnpm dev:full` in a background terminal,
-waiting for `LEDGER READY` (this runs `pnpm db:setup`). Then `export LEDGER_TOKEN=unused-in-slice-1`.
-`LEDGER_URL` comes from `.env.local`, which `pnpm -s ledger` and `pnpm sim` load.
+waiting for `LEDGER READY` (this runs `pnpm db:setup`). `LEDGER_URL` and the placeholder
+`LEDGER_TOKEN` come from `.env.local` (D31), which `pnpm -s ledger` and `pnpm sim` load. Path C's
+`curl` steps read `$LEDGER_URL` from the shell: `export "$(grep '^LEDGER_URL=' .env.local)"` (Git Bash)
+loads that one line and no secret.
 
 - **This walk creates:** a sim run namespace's rows; for Path D, a temporary webhook and three test
   emails' rows.
-- **Ask-first steps:** D2, D4 (×3), D8, T1 (if a webhook is left over).
+- **Ask-first steps:** D2, D3 (owner-run: the secret load the card's `Ops` gives the owner), D4 (×3), D8, T1 (if a webhook is left over).
 
 - **Path A — `pnpm sim` → `POST /webhooks/resend` → `ledger email` (Reviewer).**
   - A1: `pnpm -s sim --duplicates 0.2 --shuffle`. Expect exit `0`; line 1 `sim seed=… namespace=…`;
@@ -1150,8 +1198,10 @@ waiting for `LEDGER READY` (this runs `pnpm db:setup`). Then `export LEDGER_TOKE
 - **Path D — real Resend traffic, locally (Application developer). Every write Ask-first.**
   - D1: start a tunnel to port 4318 (the owner's tool).
   - D2: **Ask-first:** `resend webhooks listen --url <tunnel> --forward-to "$LEDGER_URL/webhooks/resend"`.
-  - D3: read-only `resend webhooks get <temporary id>`. Put its secret into `LEDGER_WEBHOOK_SECRETS`
-    in `.env.local` (never pasted elsewhere). Restart `apps/local`.
+  - D3: **Ask-first (owner-run):** in the owner's own terminal, read-only `resend webhooks get <temporary id>`;
+    its response carries the signing secret (RS-05), so no agent runs it. The owner puts the secret
+    into `LEDGER_WEBHOOK_SECRETS` in `.env.local` (never pasted elsewhere; the card's `Ops`). Restart
+    `apps/local`.
   - D4: **Ask-first:** send `delivered@resend.dev` + `bounced@resend.dev` in one email; then
     `complained@resend.dev`; then `suppressed@resend.dev` (curl against Resend's Send Email, the
     format's worked example). If the response is `403 validation_error`, RS-U14 is negative and
@@ -1163,9 +1213,9 @@ waiting for `LEDGER READY` (this runs `pnpm db:setup`). Then `export LEDGER_TOKE
     recorded.
   - D7: `pnpm -s ledger recipient delivered@resend.dev` → `ok`; `pnpm -s ledger recipient bounced@resend.dev`
     → `hard_bounced` if `bounce.type` was `Permanent`.
-  - D8: **Ask-first:** a second short `listen` session, killed by closing its terminal. Then a
-    read-only `resend webhooks list`: count the temporary webhooks left behind (RS-U18), never
-    printing the response.
+  - D8: **Ask-first:** a second short `listen` session, killed by closing its terminal. Then, owner-run
+    in the owner's own terminal (RS-05: list may return signing secrets), a read-only
+    `resend webhooks list`: count the temporary webhooks left behind (RS-U18) and report only the count.
 - **Teardown:** T1, **Ask-first if needed:** delete a webhook D8 left behind. T2: Ctrl+C the first
   `listen` session. T3: `pnpm dev:stop`.
 
@@ -1204,6 +1254,9 @@ Applied by the change, in the commits that land each piece:
   - Reliability core evidence: No loss → sim invariant 1 (slice 1, local); Order independence → sim
     invariant 2 under `--shuffle`.
   - ADR-001, ADR-004, ADR-009, ADR-011, ADR-018 and ADR-019 **Evidence** → the slice 1 tests.
+  - ADR-018 "runs `drizzle-kit` migrations" → runs the drizzle-kit-generated migrations through
+    drizzle-orm's programmatic `migrate()` (D20). A fact correction: same files, same order, same
+    direct URL; drizzle-kit stays a dev-only generator.
 - [resend.md](../resend.md): RS-U15, RS-U18, RS-U21 and RS-U22 settled as new `RS-NN` facts with
   date and experiment, the rows struck through with pointers. Constraint 12: RS-02 re-checked against
   pinned `resend` 6.33.0 (D10's constructor finding included). Sources: the experiments.
@@ -1226,13 +1279,15 @@ Applied by the change, in the commits that land each piece:
   - Commands: `pnpm db:setup`, `pnpm db:generate` (`drizzle-kit generate` in `packages/db`, flags
     passed through), `pnpm openapi:export`, `pnpm ledger` / `pnpm -s ledger`; `pnpm test:int` no
     longer "lands in slice 1"; the verify stage list with `drift` and `int`; `pnpm dev:full` runs
-    `db:setup`.
+    `db:setup`; the `pnpm sim` line: live when `LEDGER_URL` is non-empty (the default once
+    `db:setup` has written `.env.local`), offline as `LEDGER_URL= pnpm sim` (D37).
   - Projects: the `apps/api` scaffold note (C12).
 - [.env.example](../../.env.example): §18's lines (C6).
 - [rsa-manual-test → environment.md](../../.agents/skills/rsa-manual-test/references/environment.md):
   slice 1 rows with exact start commands (`pnpm -s ledger`, `pnpm db:setup`, `pnpm sim` live when
-  `LEDGER_URL` is set); "no `bin` until slice 8" (C7); traps: `pnpm -s` for `--json`, the
-  placeholder `LEDGER_TOKEN`.
+  `LEDGER_URL` is non-empty); "no `bin` until slice 8" (C7); traps: `pnpm -s` for `--json`, the
+  placeholder `LEDGER_TOKEN` `db:setup` writes, `LEDGER_URL= pnpm sim` for an offline run,
+  `resend webhooks get` / `list` owner-run because they print signing secrets (D36).
 - Skill corrections, each a fact this slice settles (no rule loosened):
   - [pp-backend → composition](../../.agents/skills/pp-backend/references/composition.md): the
     ingest mount (D32).
@@ -1244,7 +1299,9 @@ Applied by the change, in the commits that land each piece:
   - [pp-database → schema-and-repositories](../../.agents/skills/pp-database/references/schema-and-repositories.md):
     the `Executor`, `createDatabase`; the classifier lands in slice 1 and is applied in the read API (C3).
   - [pp-database → migrations-and-grants](../../.agents/skills/pp-database/references/migrations-and-grants.md):
-    the role name, programmatic `migrate()`, `prepareDatabase`, the `db:generate` script.
+    the role name, programmatic `migrate()`, `prepareDatabase`, the `db:generate` script. Its
+    identity-sequence bullet ("the harness inserting as the runtime role proves it in slice 1") moves
+    to slice 2 with C14, inside the same helper-gated edit.
   - [pp-testing → postgres-harness](../../.agents/skills/pp-testing/references/postgres-harness.md):
     the entry-point name, the image `postgres:18.6-alpine`, step 2 "(timeouts from slice 2)" (C13).
   - [pp-testing → vitest-layout](../../.agents/skills/pp-testing/references/vitest-layout.md): the
