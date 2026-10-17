@@ -65,11 +65,18 @@ payload field, even masked.
 - **`app.onError`** maps a thrown error class to its registry status and the error object; anything
   else becomes `500 internal_error`, logged by `error_name` and `request_id`, its message never sent
   ([one mapping per surface](../../pp-general/references/errors.md#one-mapping-per-surface)).
-- **[Unverified]:** whether `@hono/zod-openapi`'s `415` for a missing or unsupported `Content-Type`
-  on a JSON-body route reaches `defaultHook` or `onError` or bypasses both. Slice 1's contract tests
-  include `recipient.get` without `Content-Type`; a bypass is mapped before slice 1 is done.
-- An unmatched path has no registry code today. The slice 1 pre-proposal settles its response;
-  adding a code is Ask-first.
+- **`415` and malformed JSON bypass `defaultHook` and reach `onError`** (`@hono/zod-openapi` 1.6.3,
+  `hono` 4.13.13, checked 2026-10-17): a JSON-body route gets a media-type gate that throws
+  `HTTPException(415)` when `Content-Type` is not JSON, or is missing while a body is sent; Hono's
+  validator throws `HTTPException(400)` on malformed JSON. Without a mapping, Hono's default handler
+  answers either as raw text. `onError` maps both to `400 validation_failed` naming the body. A
+  missing `Content-Type` with no body passes the gate and reaches `defaultHook` as `{}`, but only
+  when the route sets `request.body.required: true`; otherwise the library skips validation and the
+  handler gets `{}`. Evidence: [get-recipient.route.int.test.ts](../../../../packages/api/src/get-recipient.route.int.test.ts)
+  (no `Content-Type` with and without a body, `text/plain`, malformed JSON).
+- **An unmatched method or path answers `404 route_not_found`** in the error shape, from
+  `app.notFound` (Hono answers an unmatched method on a served path the same way); never Hono's
+  plain-text default. Evidence: [create-api.test.ts](../../../../packages/api/src/create-api.test.ts).
 
 ## The OpenAPI document
 

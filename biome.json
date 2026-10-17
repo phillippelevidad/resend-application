@@ -19,7 +19,9 @@
       "vitest.config.ts",
       "!!**/node_modules",
       "!!**/cdk.out",
-      "!!packages/db/drizzle"
+      "!!packages/db/drizzle",
+      "!packages/sdk/openapi.json",
+      "!packages/sdk/src/openapi-types.ts"
     ]
   },
   "formatter": {

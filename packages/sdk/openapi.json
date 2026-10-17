@@ -1,0 +1,424 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ledger read API",
+    "version": "0.0.0"
+  },
+  "components": {
+    "schemas": {
+      "Email": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "email"
+            ]
+          },
+          "email_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "scheduled",
+              "sent",
+              "delivery_delayed",
+              "delivered",
+              "complained",
+              "suppressed",
+              "failed",
+              "bounced",
+              null
+            ]
+          },
+          "from_masked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_masked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open_count": {
+            "type": "integer"
+          },
+          "click_count": {
+            "type": "integer"
+          },
+          "first_opened_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "first_clicked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_event_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "address_masked": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "scheduled",
+                    "sent",
+                    "delivery_delayed",
+                    "delivered",
+                    "complained",
+                    "suppressed",
+                    "failed",
+                    "bounced",
+                    null
+                  ]
+                },
+                "status_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "bounce_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bounce_sub_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "address_masked",
+                "status",
+                "status_at",
+                "bounce_type",
+                "bounce_sub_type"
+              ]
+            }
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "svix_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "event_created_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "bounce_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bounce_sub_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "svix_id",
+                "type",
+                "event_created_at",
+                "bounce_type",
+                "bounce_sub_type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "object",
+          "email_id",
+          "status",
+          "from_masked",
+          "subject_masked",
+          "open_count",
+          "click_count",
+          "first_opened_at",
+          "first_clicked_at",
+          "last_event_at",
+          "event_count",
+          "recipients",
+          "timeline"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "docs": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "hint",
+              "docs"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Recipient": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "recipient"
+            ]
+          },
+          "address_masked": {
+            "type": "string"
+          },
+          "deliverability": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "soft_bouncing",
+              "hard_bounced",
+              "complained",
+              "suppressed"
+            ]
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "cause_email_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "address_masked",
+          "deliverability",
+          "since",
+          "cause_email_id"
+        ]
+      },
+      "RecipientLookup": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 320,
+            "pattern": "^[^@]+@[^@]+$",
+            "example": "delivered@resend.dev"
+          }
+        },
+        "required": [
+          "address"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/emails/{email_id}": {
+      "get": {
+        "operationId": "email.get",
+        "summary": "The projected state of an email, its recipients and its event timeline",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,128}$"
+            },
+            "required": true,
+            "name": "email_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The email, masks only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Email"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`email_not_found`: no event has been recorded for this email id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipients/lookup": {
+      "post": {
+        "operationId": "recipient.get",
+        "summary": "The deliverability of an address and the email that caused it",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipientLookup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recipient, the address only as its mask.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipient"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`recipient_not_found`: no event has ever named this address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

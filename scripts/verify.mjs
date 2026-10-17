@@ -10,9 +10,10 @@
 // built-ins, so CI runs it before anything is installed and the install stage runs everywhere.
 import { spawnSync } from 'node:child_process';
 
-// Later slices add a stage by adding one entry here, each when it has something to check: OpenAPI
-// and SDK drift (slice 1), migration lint (slice 2). The `int` tier landed in slice 1: its global
-// setup starts one Testcontainers Postgres and applies every migration before any test runs.
+// Later slices add a stage by adding one entry here, each when it has something to check: migration
+// lint (slice 2). Slice 1 landed two: `drift` regenerates the OpenAPI document and the SDK types and
+// fails when the committed copies differ, its canary first (D42); the `int` tier's global setup
+// starts one Testcontainers Postgres and applies every migration before any test runs.
 const STAGES = [
   { name: 'install', command: 'pnpm install --frozen-lockfile' },
   {
@@ -25,6 +26,7 @@ const STAGES = [
   { name: 'lint', command: 'pnpm exec biome ci .' },
   { name: 'links', command: 'node scripts/check-links.mjs' },
   { name: 'typecheck', command: 'pnpm typecheck' },
+  { name: 'drift', command: 'node scripts/openapi-drift.mjs' },
   { name: 'unit', command: 'pnpm test' },
   { name: 'int', command: 'pnpm test:int' },
   { name: 'synth', command: 'pnpm --filter @ledger/infra synth' },
