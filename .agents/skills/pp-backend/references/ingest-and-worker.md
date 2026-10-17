@@ -32,8 +32,10 @@ the bytes and the three `svix-*` headers to the function `packages/ingest` built
    `type` for the log line.
 5. **Enqueues through the queue port.** A failed enqueue answers `503`, so Resend retries (RS-10).
 6. **Answers exactly `200` with the fixed short body** only after the enqueue resolved. The body
-   never echoes payload, PII or a secret: Resend stores it (RS-12). Its exact bytes are the slice 1
-   pre-proposal's.
+   never echoes payload, PII or a secret: Resend stores it (RS-12). The exact bytes, all
+   `text/plain; charset=utf-8`: `200` → `ok`, `401` → `unauthorized`, `503` → `unavailable`,
+   exported from `packages/ingest/src/ingest-bodies.ts` (`INGEST_BODY_*`, `INGEST_CONTENT_TYPE`) so
+   every runtime adapter writes the same ones.
 
 - **Ingest never touches the database**, directly or through a package that does (ADR-001). A
   database outage MUST NOT fail a Resend delivery.

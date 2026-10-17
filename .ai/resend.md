@@ -40,7 +40,7 @@ Four gaps shape the design:
 | Id | Fact | Source | Checked on |
 | --- | --- | --- | --- |
 | RS-01 | Deliveries carry `svix-id`, `svix-timestamp`, `svix-signature`. Verification MUST use the raw body: "The cryptographic signature is sensitive to even the slightest change." | verify-webhooks-requests | 2026-10-15 |
-| RS-02 | SDK `webhooks.verify({ payload, headers: { id, timestamp, signature }, webhookSecret })` is synchronous, returns the parsed payload and throws on failure. In 6.33.0 it wraps `standardwebhooks@1.1.1`: **one secret per call** (`whsec_` prefix), only `v1` signatures checked, timestamps more than 5 min off rejected. The docs map `svix-*` headers to `id`/`timestamp`/`signature`. | `resend@6.33.0` types and impl; verify-webhooks-requests | 2026-10-15 |
+| RS-02 | SDK `webhooks.verify({ payload, headers: { id, timestamp, signature }, webhookSecret })` is synchronous, returns the parsed payload (`undefined`, unparsed, for an empty body) and throws on failure. In 6.33.0 it wraps `standardwebhooks@1.1.1`: **one secret per call** (`whsec_` prefix), only `v1` signatures checked, timestamps more than 5 min off rejected. The docs map `svix-*` headers to `id`/`timestamp`/`signature`. Re-checked against the pinned install in Constraint 12. | `resend@6.33.0` types and impl; verify-webhooks-requests | 2026-10-17 |
 | RS-03 | `[Svix]` Signed content is `id.timestamp.body`, HMAC-SHA256 keyed with the base64 part after `whsec_`; `svix-signature` is "a list of space delimited signatures and their corresponding version identifiers"; Svix libraries reject timestamps "more than five minutes away (past or future)". Resend states no tolerance of its own. | Svix: verifying payloads (manual, why) | 2026-10-15 |
 | RS-04 | "For 24 hours after the rotation, payloads are signed with both the new and the previous secret, so either one verifies them. After that, only the new secret does." | api-reference/webhooks/rotate-signing-secret | 2026-10-15 |
 | RS-05 | "Calls to create, retrieve, or list webhooks will also return the signing secret in the response body." The List Webhooks example shows no `signing_secret`, while Create and Retrieve do (RS-13). The design assumes list returns it (the safe reading). | verify-webhooks-requests; get-webhook; list-webhooks | 2026-10-15 |
@@ -204,6 +204,27 @@ simulator traffic is the default local loop.
 12. **`verify` takes one secret per call** (RS-02). *Resolution:* ingest loops over the configured
     secret set (Mechanisms → Signing). [Slice 1](build-checklist.md#1--local-ledger-and-read-path), which adds `resend`
     (Ask-first dependency), re-checks RS-02 against the pinned version's types.
+    *Re-checked 2026-10-17 against the installed `resend@6.33.0` (`dist/index.mjs`, `dist/index.d.mts`)
+    and `standardwebhooks@1.1.1` (`dist/index.js`):*
+    - `webhooks.verify` builds `new Webhook(webhookSecret)` per call and passes `headers.id`,
+      `.timestamp`, `.signature` as `webhook-id`, `webhook-timestamp`, `webhook-signature`. One
+      secret per call holds.
+    - The window is `WEBHOOK_TOLERANCE_IN_SECONDS = 5 * 60`, both ways (more than 300 s in the past
+      or the future is rejected), read against the wall clock (`Date.now()`), not an injectable
+      clock. The header is read with `parseInt`.
+    - `svix-signature` is split on spaces; each `v1,<sig>` is compared in constant time and any
+      match passes, so one header carrying two signatures verifies under either secret. Other
+      versions are skipped.
+    - It throws `WebhookVerificationError` for a missing header, an unparseable timestamp, a stale
+      or future timestamp and no matching signature; `SyntaxError` from `JSON.parse` for a signed
+      body that is not JSON; `Error` for an empty secret. An empty body returns `undefined` before
+      any parse, so ingest treats that result as no match
+      ([create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts)).
+    - **The constructor (D10):** `new Resend()` with no key reads `RESEND_API_KEY` and throws
+      `Missing API key` when that is unset too. Ingest holds no API key, so it passes the placeholder
+      `ingest-verifies-only`. A passed key also keeps the constructor from reading `RESEND_API_KEY`.
+      The placeholder never reaches a request: ingest makes no API call, and constructing makes
+      none.
 13. **Forward-only pagination** (RS-14). *Resolution:* each reconcile run pages newest to oldest
     down to the horizon. A run can't resume from the oldest end.
 14. **SDK error names differ from the docs** (RS-22). *Resolution:* map by status, then name, with
