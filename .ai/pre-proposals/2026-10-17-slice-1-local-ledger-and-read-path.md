@@ -68,7 +68,7 @@ Also out, each with its carrier:
 ## 4. Prerequisites
 
 - **Slices:** slice 0 is `[x]`. Nothing blocks.
-- **Ask-first approvals:** the table in §7. Without them `opsx:apply` stops at task group 1.
+- **Ask-first approvals:** the table in §7, every row owner-approved 2026-10-17 except the live Resend writes, which are approved one at a time when each runs.
 - **Owner ops** (§25): Docker running (the `docker` stage, Testcontainers, compose Postgres). For
   Ships 11–13 only: a Resend API key (`RESEND_API_KEY`) in the git-ignored `.env.local`, the Resend
   CLI installed, a public tunnel of the owner's choice for `listen --url` (RS-33), and approval of
@@ -123,26 +123,26 @@ and adds seven capabilities (§23).
 
 ## 7. Decisions
 
-**Ask-first approvals** (one itemized owner round, asked 2026-10-17):
+**Ask-first approvals** (owner, 2026-10-17, one itemized round; every recommended option taken, `resend` at `6.33.0`):
 
 | Item | Exact scope | Status | Used by |
 | --- | --- | --- | --- |
-| `drizzle-orm` | `0.45.4` exact (npm `latest`, published 2026-10-08), `dependencies` of `packages/db` | held (asked 2026-10-17) | Group 4 |
-| `pg` + `@types/pg` | `pg` `8.23.1` exact (2026-09-30), `dependencies` of `packages/db`; `@types/pg` `8.23.1` exact, `devDependencies` of `packages/db` | held (asked 2026-10-17) | Group 4 |
-| `drizzle-kit` | `0.31.11` exact (2026-09-21), `devDependencies` of `packages/db`. It brings `tsx` and `esbuild` transitively, used only by drizzle-kit to load `drizzle.config.ts` and the schema. No Ledger entry point runs on `tsx` ([pp-general → Never](../../.agents/skills/pp-general/SKILL.md#never) targets our own runners) | held (asked 2026-10-17) | Group 4 |
-| `@testcontainers/postgresql` | `12.2.1` exact (2026-10-13; pulls `testcontainers` `^12.2.1`), `devDependencies` of `packages/db` only ([pp-testing → The image](../../.agents/skills/pp-testing/references/postgres-harness.md#the-image)) | held (asked 2026-10-17) | Group 4 |
-| `resend` | `6.33.0` exact (2026-10-14), `dependencies` of `packages/ingest`, for `webhooks.verify` only. This is the version RS-02, RS-22 and RS-23 were verified against, and it wraps `standardwebhooks` `1.1.1`. Its source, read 2026-10-17: `Webhooks.verify` → `new Webhook(secret).verify(payload, headers)`; `new Resend()` throws `Missing API key` without one (D10). `6.34.1` (2026-10-16) is the alternative | held (asked 2026-10-17) | Group 5 |
-| `winston` | `3.19.0` exact (2025-12-07), `dependencies` of `packages/shared` | held (asked 2026-10-17) | Group 2 |
-| `openapi-fetch` | `0.17.0` exact (2026-02-11), `dependencies` of `packages/sdk` | held (asked 2026-10-17) | Group 8 |
-| `openapi-typescript` | `7.13.0` exact (2026-02-11), `devDependencies` of `packages/sdk`. Declares peer `typescript ^5.x`; the repo pins TypeScript `7.0.2` (§24) | held (asked 2026-10-17) | Group 7 |
-| `typescript` 5 fallback | `5.9.3` exact, `devDependencies` of `packages/sdk` only, **added only if** `openapi-typescript` fails to generate under 7.0.2. Never in the root `tsc` pass | held (asked 2026-10-17) | Group 7, conditional |
+| `drizzle-orm` | `0.45.4` exact (npm `latest`, published 2026-10-08), `dependencies` of `packages/db` | owner-approved 2026-10-17 | Group 4 |
+| `pg` + `@types/pg` | `pg` `8.23.1` exact (2026-09-30), `dependencies` of `packages/db`; `@types/pg` `8.23.1` exact, `devDependencies` of `packages/db` | owner-approved 2026-10-17 | Group 4 |
+| `drizzle-kit` | `0.31.11` exact (2026-09-21), `devDependencies` of `packages/db`. It brings `tsx` and `esbuild` transitively, used only by drizzle-kit to load `drizzle.config.ts` and the schema. No Ledger entry point runs on `tsx` ([pp-general → Never](../../.agents/skills/pp-general/SKILL.md#never) targets our own runners) | owner-approved 2026-10-17 | Group 4 |
+| `@testcontainers/postgresql` | `12.2.1` exact (2026-10-13; pulls `testcontainers` `^12.2.1`), `devDependencies` of `packages/db` only ([pp-testing → The image](../../.agents/skills/pp-testing/references/postgres-harness.md#the-image)) | owner-approved 2026-10-17 | Group 4 |
+| `resend` | `6.33.0` exact (2026-10-14), `dependencies` of `packages/ingest`, for `webhooks.verify` only. This is the version RS-02, RS-22 and RS-23 were verified against, and it wraps `standardwebhooks` `1.1.1`. Its source, read 2026-10-17: `Webhooks.verify` → `new Webhook(secret).verify(payload, headers)`; `new Resend()` throws `Missing API key` without one (D10). `6.34.1` (2026-10-16) is the alternative | owner-approved 2026-10-17 | Group 5 |
+| `winston` | `3.19.0` exact (2025-12-07), `dependencies` of `packages/shared` | owner-approved 2026-10-17 | Group 2 |
+| `openapi-fetch` | `0.17.0` exact (2026-02-11), `dependencies` of `packages/sdk` | owner-approved 2026-10-17 | Group 8 |
+| `openapi-typescript` | `7.13.0` exact (2026-02-11), `devDependencies` of `packages/sdk`. Declares peer `typescript ^5.x`; the repo pins TypeScript `7.0.2` (§24) | owner-approved 2026-10-17 | Group 7 |
+| `typescript` 5 fallback | `5.9.3` exact, `devDependencies` of `packages/sdk` only, **added only if** `openapi-typescript` fails to generate under 7.0.2. Never in the root `tsc` pass | owner-approved 2026-10-17 | Group 7, conditional |
 | `zod` in `packages/shared`, `packages/db`, `packages/sdk`, `packages/worker` | `4.6.7` exact, the scaffold version ADR-019 ratified (owner, 2026-10-16) | ratified — no new approval ([ADR-019](../architecture.md#adr-019--application-and-surface-stack)) | Groups 2–8 |
 | `@hono/node-server` in `apps/local` (already there); `hono` + `@hono/zod-openapi` in `packages/api` (already there) | Installed versions | ratified — scaffold packages (ADR-019) | Groups 7, 9 |
-| Public env var `LEDGER_WEBHOOK_SECRETS` | Comma-separated `whsec_…` values: the local Resend signing-secret set, verified before the simulator secret. Optional. Read by `apps/local` ingest. Added to [api-contract.md → Conventions](../api-contract.md#conventions) and `.env.example` | held (asked 2026-10-17) | Groups 5, 9, 11 |
-| Public env var `LEDGER_ADDRESS_HASH_KEY` | 64 hex characters (32 random bytes): the deployer-held address-hash key ([PII & retention](../data-modeling.md#pii--retention)). Written once by `pnpm db:setup`. Read by `apps/local` (worker, read API) and `pnpm sim`; from slice 2, by the deploy command for the `ledger/database` secret | held (asked 2026-10-17) | Groups 3, 6, 7, 9, 10 |
-| Error code `route_not_found` | `404`; meaning "No operation at this method and path"; hint "Check `LEDGER_URL`, and that the CLI or SDK version matches the API's"; docs: runbook; raised by the `packages/api` not-found handler. New row in [Error codes](../api-contract.md#error-codes) (C16, D23) | held (asked 2026-10-17) | Group 7 |
-| CI change | Two new stages in `scripts/verify.mjs`, which CI runs unchanged: `drift` (after `typecheck`) and `int` (after `unit`). No edit to `.github/workflows/ci.yml` | held (asked 2026-10-17) | Groups 4, 7 |
-| Schema | The four tables of §8 and the two new migrations `create-ledger-tables` and `grant-ledger-tables`. Pure expand; unfrozen until merged to `main` | held (asked 2026-10-17) | Group 4 |
+| Public env var `LEDGER_WEBHOOK_SECRETS` | Comma-separated `whsec_…` values: the local Resend signing-secret set, verified before the simulator secret. Optional. Read by `apps/local` ingest. Added to [api-contract.md → Conventions](../api-contract.md#conventions) and `.env.example` | owner-approved 2026-10-17 | Groups 5, 9, 11 |
+| Public env var `LEDGER_ADDRESS_HASH_KEY` | 64 hex characters (32 random bytes): the deployer-held address-hash key ([PII & retention](../data-modeling.md#pii--retention)). Written once by `pnpm db:setup`. Read by `apps/local` (worker, read API) and `pnpm sim`; from slice 2, by the deploy command for the `ledger/database` secret | owner-approved 2026-10-17 | Groups 3, 6, 7, 9, 10 |
+| Error code `route_not_found` | `404`; meaning "No operation at this method and path"; hint "Check `LEDGER_URL`, and that the CLI or SDK version matches the API's"; docs: runbook; raised by the `packages/api` not-found handler. New row in [Error codes](../api-contract.md#error-codes) (C16, D23) | owner-approved 2026-10-17 | Group 7 |
+| CI change | Two new stages in `scripts/verify.mjs`, which CI runs unchanged: `drift` (after `typecheck`) and `int` (after `unit`). No edit to `.github/workflows/ci.yml` | owner-approved 2026-10-17 | Groups 4, 7 |
+| Schema | The four tables of §8 and the two new migrations `create-ledger-tables` and `grant-ledger-tables`. Pure expand; unfrozen until merged to `main` | owner-approved 2026-10-17 | Group 4 |
 | Live Resend writes | Each `resend webhooks listen` session (it creates a temporary webhook, RS-33), and three test sends: `delivered@resend.dev` + `bounced@resend.dev` together, `complained@resend.dev`, `suppressed@resend.dev`; any deletion of a leftover temporary webhook. **Approved one at a time, when each runs**, never in this round ([integrations.md → Locked rules](../integrations.md#locked-rules-must), rule 8) | held — per action at walk time | Group 11 |
 
 Anything else (another dependency, version or stage, a `ci.yml` edit, another env var or code)
@@ -392,8 +392,7 @@ library bullet: the contract test sends `recipient.get` without `Content-Type`. 
 
 **D23 — Unmatched path** (C16). `app.notFound` answers `404` with `route_not_found` in the error
 shape, for any method and path no route serves (Hono answers an unmatched method with not-found
-too). Pending its Ask-first approval. If it is held, slice 1 cannot ship a lawful unmatched-path
-response and the card goes `[!]`.
+too). The code is owner-approved 2026-10-17 (§7).
 
 **D24 — Address lookup.** `recipient.get`'s body is `{ address: string }`. Valid means trimmed length
 3–320 with one `@` that has a non-empty part on each side. The reader hashes with `hashAddress`, so
@@ -876,7 +875,7 @@ caused by        <cause_email_id>
 | `validation_failed` | 400 | `recipient.get` (`body`: missing, not JSON, wrong content type) | `The request body must be a JSON object with an address field.` | `Send Content-Type: application/json with a JSON body.` |
 | `email_not_found` | 404 | `email.get` | `No event has been recorded for this email id.` | `Events may still be queued, or missed: run \`ledger gaps\`` (registry) |
 | `recipient_not_found` | 404 | `recipient.get` | `No event has ever named this address.` | `Check the address. If it was emailed recently, run \`ledger gaps\`` (registry) |
-| `route_not_found` (pending approval) | 404 | any unmatched method and path | `No operation at this method and path.` | `Check LEDGER_URL, and that the CLI or SDK version matches the API's.` |
+| `route_not_found` | 404 | any unmatched method and path | `No operation at this method and path.` | `Check LEDGER_URL, and that the CLI or SDK version matches the API's.` |
 | `database_unavailable` | 503 | both operations | `The database is unreachable.` | `The queue holds events meanwhile (ADR-015); retry, then \`ledger worker resume\`. \`ledger health\` shows storage used` (registry) |
 | `internal_error` | 500 | API `onError`; CLI defect path | `An unexpected error occurred.` | `Retry; if it persists, read the API logs by request id` (registry) |
 | `api_unavailable` | — (SDK) | SDK: response without the shape, network failure, timeout | `The Ledger API did not answer with a Ledger response.` | `Check \`LEDGER_URL\`. The kill switch may be tripped: check the budget alerts, then run the re-arm script` (registry) |
@@ -1198,7 +1197,7 @@ Applied by the change, in the commits that land each piece:
   - Open questions: RS-U21 → resolved with the fact id.
 - [api-contract.md](../api-contract.md):
   - Conventions → Public environment variables: `LEDGER_WEBHOOK_SECRETS`, `LEDGER_ADDRESS_HASH_KEY`.
-  - Error codes: the `route_not_found` row (once approved).
+  - Error codes: the `route_not_found` row (owner-approved 2026-10-17).
   - `validation_failed`'s Hint cell reads as a hint: "Fix the field the message names, then retry"
     (it currently describes, "`message` names the field"). A fact correction; the code is unchanged.
 - [architecture.md](../architecture.md):
@@ -1324,7 +1323,6 @@ Task groups, each one or more commits pushed as it lands, ordered so each is ind
 
 ## 25. Owner ops still open
 
-- **Approve the §7 items** (one round; asked 2026-10-17).
 - **Docker** running for `pnpm verify`, `pnpm test:int` and `pnpm dev:full`.
 - **For Ships 11–13 only:**
   - a Resend API key in `.env.local` (`RESEND_API_KEY`);
