@@ -250,6 +250,8 @@ describe('projectRecipient', () => {
           ...history.emails.map(({ emailId, events }) =>
             fc
               .subarray(events)
+              // Redeliveries are distinct objects with the same `svixId`.
+              .map((repeats) => repeats.map((event) => structuredClone(event)))
               .chain((repeats) => permutation([...events, ...repeats, ...repeats]))
               .map((repeated): EmailHistory => ({ emailId, events: repeated })),
           ),

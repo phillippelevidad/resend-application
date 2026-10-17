@@ -286,9 +286,12 @@ describe('projectEmail', () => {
   });
 
   it('is idempotent under repeats: redelivered events change no field, counts included (ADR-003 property 2)', () => {
+    // A redelivery is a distinct object with the same `svixId`, so the repeats are clones: a dedupe
+    // by object identity instead of by `svixId` fails here.
     const withRepeats = emailHistory().chain((history) =>
       fc
         .subarray(history.events)
+        .map((repeats) => repeats.map((event) => structuredClone(event)))
         .chain((repeats) => permutation([...history.events, ...repeats, ...repeats]))
         .map((repeated) => ({ history, repeated })),
     );
