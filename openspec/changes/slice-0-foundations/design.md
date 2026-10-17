@@ -71,6 +71,7 @@ Kebab-case files with role suffixes (pp-general → coding-standards), each besi
 | `mask-text.ts`, `mask-address.ts`, `mask-from.ts` | `maskText`, `maskAddress`, `maskFrom` | D13 |
 | `testing.ts` → `testing/ledger-history.ts` | `ledgerHistory` (public via `./testing`) | D15 |
 | `testing/email-history.ts` | `emailHistory` (core-internal) | D15 |
+| `testing/mask-input-char.ts` | `maskInputChar` (core-internal: the code-point arbitrary the three mask prop tests share) | D13 |
 | `fixtures/resend/email-<event>.json` | Resend doc examples (`email-bounced.json`, `email-delivery-delayed.json`, …) | D12 |
 
 `index.ts` re-exports every primary export. `package.json` gains `"./testing": "./src/testing.ts"`,
@@ -332,6 +333,12 @@ make `--duplicates 0.3` repeat at least one event.
 
 The JSON block is identical with or without `--shuffle` / `--duplicates` for one seed and namespace:
 order independence, shown at the terminal.
+
+**As built:** `sim/src/main.ts` is the entry point and composes four one-export modules
+(pp-general → coding-standards): `read-sim-flags.ts` (`readSimFlags`, the flags and their
+`sim: <flag> <reason>` errors), `sample-once.ts` (`sampleOnce`, one seeded `fc.sample` draw),
+`arrange-events.ts` (`arrangeEvents`, the seeded duplicates and permutation) and
+`project-ledger.ts` (`projectLedger`, the per-email and per-recipient projection, masks only).
 
 `sim` declares `"@ledger/core": "workspace:*"` under `dependencies`, because `main.ts` imports it at
 runtime, and `fast-check` under `devDependencies` as approved. Biome's `noUndeclaredDependencies`
