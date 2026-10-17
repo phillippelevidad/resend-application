@@ -10,6 +10,7 @@
     "@ledger/shared": "workspace:*"
   },
   "devDependencies": {
+    "@ledger/worker": "workspace:*",
     "fast-check": "4.10.2",
     "vitest": "catalog:"
   }

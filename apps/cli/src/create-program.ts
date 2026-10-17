@@ -1,8 +1,16 @@
 import { Command } from '@commander-js/extra-typings';
+import type { LedgerClient } from '@ledger/sdk';
+import { emailGetCli } from './commands/email-get.cli.ts';
+import { recipientGetCli } from './commands/recipient-get.cli.ts';
 import type { Output } from './create-output.ts';
 
 export type CliDeps = {
+  // Built on first use, inside an action, so `ledger --help` and a usage error need no LEDGER_URL.
+  // It throws ConfigError when LEDGER_URL or LEDGER_TOKEN is missing or invalid (exit 2).
+  client: () => LedgerClient;
   output: Output;
+  // The only exit path: process.exitCode in main.ts, a recorder in tests (pp-cli).
+  setExitCode: (code: number) => void;
 };
 
 export function createProgram(deps: CliDeps) {
@@ -13,6 +21,8 @@ export function createProgram(deps: CliDeps) {
     .description('A reliable email-event ledger for Resend webhooks. Not affiliated with Resend.')
     .exitOverride()
     .configureOutput({ writeOut: deps.output.out, writeErr: deps.output.err });
-  // Commands register here, one apps/cli/src/commands/<noun>-<verb>.cli.ts each, from slice 1.
+  // One apps/cli/src/commands/<noun>-<verb>.cli.ts per operation.
+  emailGetCli(program, deps);
+  recipientGetCli(program, deps);
   return program;
 }

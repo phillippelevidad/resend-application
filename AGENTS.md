@@ -258,6 +258,14 @@ pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shu
                    # prints `sim seed=… namespace=…` (the replay pair, chosen when not given), the
                    # history counts, then its projection as JSON, masks only; a bad flag exits 2
 
+# CLI (no `bin` until slice 8; loads .env.local, written by pnpm db:setup)
+pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
+pnpm -s ledger email <email_id> [--json]
+pnpm -s ledger recipient <address> [--json]   # the address goes in the request body; output shows its mask
+                   # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
+                   # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
+                   # without -s (pnpm's banner then precedes the output)
+
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
 pnpm --filter @ledger/app-local start   # routeless read API on 127.0.0.1:3200; --port, --host (loopback only)
 pnpm --filter @ledger/app-cli start --help

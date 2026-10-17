@@ -5,7 +5,8 @@
   "description": "Public TS client for the read API: generated types plus a thin client",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "devDependencies": {
     "openapi-typescript": "7.13.0",
