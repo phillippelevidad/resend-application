@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { LedgerEvent } from './ledger-event.ts';
 import { normalizeAddress } from './normalize-address.ts';
 import { projectEmail } from './project-email.projection.ts';
+import { projectRecipient } from './project-recipient.projection.ts';
 
 type Payload = { type: string; created_at: string; data: Record<string, unknown> };
 
@@ -92,6 +93,26 @@ describe('projectEmail on Resend’s documented examples', () => {
     expect(state.status).toBeNull();
     expect(state.recipients[0]?.status).toBeNull();
     expect([state.openCount, state.clickCount, state.eventCount]).toEqual([1, 1, 2]);
+  });
+
+  // Regression: a drift in a field no projection reads failed the schema, so the bounce was
+  // skipped and the recipient read ok/delivered instead of hard_bounced (D11).
+  it('projects a Permanent bounce as hard_bounced when its diagnosticCode is a string and a tag value is not a string', () => {
+    const drifted = withData('bounced', {
+      bounce: {
+        ...(fixture('bounced').data.bounce as object),
+        diagnosticCode: 'smtp; 550 5.1.1 unknown',
+      },
+      tags: { category: 'confirm_email', attempt: 2 },
+    });
+    const state = projectEmail(emailId, [...base, stored('svix-bounced', drifted)]);
+    const row = state.recipients[0];
+    expect(state.status).toBe('bounced');
+    expect(row).toMatchObject({ status: 'bounced', bounceType: 'Permanent' });
+    expect(row?.stickySignal).toBe('hard_bounced');
+    expect(projectRecipient(row?.recipientKey ?? '', state.recipients).deliverability).toBe(
+      'hard_bounced',
+    );
   });
 
   it('ranks a complaint above delivery (D1, RS-29)', () => {

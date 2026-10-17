@@ -62,6 +62,21 @@ Every object in the typed schemas SHALL accept fields it does not declare, and S
 - **WHEN** an outbound email payload carries a top-level or `data` field no schema declares
 - **THEN** it passes the typed schema
 
+### Requirement: A field no projection reads never fails a parse
+A field no projection reads (RS-27–RS-29) SHALL keep its documented type in the schema, and a value off that type SHALL parse as absent instead of failing the event. The fields a projection reads (`type`, `created_at`, `data.email_id`, `data.to`, `data.from`, `data.subject`, and `data.bounce` with its `type` and `subType`) SHALL still fail the parse when off-type, as before.
+
+#### Scenario: A Permanent bounce with a drifted unread field
+- **WHEN** an `email.bounced` payload with `data.bounce.type` `Permanent` carries `data.bounce.diagnosticCode` as a string, or a `data.tags` value that is not a string
+- **THEN** it passes the typed schema, and the recipient's projection reads `hard_bounced`
+
+#### Scenario: Any value in any unread field
+- **WHEN** any outbound example carries any JSON value in any field no projection reads
+- **THEN** it passes the typed schema and projects exactly as the untouched example does
+
+#### Scenario: A read field off its type
+- **WHEN** an outbound payload carries a `data.from`, `data.subject`, `data.bounce`, `data.bounce.type` or `data.bounce.subType` off its documented type
+- **THEN** the typed schema rejects it
+
 ### Requirement: Resend's documented examples parse
 The example payload on each `webhooks/emails/<type>` page that resend.md cites for RS-26–RS-30 SHALL be kept as a fixture recording its source URL and fetch date, with any non-test address replaced by a Resend test address. Each fixture SHALL pass its schema.
 

@@ -169,6 +169,105 @@ describe('emailEventSchema', () => {
     },
   );
 
+  // D11: each value breaks the type its page documents (RS-27–RS-29) in a field no projection
+  // reads. Before the fix, each one failed the parse and the event was skipped.
+  it.each<[name: string, file: string, change: (data: Payload['data']) => void]>([
+    [
+      'a Permanent bounce with diagnosticCode as a string',
+      'email-bounced.json',
+      (data) => {
+        data.bounce = { ...(data.bounce as object), diagnosticCode: 'smtp; 550 5.1.1 unknown' };
+      },
+    ],
+    [
+      'a bounce message that is not a string',
+      'email-bounced.json',
+      (data) => {
+        data.bounce = { ...(data.bounce as object), message: { text: 'Mailbox unavailable.' } };
+      },
+    ],
+    [
+      'a tag whose value is not a string',
+      'email-bounced.json',
+      (data) => {
+        data.tags = { category: 'confirm_email', attempt: 2 };
+      },
+    ],
+    [
+      'tags in the send API’s array shape',
+      'email-delivered.json',
+      (data) => {
+        data.tags = [{ name: 'category', value: 'confirm_email' }];
+      },
+    ],
+    [
+      'message_id, broadcast_id and template_id that are not strings',
+      'email-sent.json',
+      (data) => {
+        data.message_id = 111;
+        data.broadcast_id = ['8b146471'];
+        data.template_id = true;
+      },
+    ],
+    [
+      'a click timestamp that is a number',
+      'email-clicked.json',
+      (data) => {
+        data.click = { ...(data.click as object), timestamp: 1_795_928_457_163 };
+      },
+    ],
+    ['a click object that is a string', 'email-clicked.json', (data) => (data.click = 'clicked')],
+    [
+      'a failed reason that is an object',
+      'email-failed.json',
+      (data) => (data.failed = { reason: { code: 'reached_daily_quota' } }),
+    ],
+    [
+      'a suppressed object that is an array',
+      'email-suppressed.json',
+      (data) => (data.suppressed = ['suppressed']),
+    ],
+  ])('%s still parses, with type, email_id and to intact', (_name, file, change) => {
+    const payload = withData(file, change);
+    const result = emailEventSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      type: payload.type,
+      data: { email_id: payload.data.email_id, to: payload.data.to },
+    });
+  });
+
+  // D11: the fields a projection reads keep failing the parse when off-type.
+  it.each<[name: string, file: string, change: (data: Payload['data']) => void]>([
+    ['a from that is an object', 'email-delivered.json', (data) => (data.from = { name: 'Acme' })],
+    ['a subject that is a number', 'email-delivered.json', (data) => (data.subject = 42)],
+    ['a bounce object that is a string', 'email-bounced.json', (data) => (data.bounce = 'hard')],
+    [
+      'a bounce type that is a number',
+      'email-bounced.json',
+      (data) => (data.bounce = { ...(data.bounce as object), type: 1 }),
+    ],
+    [
+      'a bounce subType that is an array',
+      'email-bounced.json',
+      (data) => (data.bounce = { ...(data.bounce as object), subType: ['Suppressed'] }),
+    ],
+  ])('%s, a field a projection reads, is still rejected', (_name, file, change) => {
+    expect(emailEventSchema.safeParse(withData(file, change)).success).toBe(false);
+  });
+
+  it('a drifted unread field parses as absent, beside the bounce type it rides with', () => {
+    const payload = withData('email-bounced.json', (data) => {
+      data.bounce = { ...(data.bounce as object), diagnosticCode: 'smtp; 550 5.1.1 unknown' };
+      data.tags = { category: 2 };
+    });
+    const data = emailEventSchema.safeParse(payload).data?.data as Payload['data'] | undefined;
+    const bounce = data?.bounce as Payload['data'] | undefined;
+    expect(bounce).toMatchObject({ type: 'Permanent', subType: 'Suppressed' });
+    expect(bounce?.diagnosticCode).toBeUndefined();
+    expect(data?.tags).toBeUndefined();
+  });
+
   it('email.suppressed parses with and without data.suppressed (RS-U19)', () => {
     const withObject = loadFixture('email-suppressed.json');
     const withoutObject = withData('email-suppressed.json', (data) => {

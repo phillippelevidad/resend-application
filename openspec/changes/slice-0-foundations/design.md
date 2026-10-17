@@ -101,6 +101,20 @@ Resend field never fails a parse. `data.bounce.type` and `data.bounce.subType` a
 (D7). `email.received`, the non-email families and unknown types get no data schema: they pass the
 envelope, are stored raw and are skipped by projections.
 
+**A field no projection reads never fails the event.** Such a field keeps its documented type
+(`message_id`, `broadcast_id`, `template_id`, `tags` as `Record<string, string>`,
+`bounce.message`, `bounce.diagnosticCode[]`, `click` and its four strings, `failed` and `reason`,
+`suppressed` and its two strings; RS-27–RS-29, each `webhooks/emails/<slug>.md` page) but is
+declared `.nullish().catch(undefined)`: a value off that type parses as absent, and the event still
+projects. The raw payload keeps the value (ADR-004). The fields a projection reads are unchanged:
+`type`, `created_at`, `data.email_id`, `data.to`, `data.from`, `data.subject`, and the `bounce`
+object with its `type` and `subType` (D3–D5, D7) still fail the parse when off-type. Evidence:
+`email-event.schema.test.ts` (a Permanent bounce with `diagnosticCode` as a string, a non-string
+tag value, tags in the send API's array shape, a non-string click field, and more), the
+regression in `project-email.projection.test.ts` (that bounce still reads `hard_bounced`), and
+the property in `email-event.schema.prop.test.ts` (any JSON value in any unread field parses and
+projects as the untouched example does).
+
 **Fixtures (D12).** At apply, fetch the example payload from each
 `https://resend.com/docs/webhooks/emails/<slug>.md` page, where the slug is the event name in
 kebab case (`delivery-delayed`; all 11 pages are listed in `https://resend.com/docs/llms.txt`,
@@ -377,6 +391,12 @@ Cases: in `packages/core/src/`, `pg`, `drizzle-orm`, `drizzle-orm/pg-core`, `res
 an override's list **replaces** the base list. That is what Biome 2.5.15 reported when probed on
 2026-10-16; the test pins it and settles the about.md bullet.
 
+The enforced ban is wider than these cases: the AWS, Postgres and Resend package families, subpaths
+included, listed in [pp-general → Lint enforcement](../../../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome),
+in `packages/core` and `packages/shared`, with one fixture per pattern. The test also pins the
+`resend` ban (root, subpaths, `@resend/**`) in `packages/worker` and `packages/aws`, its exemption
+in `packages/resend-client` and `packages/ingest`, and the `@aws-sdk/*` ban in those three.
+
 **Authority:** Ships 7; ADR-013; [about.md → Open questions](../../../.ai/about.md#open-questions)
 ("unproven until the deliberate-violation fixture lands"). The bullet says "fails the lint stage":
 this test runs the same binary and the same committed `biome.json` the lint stage runs.
@@ -390,12 +410,6 @@ this test runs the same binary and the same committed `biome.json` the lint stag
 If Biome stops linting from the temp directory, apply stops and reports. No fallback is invented.
 
 ### D18 — `secrets` stage
-
-The enforced ban is wider than these cases: the AWS, Postgres and Resend package families, subpaths
-included, listed in [pp-general → Lint enforcement](../../../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome),
-in `packages/core` and `packages/shared`, with one fixture per pattern. The test also pins the
-`resend` ban (root, subpaths, `@resend/**`) in `packages/worker` and `packages/aws`, its exemption
-in `packages/resend-client` and `packages/ingest`, and the `@aws-sdk/*` ban in those three.
 
 `scripts/secret-scan.mjs` uses Node built-ins only, spawns `docker` and `git` with argument arrays
 (no shell), and runs after `docker`. Image:
@@ -497,6 +511,7 @@ Every reliability claim, and the test that carries it (PP §20):
 | Two-recipient bounce (`projections`) | `project-email.projection.prop.test.ts` | property |
 | Unprojectable events skipped, never fatal (`projections`) | `project-email.projection.test.ts` | unit |
 | Schemas parse doc examples; RS-U19; open bounce strings; extra fields (`event-schemas`) | `email-event.schema.test.ts` | unit |
+| An unread field's drift never fails or changes the event (`event-schemas`) | `email-event.schema.test.ts`, `email-event.schema.prop.test.ts`; the hard-bounce regression in `project-email.projection.test.ts` | unit, property |
 | Masks idempotent, length-preserving, no digit, ≤ 3 revealed, no `\p{Cc}` (`address-masking`) | `mask-text.prop.test.ts`, `mask-address.prop.test.ts`, `mask-from.prop.test.ts`; ratified examples in `normalize-address.test.ts` and each mask's unit cases | property, unit |
 | Core boundary; override scoping (`core-import-boundary`) | `import-boundaries.test.ts` | unit |
 | Sim determinism, knobs, masks-only stdout, bad flags (`simulator`) | `sim/src/main.e2e.test.ts` | e2e |
