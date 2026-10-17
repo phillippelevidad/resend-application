@@ -8,6 +8,12 @@
     ".": "./src/index.ts"
   },
   "devDependencies": {
+    "openapi-typescript": "7.13.0",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "openapi-fetch": "0.17.0",
+    "zod": "4.6.7"
   }
 }

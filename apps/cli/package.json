@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "@commander-js/extra-typings": "15.0.0",
+    "@ledger/core": "workspace:*",
+    "@ledger/sdk": "workspace:*",
+    "@ledger/shared": "workspace:*",
     "commander": "15.0.0"
   },
   "devDependencies": {

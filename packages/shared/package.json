@@ -9,5 +9,10 @@
   },
   "devDependencies": {
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "winston": "3.19.0",
+    "zod": "4.6.7"
   }
 }

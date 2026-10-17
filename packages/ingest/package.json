@@ -9,5 +9,10 @@
   },
   "devDependencies": {
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "resend": "6.33.0"
   }
 }

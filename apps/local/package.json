@@ -11,9 +11,15 @@
   "dependencies": {
     "@hono/node-server": "2.1.5",
     "@ledger/api": "workspace:*",
+    "@ledger/core": "workspace:*",
+    "@ledger/db": "workspace:*",
+    "@ledger/ingest": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "@ledger/worker": "workspace:*",
     "hono": "4.13.13"
   },
   "devDependencies": {
+    "@ledger/sdk": "workspace:*",
     "vitest": "catalog:"
   }
 }
