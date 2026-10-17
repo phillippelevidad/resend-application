@@ -126,11 +126,12 @@ entries are owed by slice 3 and completed in slice 7.
 | --- | --- | --- | --- | --- | --- |
 | `unauthorized` | 401 | Bearer token missing, malformed, bad-tag, unknown or revoked | Set `LEDGER_TOKEN` to an active token | runbook | packages/api auth middleware |
 | `forbidden` | 403 | The token is valid but lacks the scope this operation needs | Use an `operate` token, or ask its owner for one | runbook | packages/api auth middleware |
-| `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | `message` names the field | runbook | packages/api request validation (Zod) |
+| `validation_failed` | 400 | Malformed input: bad id, address, duration, cursor or `limit` | Fix the field the message names, then retry | runbook | packages/api request validation (Zod) |
 | `email_not_found` | 404 | No event recorded for this email id | Events may still be queued, or missed: run `ledger gaps` | runbook | `email.get`, `email.explainDelivery` |
 | `recipient_not_found` | 404 | No event has ever named this address | Check the address. If it was emailed recently, run `ledger gaps` | runbook | `recipient.get` |
 | `run_not_found` | 404 | No reconcile run with this id | List runs with `ledger gaps` | runbook | `reconcile.getRun` |
 | `token_not_found` | 404 | No token with this id | List tokens with `ledger token list` | runbook | `token.revoke` |
+| `route_not_found` | 404 | No operation at this method and path | Check `LEDGER_URL`, and that the CLI or SDK version matches the API's | runbook | packages/api not-found handler |
 | `reconcile_in_progress` | 409 | Another reconcile run is unfinished and still inside its time budget; runs never overlap (ADR-007) | Wait for it: `ledger gaps` | runbook | `reconcile.start` |
 | `redrive_in_progress` | 409 | A DLQ redrive task is already running; SQS allows one per queue (AWS-21) | Wait for the DLQ depth in `ledger health` to fall | [Redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) | `dlq.startRedrive` |
 | `last_operate_token` | 409 | Revoking this token would leave no active `operate` token | Create another `operate` token first | runbook | `token.revoke` |
