@@ -352,6 +352,10 @@ The mappers follow [Surfaces](#surfaces): `recipients` ordered by `address_hash`
 `timeline` in fold order `(event_created_at` nulls last, `rank(type)`, `svix_id)`; `bounce_type` /
 `bounce_sub_type` read from `data.bounce` only on `email.bounced`, by a non-throwing parse; an absent
 `email_state` with timeline rows → `200`, `status: null`, zero counts, `recipients: []`.
+`GetEmailReader` runs its timeline, `email_state` and `email_recipients` reads in one
+`REPEATABLE READ`, read-only transaction, so a worker commit between them cannot answer a timeline
+of n events beside the state of n + 1 (`get-email.route.int.test.ts`, "email.get reads one
+snapshot").
 
 ### D26 — SDK
 
