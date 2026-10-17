@@ -122,8 +122,12 @@ function main() {
     const canaryDir = join(temp, 'canary');
     mkdirSync(canaryDir);
     writeCanary(canaryDir);
+    // Scanned as a mirror, the same input shape as the repo scan, so a gitleaks that read nothing
+    // from a bare repo would fail the canary instead of passing the repo silently.
+    const canaryMirror = join(temp, 'canary.git');
+    git(['clone', '-q', '--mirror', canaryDir, canaryMirror], temp);
 
-    const canary = gitleaks(canaryDir, configPath);
+    const canary = gitleaks(canaryMirror, configPath);
     const caught = new Set(canary.findings.map((finding) => finding.RuleID));
     const missed = CUSTOM_RULES.filter((rule) => !caught.has(rule));
     if (canary.status !== 1 || missed.length > 0) {

@@ -394,8 +394,9 @@ Every scan uses the same arguments: `git --log-opts=--all --config /config/.gitl
 container's user does not own the mount).
 
 1. **Canary.** A temp git repo under `os.tmpdir()` with one commit holding three fake values,
-   assembled at runtime from fragments so no tracked line matches a rule. It is mounted at `/repo`
-   and scanned with the arguments above plus `--report-format json --report-path -`. The canary
+   assembled at runtime from fragments so no tracked line matches a rule. A `git clone --mirror`
+   of it, the repo scan's input shape, is mounted at `/repo` and scanned with the arguments above
+   plus `--report-format json --report-path -`. The canary
    passes only on exit 1 with a finding whose `RuleID` is each of `resend-api-key`,
    `resend-webhook-secret` and `postgres-url`. That is the bullet's "exits 1 on a scratch commit
    carrying a fake key", run by this stage's own command.
