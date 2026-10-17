@@ -156,7 +156,9 @@ describe('pnpm sim (sim/src/main.ts)', () => {
 
   it.each([
     [['--duplicates', '2'], '--duplicates'],
+    [['--duplicates', '-0.1'], '--duplicates'],
     [['--seed', '4294967296'], '--seed'],
+    [['--seed', '-1'], '--seed'],
     [['--namespace', 'Walk'], '--namespace'],
     [['--verbose'], '--verbose'],
   ])('rejects %j with one stderr line naming %s, exit 2 and nothing on stdout', (args, flag) => {

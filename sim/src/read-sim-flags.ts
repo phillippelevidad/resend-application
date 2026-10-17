@@ -82,15 +82,21 @@ function readDuplicates(value: string | undefined): number {
   return value === undefined ? 0 : Number(value);
 }
 
+// `checkTokens` has already enforced what strict mode would, so a string option holds a string here.
+function stringValue(value: string | boolean | undefined): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
 // Every flag is checked before a missing seed or namespace is chosen, and before anything is printed
-// (D16).
+// (D16). The values are read non-strict too: strict mode throws its own multi-line message for a
+// value that starts with `-` (`--seed -1`), where the value checks below name the flag in one line.
 export function readSimFlags(args: readonly string[]): SimFlags {
   checkTokens(args);
-  const { values } = parseArgs({ args: [...args], options, strict: true });
+  const { values } = parseArgs({ args: [...args], options, strict: false, allowPositionals: true });
   return {
-    seed: readSeed(values.seed),
-    namespace: readNamespace(values.namespace),
-    duplicates: readDuplicates(values.duplicates),
-    shuffle: values.shuffle ?? false,
+    seed: readSeed(stringValue(values.seed)),
+    namespace: readNamespace(stringValue(values.namespace)),
+    duplicates: readDuplicates(stringValue(values.duplicates)),
+    shuffle: values.shuffle === true,
   };
 }
