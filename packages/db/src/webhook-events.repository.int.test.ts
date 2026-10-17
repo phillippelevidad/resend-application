@@ -81,6 +81,31 @@ describe('webhook_events as the runtime role', () => {
     expect(kind?.kind).toBe('null');
   });
 
+  it('the tests connect as ledger_runtime, and it cannot update, delete or truncate the ledger (ADR-004)', async () => {
+    const [who] = await t.db
+      .execute<{ current_user: string }>('select current_user')
+      .then((result) => result.rows);
+    expect(who?.current_user).toBe('ledger_runtime');
+
+    await webhookEventsRepository.insertIfAbsent(t.db, eventRow('msg_append_only'));
+    // `SELECT, INSERT` only (0001_grant-ledger-tables.sql): a widened grant turns each into a write.
+    expect(
+      await sqlStateOf(
+        t.db
+          .update(webhookEvents)
+          .set({ type: 'email.delivered' })
+          .where(eq(webhookEvents.svixId, 'msg_append_only')),
+      ),
+    ).toBe('42501');
+    expect(
+      await sqlStateOf(
+        t.db.delete(webhookEvents).where(eq(webhookEvents.svixId, 'msg_append_only')),
+      ),
+    ).toBe('42501');
+    expect(await sqlStateOf(t.db.execute('truncate webhook_events'))).toBe('42501');
+    expect((await rowsFor('msg_append_only'))[0]?.type).toBe('email.sent');
+  });
+
   it('countPresent counts only the stored svix_ids', async () => {
     await webhookEventsRepository.insertIfAbsent(t.db, eventRow('msg_count_a'));
     expect(
