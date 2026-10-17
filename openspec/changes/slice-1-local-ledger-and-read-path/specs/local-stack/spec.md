@@ -60,14 +60,14 @@ The local process SHALL refuse to start unless `DATABASE_URL` is set, `LEDGER_AD
 - **THEN** it exits `1`, because an empty secret set would answer `401` to every delivery
 
 ### Requirement: One loopback process serves ingest and the read API
-The local process SHALL route `POST /webhooks/resend` to ingest and every other request to the read API, on one loopback port, and SHALL run the worker against the local queue in the same process.
+The local process SHALL route the ingest endpoint (api-contract.md → Ingest boundary) to ingest and every other request to the read API, on one loopback port, and SHALL run the worker against the local queue in the same process.
 
 #### Scenario: Unsigned webhook
-- **WHEN** an unsigned `POST /webhooks/resend` reaches the local process
+- **WHEN** an unsigned request reaches the ingest endpoint of the local process
 - **THEN** it answers `401` with body `unauthorized`
 
 #### Scenario: Other paths reach the read API
-- **WHEN** `GET /` reaches the local process
+- **WHEN** a request for the root path, which no operation serves, reaches the local process
 - **THEN** it answers `404` with `code` `route_not_found` in the error shape
 
 #### Scenario: Signed event lands in the ledger

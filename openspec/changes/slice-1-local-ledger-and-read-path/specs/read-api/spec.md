@@ -9,7 +9,7 @@ registered code.
 ## ADDED Requirements
 
 ### Requirement: email.get returns the projected email
-`GET /emails/{email_id}` (`email.get`) SHALL answer `200` with `object: "email"`, the email's projected status, masked `from` and subject, open and click counts with first times, `last_event_at`, `event_count`, every recipient's outcome, and the timeline of its ledger rows. Every timestamp SHALL be ISO 8601 UTC or `null`.
+`email.get` SHALL answer `200` with `object: "email"`, the email's projected status, masked `from` and subject, open and click counts with first times, `last_event_at`, `event_count`, every recipient's outcome, and the timeline of its ledger rows. Every timestamp SHALL be ISO 8601 UTC or `null`.
 
 #### Scenario: A bounced email with two recipients
 - **WHEN** an email has `email.sent` to two recipients, `email.delivered` to the first and a `Permanent` / `General` `email.bounced` to the second (RS-28, RS-35)
@@ -27,7 +27,7 @@ registered code.
 `email.get` SHALL answer `404 email_not_found` when no ledger row has the `email_id`, and `400 validation_failed` when the `email_id` is not 1 to 128 characters from `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`.
 
 #### Scenario: Unknown email
-- **WHEN** `GET /emails/no-such-email` is requested
+- **WHEN** `email.get` is called with `no-such-email`, an id no ledger row holds
 - **THEN** the response is `404` with `code` `email_not_found`
 
 #### Scenario: Bad id
@@ -35,7 +35,7 @@ registered code.
 - **THEN** the response is `400` with `code` `validation_failed` and a `message` naming `email_id`
 
 ### Requirement: recipient.get looks up an address sent in the body
-`POST /recipients/lookup` (`recipient.get`) SHALL take `{ "address": "<address>" }` as a JSON body, normalize and hash it server-side, and answer `200` with `object: "recipient"`, `address_masked`, `deliverability`, `since` and `cause_email_id`. The address SHALL never be read from a path or query string.
+`recipient.get` SHALL take `{ "address": "<address>" }` as a JSON body, normalize and hash it server-side, and answer `200` with `object: "recipient"`, `address_masked`, `deliverability`, `since` and `cause_email_id`. The address SHALL never be read from a path or query string.
 
 #### Scenario: A hard-bounced recipient
 - **WHEN** an address whose only event was a `Permanent` bounce on email `e1` is looked up (RS-28, RS-35)
@@ -86,11 +86,11 @@ Every read-API failure SHALL answer `{ "error": { "code", "message", "hint", "do
 Any method and path no operation serves SHALL answer `404` with `code` `route_not_found` in the error shape, never a framework's default response.
 
 #### Scenario: Unknown path
-- **WHEN** `GET /nope` is requested
+- **WHEN** a request reaches a path no operation serves
 - **THEN** the response is `404` with `code` `route_not_found`
 
 #### Scenario: Wrong method
-- **WHEN** `DELETE /emails/e1` is requested
+- **WHEN** a request uses a method no operation serves on a path that `email.get` serves
 - **THEN** the response is `404` with `code` `route_not_found`
 
 ### Requirement: OpenAPI document

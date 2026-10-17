@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Accepts Resend webhook deliveries at `POST /webhooks/resend`: verifies each one against the
+Accepts Resend webhook deliveries at the ingest endpoint (api-contract.md → Ingest boundary): verifies each one against the
 configured signing-secret set before it can reach the queue, and answers with a fixed body so
 Resend's stored responses never hold a payload, PII or a secret.
 
@@ -95,3 +95,7 @@ Each accepted delivery SHALL emit the metric `ingest.accepted` with its `svix_id
 #### Scenario: Accepted delivery
 - **WHEN** a request verifies and is enqueued
 - **THEN** one `ingest.accepted` metric line is written with that `svix_id`
+
+#### Scenario: Verified payload that is not an object
+- **WHEN** a correctly signed body is JSON but not an object, such as `null` or `[]`
+- **THEN** ingest enqueues it and answers `200`, and the `ingest.accepted` line carries no `type`

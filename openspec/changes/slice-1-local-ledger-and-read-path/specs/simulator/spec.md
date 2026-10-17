@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Seeded history generation
-`pnpm sim` SHALL generate one history of several emails and recipients from `--seed <uint32>` and `--namespace <[a-z0-9-]{1,32}>`, with every id derived from the namespace plus a counter. A missing seed or namespace SHALL be chosen at random and printed. Addresses SHALL be under `@resend.dev` only, each labelled `<local>+<namespace>-<n>@resend.dev`, so two runs never share an email, a `svix_id` or a recipient.
+`pnpm sim` SHALL generate one history of several emails and recipients from `--seed <uint32>` and `--namespace <[a-z0-9-]{1,32}>`, with every id derived from the namespace plus a counter. A missing seed or namespace SHALL be chosen at random and printed. Addresses SHALL be under `@resend.dev` only and SHALL all carry the run's namespace: each generated address as `<local>+<namespace>-<n>@resend.dev`, and the walk probe's two fixed addresses as `<local>+<namespace>@resend.dev`, so two runs never share an email, a `svix_id` or a recipient, and no probe address equals a generated one.
 
 #### Scenario: Header lines
 - **WHEN** `pnpm sim --seed 42 --namespace walk` runs
@@ -38,7 +38,7 @@ After the two header lines, `pnpm sim` SHALL print one indented JSON document `{
 - **THEN** it sends nothing, prints the header lines and the projection, and exits 0
 
 ### Requirement: Live run sends every event signed
-A live run SHALL send every arranged event, duplicates and shuffle included, one at a time, as `POST $LEDGER_URL/webhooks/resend` signed with the simulator secret and the wall-clock `svix-timestamp`, then print `sent requests=<k> accepted=<a>`, where `a` counts the `200` answers.
+A live run SHALL send every arranged event, duplicates and shuffle included, one at a time, to the ingest endpoint at `LEDGER_URL`, signed with the simulator secret and the wall-clock `svix-timestamp`, then print `sent requests=<k> accepted=<a>`, where `a` counts the `200` answers.
 
 #### Scenario: Every event accepted
 - **WHEN** `pnpm sim --duplicates 0.2 --shuffle` runs live against a running local process

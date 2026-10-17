@@ -46,7 +46,7 @@ A verified event whose payload holds `\u0000` or a lone UTF-16 surrogate, in a v
 - **THEN** the event is stored with U+FFFD in its place and the message commits without a retry
 
 ### Requirement: Unprojectable events are stored raw
-A verified event of an unknown type, a non-email type, `email.received`, or a known outbound type whose payload fails its schema SHALL be stored with its payload unchanged and every typed column null where unreadable, SHALL skip projection, and SHALL emit `projection.unknown_event_type` (ADR-004; RS-25, RS-26).
+A verified event of an unknown type, a non-email type, `email.received`, a known outbound type whose payload fails its schema, or a payload that is not a JSON object SHALL be stored with its payload unchanged and every typed column null where unreadable, SHALL skip projection, and SHALL emit `projection.unknown_event_type` (ADR-004; RS-25, RS-26).
 
 #### Scenario: Unknown type
 - **WHEN** an event of a type not listed in RS-25 is processed
@@ -68,6 +68,10 @@ A verified event of an unknown type, a non-email type, `email.received`, or a kn
 - **WHEN** a verified payload carries no string `type`
 - **THEN** it is stored with a null `type` and the message commits
 
+#### Scenario: Payload that is not an object
+- **WHEN** a verified payload is JSON `null` or an array
+- **THEN** one `webhook_events` row stores it as that JSON value with every payload-derived column null, no projection row is written, the message commits on its first receive, and it never reaches the dead list (ADR-004)
+
 ### Requirement: Typed ledger columns
 Each `webhook_events` row SHALL carry the `svix_id`, `received_at` and `source` from the envelope; the payload's `type` and `created_at` when readable; `email_id` and `to_hashes` only for the ten outbound email types (RS-25, RS-27), with `to_hashes[i]` the keyed hash of `data.to[i]`.
 
@@ -76,7 +80,7 @@ Each `webhook_events` row SHALL carry the `svix_id`, `received_at` and `source` 
 - **THEN** its `to_hashes` holds their two keyed hashes in the same order
 
 ### Requirement: Projections equal the event set
-After any set of deliveries settles, every `email_state`, `email_recipients` and `recipient_state` row SHALL equal the slice 0 projection functions applied to the stored events for its key. Each projectable event SHALL trigger a full recompute, never an incremental patch. Arrival order SHALL NOT change any row (ADR-002, ADR-003).
+After any set of deliveries settles, every `email_state`, `email_recipients` and `recipient_state` row SHALL equal the slice 0 projection functions applied to the stored events for its key. Each projectable event SHALL cause a full recompute, never an incremental patch. Arrival order SHALL NOT change any row (ADR-002, ADR-003).
 
 #### Scenario: Out-of-order arrival
 - **WHEN** an email's `email.bounced` event is processed before its `email.sent` and `email.delivered` events
