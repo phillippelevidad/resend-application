@@ -134,7 +134,9 @@ function withPair(
 export function ledgerHistory(options: LedgerHistoryOptions = {}): fc.Arbitrary<LedgerHistory> {
   const namespace = options.namespace ?? 'core';
   return fc.tuple(sharedPool(namespace), fc.integer({ min: 2, max: 3 })).chain(([pool, count]) => {
-    // More than half the pool per email, so any two emails share at least one recipient.
+    // More than half the pool per email, so any two emails draw at least one recipient in common.
+    // Each event's `to` is a subset of the draw, so the shared one usually, not always, reaches both
+    // emails' projections.
     const minRecipients = Math.floor(pool.length / 2) + 1;
     const pair = stickyPair(pool);
     return fc
