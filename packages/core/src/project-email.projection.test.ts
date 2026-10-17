@@ -42,7 +42,8 @@ const base: LedgerEvent[] = [
   stored('svix-opened', fixture('opened')),
 ];
 
-// Each would make the email `bounced` if it were projected, so an equal projection proves the skip.
+// Each would change the projection if it were projected (most would make the email `bounced`; the
+// inbound and mismatched-type cases would move `eventCount`), so an equal projection proves the skip.
 const unprojectable: [name: string, event: LedgerEvent][] = [
   [
     'an unknown type',
