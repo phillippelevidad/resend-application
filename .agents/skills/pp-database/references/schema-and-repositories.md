@@ -16,13 +16,18 @@ packages/db/
     schema/<kebab>.ts        # one table per file, at data-modeling's `_Schema:_` path
     <kebab>.repository.ts    # one per table
     executor.ts              # the Executor and Transaction types
-    connection-error.ts      # the classifier
+    create-database.ts       # the connection factory
+    prepare-database.ts      # ensure the runtime role, then migrate (pp-database → migrations)
+    classify-database-error.ts  # the classifier
+    database-unavailable.error.ts  # the database_unavailable subclass it returns
+    testing.ts, testing/     # the int harness, exported as @ledger/db/testing (pp-testing)
     postgres-queue.adapter.ts  # slice 2B: the queue port over local_queue_messages (ADR-013)
 ```
 
-`drizzle/` is drizzle-kit's default output and the path the `wf-*` scripts read. Whether the
-installed drizzle-kit writes flat `.sql` files plus `meta/` or a folder per migration is
-`[Unverified]`; the scripts match either.
+`drizzle/` is drizzle-kit's default output and the path the `wf-*` scripts read. drizzle-kit
+0.31.11 writes it flat: `NNNN_<name>.sql` per migration, plus `meta/_journal.json` (the order
+`migrate()` reads) and one `meta/NNNN_snapshot.json` per migration (what the next `generate` diffs
+against). Biome skips the folder: the files are drizzle-kit's output, never reformatted.
 
 ## Schema files
 
@@ -72,10 +77,11 @@ export const webhookEventsRepository = {
 ```
 
 - **`Executor`** is one exported type: the common supertype of the database object and a
-  transaction, so the same function runs inside or outside one. Derive it from the installed
-  `drizzle-orm` `.d.ts` (`[Unverified]`: whether the node-postgres transaction type extends the
-  database type, or a union is needed); slice 1 writes it once. `Transaction`, exported beside it,
-  is the transaction type alone, for a function that is only correct inside one (a lock).
+  transaction, so the same function runs inside or outside one. In drizzle-orm 0.45.4 both
+  `NodePgDatabase` and `PgTransaction` extend `PgDatabase`, so no union is needed:
+  `Executor = PgDatabase<NodePgQueryResultHKT, …>` in `executor.ts`. `Transaction`, exported beside
+  it, is the `PgTransaction` that `db.transaction(cb)` hands `cb`, for a function that is only
+  correct inside one (a lock); the database object is not assignable to it.
 - **They load and write rows.** A projection is computed by `packages/core` from the rows a
   repository loaded, and the result is written back by a repository
   ([Projections are derived](../../../../.ai/data-modeling.md#projections-are-derived)). A fold,
@@ -126,7 +132,8 @@ repository never opens one. On the `packages/db` side:
 One factory, called once at module scope by a composition root with typed config:
 `drizzle-orm/node-postgres` over one `pg` pool of size 1, the pooled URL with `sslmode=require`
 ([ADR-005](../../../../.ai/architecture.md#adr-005--postgres-only)). It never reads `process.env`
-([pp-general → Config](../../pp-general/references/config-and-env.md)); its name lands in slice 1.
+([pp-general → Config](../../pp-general/references/config-and-env.md)):
+`createDatabase({ url, max, logger })` → `{ db, pool }` in `create-database.ts`.
 
 - **Timeouts:** `connectionTimeoutMillis` and `query_timeout` in the pool config, both well below
   the function timeout. Both default to none ([Pool](https://node-postgres.com/apis/pool),
@@ -151,8 +158,10 @@ One factory, called once at module scope by a composition root with typed config
 on a match returns a `DatabaseUnavailableError` (a subclass of the shared error class, code
 `database_unavailable`, the original as `cause`); the ADR-015 worker branches on it
 ([ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage),
-[pp-general → Errors](../../pp-general/references/errors.md#one-base-class)). Where it is applied
-(the transaction runner, the read API's database calls) is the slice 2 pre-proposal's to settle.
+[pp-general → Errors](../../pp-general/references/errors.md#one-base-class)). It is
+`classifyDatabaseError(err)` → `DatabaseUnavailableError | undefined`, landed in slice 1 and applied
+in the read API's `onError` (C3 of the slice 1 change: api-contract.md lists `database_unavailable`
+under slice 1); where the worker applies it (the ADR-015 branch) is the slice 2 pre-proposal's.
 
 **Walk the `cause` chain first.** Drizzle wraps a failed query in `DrizzleQueryError` with the
 driver error as `cause` ([source](https://raw.githubusercontent.com/drizzle-team/drizzle-orm/main/drizzle-orm/src/errors.ts)),
@@ -170,8 +179,10 @@ Never pg-pool's `timeout exceeded when trying to connect`: it is raised, with no
 pooled client frees up in time, which on a size-1 pool is a leaked checkout or a `db` call inside a
 `tx`. That is a bug, so it follows ADR-008 to the DLQ instead of pausing the worker.
 
-The lists are constants in `connection-error.ts`. The message matches are `[Unverified]` against
-the installed `pg`; the slice 2 classification unit test (ADR-015's evidence) pins each row, and
-what a Neon suspend actually raises is PG-U04's, the storage-limit row PG-U07's
+The lists are constants in `classify-database-error.ts`. The message matches are checked against
+the installed `pg` 8.23.1 (`lib/client.js`) and `pg-pool` 3.14.0 (`index.js`) source; the slice 1
+unit test [classify-database-error.test.ts](../../../../packages/db/src/classify-database-error.test.ts)
+pins each connection-class row, a real refused connection and the non-matches, and what a Neon
+suspend actually raises is PG-U04's, the storage-limit row PG-U07's
 ([integrations.md → \[Unverified\]](../../../../.ai/integrations.md#unverified)).
 Never log a `DrizzleQueryError`'s message: it embeds the query's `params`, which can hold an address.

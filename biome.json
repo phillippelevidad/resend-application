@@ -18,7 +18,8 @@
       "tsconfig*.json",
       "vitest.config.ts",
       "!!**/node_modules",
-      "!!**/cdk.out"
+      "!!**/cdk.out",
+      "!!packages/db/drizzle"
     ]
   },
   "formatter": {

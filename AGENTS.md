@@ -220,11 +220,12 @@ pnpm check         # lint + typecheck + unit tests; the commit gate
 pnpm lint          # biome check .   (pnpm lint:fix writes the fixes)
 pnpm typecheck     # tsc -p tsconfig.json: one pass over every project (pnpm build is the same; nothing emits)
 pnpm test          # Vitest project unit   (pnpm test:watch to watch)
-pnpm test:int      # Vitest project int (real Postgres; the Testcontainers harness lands in slice 1)
+pnpm test:int      # Vitest project int (real Postgres: one Testcontainers container per run, migrated,
+                   # then one clone per test file connected as the runtime role; needs Docker)
 pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
 
 # Full gate: mirrors CI by construction (CI runs exactly this)
-pnpm verify        # install, docker, secrets, lint, links, typecheck, unit, synth, e2e; exit 0 = VERIFY PASSED
+pnpm verify        # install, docker, secrets, lint, links, typecheck, unit, int, synth, e2e; exit 0 = VERIFY PASSED
 pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
 node scripts/secret-scan.mjs # the secrets stage: a canary of each custom .gitleaks.toml rule, then
                              # gitleaks (pinned image, needs Docker) over every commit on every ref
@@ -238,6 +239,8 @@ pnpm dev:full      # deps, Docker, compose Postgres, build, apps/local; adopts t
 pnpm dev:stop      # compose stop; stops the dev server only if it belongs to this repo
 pnpm dev           # apps/local under node --watch, loading .env.local if present
 pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
+pnpm db:generate --name <what-it-does>   # drizzle-kit generate in packages/db, flags passed
+                   # through (--custom for a grant); writes packages/db/drizzle/, read the SQL
 pnpm deps          # pnpm install only when the lockfile or a package.json changed
 pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
 
@@ -252,8 +255,8 @@ pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```
 
-`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: `int` with
-its first integration test plus OpenAPI and SDK drift (slice 1), migration lint (slice 2).
+`pnpm verify` needs Docker. Its planned stages, one entry each in `scripts/verify.mjs`: OpenAPI and
+SDK drift (slice 1), migration lint (slice 2).
 Document every command here when it lands.
 
 ## Module boundaries

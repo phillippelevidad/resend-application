@@ -1,2 +1,41 @@
-// @ledger/db: Drizzle schema, migrations, repositories. Lands in slice 1.
-export {};
+// @ledger/db: Drizzle schema, migrations, repositories (ADR-018). The package's one public surface;
+// the int harness ships through `./testing`.
+export { classifyDatabaseError } from './classify-database-error.ts';
+export {
+  type CreateDatabaseOptions,
+  createDatabase,
+  type Database,
+} from './create-database.ts';
+export { DatabaseUnavailableError } from './database-unavailable.error.ts';
+export {
+  type EmailRecipientValues,
+  emailRecipientsRepository,
+} from './email-recipients.repository.ts';
+export { type EmailStateValues, emailStateRepository } from './email-state.repository.ts';
+export type { Executor, Transaction } from './executor.ts';
+export {
+  type PrepareDatabaseOptions,
+  prepareDatabase,
+  RUNTIME_ROLE,
+} from './prepare-database.ts';
+export {
+  type RecipientStateValues,
+  recipientStateRepository,
+} from './recipient-state.repository.ts';
+export {
+  type EmailRecipientRow,
+  emailRecipients,
+  type NewEmailRecipient,
+} from './schema/email-recipients.ts';
+export { type EmailStateRow, emailState, type NewEmailState } from './schema/email-state.ts';
+export {
+  type NewRecipientState,
+  type RecipientStateRow,
+  recipientState,
+} from './schema/recipient-state.ts';
+export {
+  type NewWebhookEvent,
+  type WebhookEventRow,
+  webhookEvents,
+} from './schema/webhook-events.ts';
+export { type TimelineRow, webhookEventsRepository } from './webhook-events.repository.ts';

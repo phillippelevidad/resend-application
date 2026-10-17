@@ -101,7 +101,7 @@ it does, and repeated failure can auto-disable the endpoint (RS-10, RS-11, RS-U0
 the [idea §5.2](../docs/idea.md#52-ingest) rationale ([resend.md → Constraint 4](resend.md#constraints-and-sharp-edges)).
 A misconfigured secret is handled like an outage: fix it, re-enable the webhook, reconcile.
 Rejected: writing to Postgres in the request path (a database outage becomes failed deliveries, then auto-disable).
-**Evidence:** pending — unit tests for the three responses, both body encodings and the fixed body (slices 1, 2); `--chaos db-outage` keeps ingest at `200` (slice 3).
+**Evidence:** unit tests for the three responses and the fixed bodies: forged, stale, unsigned, one-byte-changed and signed non-JSON requests answer `401` with nothing enqueued, `200` waits for the enqueue to resolve, a rejected enqueue answers `503`, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts) (slice 1). Pending — both body encodings (slice 2); `--chaos db-outage` keeps ingest at `200` (slice 3).
 
 ### ADR-002 — SQS standard, not FIFO
 
@@ -256,7 +256,7 @@ retired secret takes effect within 5 minutes, with no redeploy. The loop ships w
 1; slice 4 adds the rotation runbook and the retired-secret test. **Conditional:** how both
 signatures appear in the header (RS-U09) does not matter to a per-secret loop.
 Rejected: one secret with a redeploy on rotation (drops deliveries for the redeploy window).
-**Evidence:** pending — unit tests with old, new and both signatures, forged and stale requests (slice 1); retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
+**Evidence:** unit tests with old, new and both signatures in one header, forged and stale (6 min) requests, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), signed by the test signer that `resend`'s `webhooks.verify` accepts in [sign-webhook.test.ts](../packages/ingest/src/sign-webhook.test.ts) (slice 1). Pending — retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
 
 ### ADR-010 — Serverless on AWS CDK: an app stack and a guardrails stack
 
@@ -419,8 +419,10 @@ Rejected: an outbox-notify SQS queue with its own ESM (idle polling cost, AWS-24
 ### ADR-018 — Migrations run from the deploy command, before the code that needs them
 
 **Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-24, V1-37)**; amended 2026-10-16** ([pp-skills run](reviews/2026-10-16-pp-skills/decisions.md): S-05; [pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-07).
-The deploy command first ensures the DML-only runtime role exists, then runs `drizzle-kit`
-migrations with the **direct** Postgres URL supplied by the deployer (each change that creates a
+The deploy command first ensures the DML-only runtime role exists, then runs the
+drizzle-kit-generated migrations through drizzle-orm's programmatic `migrate()` (drizzle-kit stays a
+dev-only generator; the entry point is `prepareDatabase` in `packages/db`, slice 1) with the
+**direct** Postgres URL supplied by the deployer (each change that creates a
 table grants its DML to that role, in a custom migration right after the generated one), then `cdk deploy` ships code; runtime Lambdas use only the pooled URL and
 never migrate ([integrations.md → How it is used](integrations.md#decision--neon)). The deploy
 command refuses to run while the kill switch is tripped (the worker's reserved concurrency reads
@@ -433,7 +435,7 @@ the deployed commit as stack output `DeployedCommit`, and before migrating the d
 refuses any pending contract step whose SHA is not an ancestor of it
 (`git merge-base --is-ancestor`), so a `DROP` never runs under Lambdas that still use the object.
 Rejected: migrating from a runtime Lambda (needs the direct URL at runtime; concurrent cold starts race); a CDK custom resource (adds a Lambda whose failure blocks the deploy).
-**Evidence:** pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it carries the contract-step marker (slice 2); the deploy command refuses a contract step whose SHA is not an ancestor of `DeployedCommit` (slice 2); the deploy command migrates, then deploys (slice 2).
+**Evidence:** the slice 1 item holds; the rest are pending — CI applies every migration to a fresh Postgres before the integration tests, and the Testcontainers harness ensures the runtime role before migrating: the `int` stage of [`scripts/verify.mjs`](../scripts/verify.mjs), whose global setup [`postgres-global-setup.ts`](../packages/db/src/testing/postgres-global-setup.ts) runs [`prepareDatabase`](../packages/db/src/prepare-database.ts) before any test, which then connects as the runtime role (slice 1); a `pnpm verify` lint fails a migration with `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` unless it carries the contract-step marker (slice 2); the deploy command refuses a contract step whose SHA is not an ancestor of `DeployedCommit` (slice 2); the deploy command migrates, then deploys (slice 2).
 
 ### ADR-019 — Application and surface stack
 

@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792269404062,
+      "tag": "0000_create-ledger-tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792269405525,
+      "tag": "0001_grant-ledger-tables",
+      "breakpoints": true
+    }
+  ]
+}

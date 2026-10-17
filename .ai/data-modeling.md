@@ -23,10 +23,10 @@ the entry it links.
 
 | Table | Role | Kind | Mutability | Stage | Modeled |
 | --- | --- | --- | --- | --- | --- |
-| [`webhook_events`](#webhook_events--the-immutable-ledger) | One row per Resend event, ever | Ledger | Append-only; the retention job masks PII in `payload` | 1 — Local ledger and read path | [ ] |
-| [`email_state`](#email_state--current-state-per-email) | Current state per email | Projection | Recomputed | 1 — Local ledger and read path | [ ] |
-| [`email_recipients`](#email_recipients--outcome-per-email-and-recipient) | Outcome per email and recipient | Projection | Recomputed | 1 — Local ledger and read path | [ ] |
-| [`recipient_state`](#recipient_state--deliverability-per-address) | Deliverability per address | Projection | Recomputed | 1 — Local ledger and read path | [ ] |
+| [`webhook_events`](#webhook_events--the-immutable-ledger) | One row per Resend event, ever | Ledger | Append-only; the retention job masks PII in `payload` | 1 — Local ledger and read path | [x] |
+| [`email_state`](#email_state--current-state-per-email) | Current state per email | Projection | Recomputed | 1 — Local ledger and read path | [x] |
+| [`email_recipients`](#email_recipients--outcome-per-email-and-recipient) | Outcome per email and recipient | Projection | Recomputed | 1 — Local ledger and read path | [x] |
+| [`recipient_state`](#recipient_state--deliverability-per-address) | Deliverability per address | Projection | Recomputed | 1 — Local ledger and read path | [x] |
 | [`api_tokens`](#api_tokens--read-api-bearer-tokens) | Read API bearer tokens, hashed | Credential record | Insert, then revoke once | 2 — Durable ingest on AWS | [ ] |
 | [`reconcile_runs`](#reconcile_runs--one-row-per-recovery-run) | One row per recovery run | Ops record | Insert, claim once, finish once | 4 — Recovery | [ ] |
 | [`local_queue_messages`](#local_queue_messages--the-local-mode-queue) | SQS stand-in for local mode | Queue | Claimed, deleted or dead | 2B — Local-mode queue and docker compose | [ ] |
@@ -261,9 +261,9 @@ Load-bearing columns only. Every table also carries its
 | Column | Type | Why it matters |
 | --- | --- | --- |
 | `svix_id` | `text` PK | The `svix-id` header (`msg_…`). The dedupe key for retries, redrives and replays |
-| `type` | `text`, no `CHECK` | One of RS-25, or unknown. Unknown types are stored and counted, never rejected |
+| `type` | `text` null, no `CHECK` | One of RS-25, or unknown. Unknown types are stored and counted, never rejected. Null when the payload has no string `type` |
 | `event_created_at` | `timestamptz` null | The top-level `created_at` (RS-26). Fold order for projections. Null only on a schema-failing payload, which projections skip |
-| `received_at` | `timestamptz` | From the ingest envelope. Lag metric only |
+| `received_at` | `timestamptz`, no default | From the ingest envelope. Lag metric only |
 | `email_id` | `text` null | `data.email_id` for the outbound email types (RS-27). Null for every other type. `email.received` carries a `data.email_id` too ([emails/received](https://resend.com/docs/webhooks/emails/received)), but it names an inbound email, so it stays null and projections skip it ([Deferred](#deferred)) |
 | `to_hashes` | `text[]` null | Keyed hashes of `data.to`, in the same position. Feeds `email_recipients` after redaction has masked the raw `to` |
 | `source` | `text` `CHECK (live, simulated)` | Which secret verified the request. `simulated` only through the simulator secret ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) |
@@ -276,8 +276,11 @@ Load-bearing columns only. Every table also carries its
   primary-key lookup on `svix_id` (ADR-007). The retention job's scan index and its `redacted_at`
   column land with it in slice 7.
 
-_Schema: `packages/db/src/schema/webhook-events.ts` (once it exists)._
-_Evidence: pending._
+_Schema: [`packages/db/src/schema/webhook-events.ts`](../packages/db/src/schema/webhook-events.ts)._
+_Evidence: the slice 1 schema item holds; the other items are pending._
+- Slice 1 (schema): the `source` `CHECK` against `eventSourceSchema` and a duplicate
+  `insertIfAbsent` leaving one row, as the runtime role, in
+  [webhook-events.repository.int.test.ts](../packages/db/src/webhook-events.repository.int.test.ts).
 - Slice 1: Testcontainers duplicate-insert and crash-between-steps tests; a NUL-payload
   integration test (stored with U+FFFD, projected, committed, never dead-lettered); sim invariant 1.
 - Slice 3: a unit test that a simulator-signed event is stamped `simulated`.
@@ -292,7 +295,7 @@ _Evidence: pending._
 | --- | --- | --- |
 | `email_id` | `text` PK | The lock target that serializes workers per email (ADR-004) |
 | `status` | `text` null + `CHECK` | Outcome precedence over all the email's events, not recency. Terminal negatives outrank `delivered` (ADR-003). The closed set is the outcome-bearing email types of RS-25. Null until the event set holds an outcome event; never inferred from `opened` or `clicked` |
-| `from_masked`, `subject_masked` | `text` | Masks of `data.from` and `data.subject` (RS-27). Readable for support, with no raw PII |
+| `from_masked`, `subject_masked` | `text` null | Masks of `data.from` and `data.subject` (RS-27). Readable for support, with no raw PII. Null when no projected event carries `from` / `subject` |
 | `open_count`, `click_count`, `first_opened_at`, `first_clicked_at` | `int`, `timestamptz` | Counters keep the state bounded. Opens are not reliable (RS-29) |
 | `last_event_at`, `event_count` | `timestamptz`, `int` | Freshness, and the rebuild check |
 
@@ -301,10 +304,12 @@ _Evidence: pending._
 - **Bounce detail:** per-recipient detail (`bounce_type`, `bounce_sub_type`) lives in
   `email_recipients`.
 
-_Schema: `packages/db/src/schema/email-state.ts` (once it exists)._
-_Evidence: the slice 0 item holds; the slice 1 item is pending._
+_Schema: [`packages/db/src/schema/email-state.ts`](../packages/db/src/schema/email-state.ts)._
+_Evidence: the slice 0 and slice 1 schema items hold; the other slice 1 item is pending._
 - Slice 0: fast-check permutation, idempotence, monotonicity and oracle properties, one `it` each
   in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
+- Slice 1 (schema): the `status` `CHECK` against `emailStatusSchema`, as the runtime role, in
+  [email-state.repository.int.test.ts](../packages/db/src/email-state.repository.int.test.ts).
 - Slice 1: sim invariant 2 under `--shuffle`.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path; 5 — MCP server and contract hardening
@@ -326,11 +331,14 @@ _Evidence: the slice 0 item holds; the slice 1 item is pending._
 - **Indexes:** `(address_hash)` btree for the per-address recompute of `recipient_state`.
 - **Locking:** the row is written under the email's lock.
 
-_Schema: `packages/db/src/schema/email-recipients.ts` (once it exists)._
-_Evidence: the slice 0 item holds; the slice 1 items are pending._
+_Schema: [`packages/db/src/schema/email-recipients.ts`](../packages/db/src/schema/email-recipients.ts)._
+_Evidence: the slice 0 and slice 1 schema items hold; the other slice 1 items are pending._
 - Slice 0: a property test that a two-recipient email whose bounce names one recipient leaves the
   other recipient's outcome unchanged, in
   [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts).
+- Slice 1 (schema): the `status`, `sticky_signal` and `soft_signal` `CHECK`s against their core
+  tuples, as the runtime role, in
+  [email-recipients.repository.int.test.ts](../packages/db/src/email-recipients.repository.int.test.ts).
 - Slice 1: sim invariant 2; RS-U21 settled by the Ask-first two-recipient send.
 
 - **Slices:** 0 — Foundations; 1 — Local ledger and read path
@@ -355,12 +363,14 @@ _Evidence: the slice 0 item holds; the slice 1 items are pending._
   `soft_signal_at`, `rank` and `soft_signal_svix_id`: `delivered` → `ok`, `bounced` →
   `soft_bouncing`. Else `ok`, with `since` and `cause_email_id` null.
 
-_Schema: `packages/db/src/schema/recipient-state.ts` (once it exists)._
-_Evidence: the slice 0 item holds; the later items are pending._
+_Schema: [`packages/db/src/schema/recipient-state.ts`](../packages/db/src/schema/recipient-state.ts)._
+_Evidence: the slice 0 and slice 1 schema items hold; the later items are pending._
 - Slice 0: fast-check permutation, idempotence, sticky-monotonicity and oracle properties, one `it`
   each, with the tests that a hard bounce comes from `Permanent` only (RS-U12) and that a later
   delivery clears `soft_bouncing`, in
   [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts).
+- Slice 1 (schema): the `deliverability` `CHECK` against `deliverabilitySchema`, as the runtime
+  role, in [recipient-state.repository.int.test.ts](../packages/db/src/recipient-state.repository.int.test.ts).
 - Slice 1: a concurrency integration test with two emails and one recipient.
 - Slice 2: the same test through the pooler (PG-U02).
 - Slices 1 and 3: sim invariant 2.

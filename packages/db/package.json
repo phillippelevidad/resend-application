@@ -5,7 +5,8 @@
   "description": "Drizzle schema, migrations and repositories",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "12.2.1",
