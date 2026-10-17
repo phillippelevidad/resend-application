@@ -69,7 +69,7 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 | --- | --- | --- | --- |
 | **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | pending — sim invariant 1 (slice 1); `--chaos db-outage` on AWS (slice 3); "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
 | **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` and `--chaos dispatcher-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
-| **Order independence**: any arrival order and duplication give the same state | ADR-003 | pending — fast-check properties 1–4 (slice 0); sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
+| **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) and for `projectRecipient` in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0). Pending — sim invariant 2 under `--shuffle` (slice 1) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
 ### Simulator invariants
 
@@ -114,9 +114,16 @@ Rejected: SQS FIFO (orders arrival at our queue, which means nothing; costs thro
 
 ### ADR-003 — Projection is a pure function of the event set
 
-**Accepted.** `projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)`, as Resend
+**Accepted; amended 2026-10-16** (owner ruling, [slice 0 pre-proposal](pre-proposals/2026-10-16-slice-0-foundations.md#d1--outcome-precedence-and-ranktype-owner-ruled-2026-10-16) D1).
+`projectEmail(events)` sorts by `(event_created_at, rank(type), svix_id)`, as Resend
 advises (RS-07), and folds; it is recomputed from the full event set on every new event. Status
-follows outcome precedence, not recency: terminal negatives (`bounced`, `failed`, `suppressed`) outrank `delivered`. Opens and
+follows outcome precedence, not recency: terminal negatives (`bounced`, `failed`, `suppressed`) outrank `delivered`.
+The full order, low to high, is `scheduled`, `sent`, `delivery_delayed`, `delivered`, `complained`,
+`suppressed`, `failed`, `bounced`: `complained` ranks between `delivered` and the terminal
+negatives, because it always follows a delivery (RS-29). `rank(type)` is the same table with
+`opened` and `clicked` between `delivered` and `complained` and any other type last
+([event-rank.ts](../packages/core/src/event-rank.ts)); status is null until the set holds an
+outcome event. Resend documents no precedence of its own (RS-36). Opens and
 clicks are counters plus first/last timestamps. `projectRecipient` derives from per-recipient email
 states, each folded from the events whose own `data.to` names that recipient (RS-27, RS-U21,
 [data-modeling.md → `email_recipients`](data-modeling.md#email_recipients--outcome-per-email-and-recipient)); a
@@ -126,8 +133,8 @@ are optional in the Zod schemas (RS-26–RS-29). **Conditional:** `created_at` i
 sort key with `rank` and `svix_id` as tie-breaks, so state stays deterministic whether or not it
 tracks the real event time (RS-U10); precedence is property-tested whether or not a bounce can
 follow a delivery (RS-U11).
-Rejected: incremental `UPDATE status = new` (correctness depends on arrival order).
-**Evidence:** pending — fast-check permutation, idempotence, monotonicity and oracle properties (slice 0). Source: [idea §5.4](../docs/idea.md#54-order-independent-projections), [§9](../docs/idea.md#9-general-questions).
+Rejected: incremental `UPDATE status = new` (correctness depends on arrival order); Retrieve Email's `last_event` as status (recency, RS-38).
+**Evidence:** fast-check permutation, idempotence, monotonicity and oracle properties for `projectEmail`, one `it` each, with the RS-U10, RS-U11 and two-recipient tests, in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) (slice 0). The same properties for `projectRecipient`, monotonicity over its sticky states, with the RS-U12 hard-bounce, soft-clears-on-later-delivery, sticky-after-higher-ranked and cross-email tie tests, in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0). Source: [idea §5.4](../docs/idea.md#54-order-independent-projections), [§9](../docs/idea.md#9-general-questions).
 
 ### ADR-004 — Immutable ledger keyed on `svix_id`, one transaction per message
 
@@ -326,7 +333,7 @@ it for `docker compose up` with no AWS account (slice 2B).
 - Each package lands in the slice that first needs it ([Projects](../AGENTS.md#projects)).
 
 Rejected: AWS-only development (LocalStack as the only local path); an `apps/local` exception to "apps never import apps"; one `packages/app` with subfolders (its boundaries would need lint rules, where pnpm's declared dependencies enforce them for free).
-**Evidence:** pending — lint rule on `packages/core` imports (slice 0); sim invariants pass in local mode (slice 2B).
+**Evidence:** the lint rule on `packages/core` and `packages/shared` imports rejects the AWS, Postgres and Resend package families (`@aws-*/**`, `aws-*`, `@smithy/**`, `pg`, `pg-*`, `postgres`, `drizzle-*`, `@neondatabase/**`, `resend`, `@react-email/**` and the rest of the list in [pp-general → Lint enforcement](../.agents/skills/pp-general/references/imports-and-tsconfig.md#lint-enforcement-biome)), subpaths included, run with the committed `biome.json` in [import-boundaries.test.ts](../packages/core/src/import-boundaries.test.ts), one fixture per pattern (slice 0). Pending — sim invariants pass in local mode (slice 2B).
 
 ### ADR-014 — Raw-payload retention and redaction
 

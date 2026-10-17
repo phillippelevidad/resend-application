@@ -64,21 +64,21 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 0 — Foundations
 
-- **Status:** `[~]`
+- **Status:** `[x]`
 - **Goal:** A monorepo where the projection logic is proven by property tests, the simulator generates histories, and CI gates every push.
 - **Depends on:** — (foundational).
 - **Refs:** [ADR-003](architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set) · [ADR-013](architecture.md#adr-013--pure-core-and-local-mode) · [resend.md → Event types and payloads](resend.md#event-types-and-payloads-rs-25rs-30) · [features.md → Ledger & projections](features.md#ledger--projections) · [features.md → discover](features.md#adopter-lifecycle)
 - **Ships:**
   - [x] pnpm workspace with strict TypeScript, Biome and Vitest; `pnpm verify` mirrors CI stage for stage and exits 0 only when every stage ran and passed.
   - [x] GitHub Actions CI runs `pnpm verify` on every push and pull request (`pull_request`, never `pull_request_target`; `permissions: contents: read`; third-party actions pinned by commit SHA; `pnpm install --frozen-lockfile`); evidence: a green run on a pushed commit.
-  - [ ] `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` extending the default ruleset (`[extend] useDefault = true`) and adding rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
-  - [ ] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
-  - [ ] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity (for `projectRecipient`, of the sticky states), oracle agreement (ADR-003).
-  - [ ] `packages/core` address normalization and mask functions ([PII & retention](data-modeling.md#pii--retention)); evidence: fast-check properties (masks idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token, no control character) and the two-recipient property (a bounce naming one recipient leaves the other's outcome unchanged).
-  - [ ] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage.
-  - [ ] `sim` history generator with seed, duplicate and shuffle knobs; `pnpm sim` prints the projection of a generated, shuffled history, identical for a fixed seed and run namespace.
-  - [ ] README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
-  - [ ] RS-U10, RS-U11, RS-U12 and RS-U19 proved safe either way by named property and schema tests, each [Unverified] row citing its test.
+  - [x] `pnpm verify` runs a gitleaks stage over the full git history (`git --log-opts=--all`) from a version-pinned Docker image, the same command in CI, with `.gitleaks.toml` extending the default ruleset (`[extend] useDefault = true`) and adding rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs; evidence: the stage exits 1 on a scratch commit carrying a fake key and 0 on the repo.
+  - [x] `packages/core` Zod schemas for the RS-25–RS-29 event types, event-specific objects optional, unknown types kept raw; evidence: schema unit tests over the resend.md payload examples.
+  - [x] `projectEmail` and `projectRecipient` pass fast-check properties 1–4: permutation invariance, idempotence, monotonicity (for `projectRecipient`, of the sticky states), oracle agreement (ADR-003).
+  - [x] `packages/core` address normalization and mask functions ([PII & retention](data-modeling.md#pii--retention)); evidence: fast-check properties (masks idempotent, length-preserving, no digit revealed, at most 3 characters revealed per token, no control character) and the two-recipient property (a bounce naming one recipient leaves the other's outcome unchanged).
+  - [x] Lint rule rejects any AWS, Postgres or Resend import in `packages/core` (ADR-013); evidence: a deliberate-violation fixture fails the lint stage ([import-boundaries.test.ts](../packages/core/src/import-boundaries.test.ts), one fixture per banned pattern).
+  - [x] `sim` history generator with seed, duplicate and shuffle knobs; `pnpm sim` prints the projection of a generated, shuffled history, identical for a fixed seed and run namespace.
+  - [x] README skeleton states the problem, the positioning against the Ingester and the no-affiliation line; the CI link check reports 0 broken links.
+  - [x] RS-U10, RS-U11, RS-U12 and RS-U19 proved safe either way by named property and schema tests, each [Unverified] row citing its test.
 - **UI surfaces:** `pnpm verify` locally · the CI run on a pushed commit · `pnpm sim` printing a projection.
 - **Ops:** owner approves the CI workflow (Ask-first: CI change) and each new dependency, the gitleaks image included (Ask-first). Docker locally. No Resend or AWS step.
 - **Deferred tail:** Drizzle schema, ingest, worker and read path ([slice 1](#1--local-ledger-and-read-path)). Any AWS resource ([slice 2](#2--durable-ingest-on-aws)). Simulator runs against a live process ([slice 1](#1--local-ledger-and-read-path)) and on AWS ([slice 3](#3--operations-and-evidence-on-aws)).

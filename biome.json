@@ -49,10 +49,11 @@
         "noRestrictedImports": {
           "level": "error",
           "options": {
-            "paths": {
-              "resend": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
-            },
             "patterns": [
+              {
+                "group": ["resend", "resend/**", "@resend/**"],
+                "message": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
+              },
               {
                 "group": ["@aws-sdk/*", "@aws-sdk/**"],
                 "message": "Only packages/aws may import @aws-sdk/* (ADR-013)."
@@ -76,19 +77,70 @@
             "noRestrictedImports": {
               "level": "error",
               "options": {
-                "paths": {
-                  "pg": "packages/core and packages/shared import nothing from Postgres (ADR-013).",
-                  "drizzle-orm": "packages/core and packages/shared import nothing from Postgres (ADR-013).",
-                  "resend": "packages/core and packages/shared import nothing from Resend (ADR-013)."
-                },
                 "patterns": [
                   {
-                    "group": ["@aws-sdk/*", "@aws-sdk/**"],
+                    "group": [
+                      "@aws-*/**",
+                      "@aws/**",
+                      "@smithy/**",
+                      "aws-*",
+                      "aws-*/**",
+                      "aws4*",
+                      "aws4*/**",
+                      "amazon-*",
+                      "amazon-*/**"
+                    ],
                     "message": "packages/core and packages/shared import nothing from AWS (ADR-013)."
                   },
                   {
-                    "group": ["drizzle-orm/**"],
+                    "group": [
+                      "pg",
+                      "pg/**",
+                      "pg-*",
+                      "pg-*/**",
+                      "postgres",
+                      "postgres/**",
+                      "postgres-*",
+                      "postgres-*/**",
+                      "drizzle-*",
+                      "drizzle-*/**",
+                      "@neondatabase/**",
+                      "@vercel/postgres",
+                      "@vercel/postgres/**",
+                      "@electric-sql/pglite",
+                      "@electric-sql/pglite/**",
+                      "@databases/pg",
+                      "@databases/pg/**",
+                      "@testcontainers/postgresql",
+                      "@testcontainers/postgresql/**",
+                      "@supabase/**",
+                      "prisma",
+                      "prisma/**",
+                      "@prisma/**",
+                      "kysely",
+                      "kysely/**",
+                      "knex",
+                      "knex/**",
+                      "slonik",
+                      "slonik/**",
+                      "sequelize",
+                      "sequelize/**",
+                      "typeorm",
+                      "typeorm/**",
+                      "@mikro-orm/**"
+                    ],
                     "message": "packages/core and packages/shared import nothing from Postgres (ADR-013)."
+                  },
+                  {
+                    "group": [
+                      "resend",
+                      "resend/**",
+                      "@resend/**",
+                      "react-email",
+                      "react-email/**",
+                      "@react-email/**"
+                    ],
+                    "message": "packages/core and packages/shared import nothing from Resend (ADR-013)."
                   },
                   {
                     "group": ["@ledger/*/**", "!@ledger/*/testing"],
@@ -109,10 +161,11 @@
             "noRestrictedImports": {
               "level": "error",
               "options": {
-                "paths": {
-                  "resend": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
-                },
                 "patterns": [
+                  {
+                    "group": ["resend", "resend/**", "@resend/**"],
+                    "message": "Only packages/resend-client (and packages/ingest, for webhooks.verify) may import resend (ADR-009, ADR-012)."
+                  },
                   {
                     "group": ["@ledger/*/**", "!@ledger/*/testing"],
                     "message": "Import a workspace package by its name only; the one allowed subpath is /testing."

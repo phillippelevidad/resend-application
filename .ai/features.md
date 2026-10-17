@@ -103,8 +103,8 @@ listed there as not an operation ([Coverage](api-contract.md#coverage)).
 ## Ledger & projections
 
 - One row per `svix_id`, ever; duplicates counted, never re-applied. evidence: property test + simulator invariant 1 · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
-- `projectEmail` is a pure function of the event set: permutation invariance, idempotence, monotonicity, oracle agreement. evidence: fast-check properties · [slice 0](build-checklist.md#0--foundations).
-- Recipient deliverability derived from email states, with the email that caused each transition. evidence: property test · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
+- `projectEmail` is a pure function of the event set: permutation invariance, idempotence, monotonicity, oracle agreement. evidence: fast-check properties ([project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts)) · [slice 0](build-checklist.md#0--foundations).
+- Recipient deliverability derived from email states, with the email that caused each transition. evidence: fast-check properties ([project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts)) · [slice 0](build-checklist.md#0--foundations).
 - Unknown event types stored raw, projection skipped, metric emitted. evidence: unit test · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
 
 ## Recovery

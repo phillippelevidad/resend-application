@@ -10,9 +10,9 @@
 // built-ins, so CI runs it before anything is installed and the install stage runs everywhere.
 import { spawnSync } from 'node:child_process';
 
-// Later slices add a stage by adding one entry here, each when it has something to check:
-// gitleaks and the README link check (slice 0), the `int` tier with its first Testcontainers
-// test and OpenAPI and SDK drift (slice 1), migration lint (slice 2).
+// Later slices add a stage by adding one entry here, each when it has something to check: the
+// `int` tier with its first Testcontainers test and OpenAPI and SDK drift (slice 1), migration
+// lint (slice 2).
 const STAGES = [
   { name: 'install', command: 'pnpm install --frozen-lockfile' },
   {
@@ -21,7 +21,9 @@ const STAGES = [
     quiet: true,
     hint: 'Docker is not running. Start Docker Desktop (or the Docker daemon) and re-run: the integration tests (Testcontainers) and the secret scan need it.',
   },
+  { name: 'secrets', command: 'node scripts/secret-scan.mjs' },
   { name: 'lint', command: 'pnpm exec biome ci .' },
+  { name: 'links', command: 'node scripts/check-links.mjs' },
   { name: 'typecheck', command: 'pnpm typecheck' },
   { name: 'unit', command: 'pnpm test' },
   { name: 'synth', command: 'pnpm --filter @ledger/infra synth' },

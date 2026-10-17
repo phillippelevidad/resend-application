@@ -19,7 +19,8 @@
     "dev:stop": "node scripts/dev-stop.mjs",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose stop postgres",
-    "synth": "pnpm --filter @ledger/infra synth"
+    "synth": "pnpm --filter @ledger/infra synth",
+    "sim": "node --env-file-if-exists=.env.local sim/src/main.ts"
   },
   "packageManager": "pnpm@10.11.0",
   "type": "module",
