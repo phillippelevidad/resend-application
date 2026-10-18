@@ -1,12 +1,16 @@
 import { createDatabase, type Executor } from '@ledger/db';
-import { createLogger, type Logger } from '@ledger/shared';
+import { createLogger, type Logger, mintApiToken } from '@ledger/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
+import { bearer, TEST_TOKEN_TAG_KEY, testApiDeps } from './testing.ts';
 
-// D22 and D23: the read API's one error mapping, with no database behind it. Ships 8.
+// D22 and D23: the read API's one error mapping, with no database behind it. Ships 8. A case that
+// needs a token to pass the lookup is in `create-api.int.test.ts`: the lookup needs the database.
 
-const addressHashKey = new Uint8Array(32).fill(3);
 const runbook = 'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md';
+
+// Tag-valid, so the middleware goes on to its lookup, which these tests make fail.
+const token = mintApiToken(TEST_TOKEN_TAG_KEY).token;
 
 function recordingLogger(): { logger: Logger; lines: () => Record<string, unknown>[] } {
   const written: string[] = [];
@@ -19,7 +23,7 @@ function recordingLogger(): { logger: Logger; lines: () => Record<string, unknow
 
 const lookup = (address: string): RequestInit => ({
   method: 'POST',
-  headers: { 'content-type': 'application/json' },
+  headers: { ...bearer(token), 'content-type': 'application/json' },
   body: JSON.stringify({ address }),
 });
 
@@ -36,13 +40,13 @@ describe('createApi error mapping', () => {
   });
 
   it.each([
-    ['email.get', '/emails/e1', undefined],
+    ['email.get', '/emails/e1', { headers: bearer(token) }],
     ['recipient.get', '/recipients/lookup', lookup('delivered@resend.dev')],
+    ['token.list', '/tokens', { headers: bearer(token) }],
   ] as const)(
     '%s with the database unreachable answers 503 database_unavailable',
     async (_operation, path, init) => {
-      const { logger } = recordingLogger();
-      const api = createApi({ db: unreachable.db, logger, addressHashKey, requestId: () => 'r1' });
+      const api = createApi(testApiDeps(unreachable.db, { requestId: () => 'r1' }));
 
       const response = await api.request(path, init);
 
@@ -59,7 +63,7 @@ describe('createApi error mapping', () => {
   );
 
   it('an unexpected throw answers 500 internal_error with no internals, and logs one api.internal_error line', async () => {
-    // A reader failure that is neither connection-class nor a registry error, its text quoting
+    // A database failure that is neither connection-class nor a registry error, its text quoting
     // what a driver error can quote: a row value.
     const failure = Object.assign(new TypeError('Failing row contains (delivered@resend.dev)'), {
       detail: 'Key (address)=(delivered@resend.dev)',
@@ -70,9 +74,9 @@ describe('createApi error mapping', () => {
       },
     } as unknown as Executor;
     const { logger, lines } = recordingLogger();
-    const api = createApi({ db: broken, logger, addressHashKey, requestId: () => 'req-500' });
+    const api = createApi(testApiDeps(broken, { logger, requestId: () => 'req-500' }));
 
-    const response = await api.request('/emails/e1');
+    const response = await api.request('/emails/e1', { headers: bearer(token) });
     const text = await response.text();
 
     expect(response.status).toBe(500);
@@ -101,35 +105,19 @@ describe('createApi error mapping', () => {
     ['GET', '/nope'],
     ['GET', '/'],
     ['DELETE', '/emails/e1'],
-    ['GET', '/recipients/lookup'],
-  ])('%s %s, served by no operation, answers 404 route_not_found', async (method, path) => {
-    const api = createApi({
-      db: unreachable.db,
-      logger: recordingLogger().logger,
-      addressHashKey,
-      requestId: () => 'r2',
-    });
+  ])('%s %s without a token answers 401 unauthorized, not 404', async (method, path) => {
+    const api = createApi(testApiDeps(unreachable.db));
 
     const response = await api.request(path, { method });
 
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
-      error: {
-        code: 'route_not_found',
-        message: 'No operation at this method and path.',
-        hint: "Check `LEDGER_URL`, and that the CLI or SDK version matches the API's.",
-        docs: `${runbook}#route_not_found`,
-      },
-    });
+    expect(response.status).toBe(401);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      'unauthorized',
+    );
   });
 
   it('sets no request-id response header: the request id is a log field only', async () => {
-    const api = createApi({
-      db: unreachable.db,
-      logger: recordingLogger().logger,
-      addressHashKey,
-      requestId: () => 'r3',
-    });
+    const api = createApi(testApiDeps(unreachable.db, { requestId: () => 'r3' }));
 
     const response = await api.request('/nope', { headers: { 'x-request-id': 'client-chosen' } });
 

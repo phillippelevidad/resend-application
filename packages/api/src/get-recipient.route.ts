@@ -1,6 +1,7 @@
 import { createRoute, type RouteHandler, z } from '@hono/zod-openapi';
+import { bearerSecurity, requireScope } from './auth.middleware.ts';
 import type { ApiEnv } from './create-api.ts';
-import { errorResponses } from './error-response.schema.ts';
+import { errorDescriptions, errorResponses } from './error-response.schema.ts';
 import type { GetRecipientReader } from './get-recipient.reader.ts';
 import { recipientResponseMapper } from './recipient-response.mapper.ts';
 import { recipientResponseSchema } from './recipient-response.schema.ts';
@@ -22,6 +23,8 @@ export const getRecipientRoute = createRoute({
   path: '/recipients/lookup',
   operationId: 'recipient.get',
   summary: 'The deliverability of an address and the email that caused it',
+  middleware: requireScope('read'),
+  security: bearerSecurity,
   request: {
     body: {
       content: {
@@ -39,7 +42,13 @@ export const getRecipientRoute = createRoute({
       content: { 'application/json': { schema: recipientResponseSchema } },
       description: 'The recipient, the address only as its mask.',
     },
-    ...errorResponses('`recipient_not_found`: no event has ever named this address.'),
+    ...errorResponses({
+      400: errorDescriptions[400],
+      401: errorDescriptions[401],
+      404: '`recipient_not_found`: no event has ever named this address.',
+      500: errorDescriptions[500],
+      503: errorDescriptions[503],
+    }),
   },
 });
 

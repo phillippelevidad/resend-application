@@ -7,11 +7,12 @@ import {
   webhookEventsRepository,
 } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
-import { createLogger, type Logger } from '@ledger/shared';
+import type { Logger } from '@ledger/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
 import type { EmailResponse } from './email-response.schema.ts';
 import type { ErrorResponse } from './error-response.schema.ts';
+import { bearer, issueTestToken, testApiDeps } from './testing.ts';
 
 // Mandatory redaction (pp-workflow → Test tiers): `email.get`'s mapper reads `webhook_events`, so
 // it is fed a stored payload with a `delivered@resend.dev` recipient and a subject, and the
@@ -19,6 +20,8 @@ import type { ErrorResponse } from './error-response.schema.ts';
 
 let t: TestDatabase;
 let api: ReturnType<typeof createApi>;
+// A `read` token, the scope `email.get` needs (D18).
+let token: string;
 
 const addressHashKey = new Uint8Array(32).fill(7);
 const DELIVERED = 'delivered@resend.dev';
@@ -28,12 +31,8 @@ const SUBJECT = 'Your receipt for order 4471';
 
 beforeAll(async () => {
   t = await createTestDatabase();
-  api = createApi({
-    db: t.db,
-    logger: createLogger({ functionName: 'api', stream: { write: () => {} } }),
-    addressHashKey,
-    requestId: () => 'req-email-get',
-  });
+  api = createApi(testApiDeps(t.db, { addressHashKey, requestId: () => 'req-email-get' }));
+  ({ token } = await issueTestToken(t.db, { scope: 'read' }));
 });
 
 afterAll(async () => {
@@ -166,7 +165,7 @@ async function seedBouncedEmail(emailId: string): Promise<void> {
 type Answer = { status: number; text: string; body: EmailResponse & ErrorResponse };
 
 async function getEmail(emailId: string): Promise<Answer> {
-  const response = await api.request(`/emails/${emailId}`);
+  const response = await api.request(`/emails/${emailId}`, { headers: bearer(token) });
   const text = await response.text();
   return { status: response.status, text, body: JSON.parse(text) };
 }
@@ -394,12 +393,9 @@ describe('email.get reads one snapshot', () => {
       max: 1,
       logger: silentLogger,
     });
-    const readerApi = createApi({
-      db: reader.db,
-      logger: silentLogger,
-      addressHashKey,
-      requestId: () => 'req-email-snapshot',
-    });
+    const readerApi = createApi(
+      testApiDeps(reader.db, { addressHashKey, requestId: () => 'req-email-snapshot' }),
+    );
     try {
       let answered: Promise<Response> | undefined;
       // A fourth event and its recompute, committed while the read is in flight. The table lock
@@ -427,7 +423,9 @@ describe('email.get reads one snapshot', () => {
           lastEventAt: new Date('2026-10-17T12:00:03.000Z'),
           eventCount: 4,
         });
-        answered = Promise.resolve(readerApi.request(`/emails/${emailId}`));
+        answered = Promise.resolve(
+          readerApi.request(`/emails/${emailId}`, { headers: bearer(token) }),
+        );
         await waitUntilBlockedOnLock('email_get_reader');
       });
       if (answered === undefined) {

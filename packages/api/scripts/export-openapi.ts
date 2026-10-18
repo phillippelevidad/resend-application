@@ -7,8 +7,13 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { createDatabase } from '@ledger/db';
-import type { Logger } from '@ledger/shared';
+import { createDatabase, STORAGE_LIMIT_BYTES } from '@ledger/db';
+import {
+  InProcessFunctionInvokeAdapter,
+  InProcessQueueAdapter,
+  type Logger,
+  StaticEventSourceControlAdapter,
+} from '@ledger/shared';
 import { createApi } from '../src/create-api.ts';
 
 const repoRoot = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
@@ -29,11 +34,17 @@ const database = createDatabase({
   max: 1,
   logger: silent,
 });
+// The local port implementations, never called: no route runs while the document is generated.
 const api = createApi({
   db: database.db,
   logger: silent,
   addressHashKey: new Uint8Array(32),
+  tokenTagKey: new Uint8Array(32),
   requestId: () => 'export',
+  queueAttributes: new InProcessQueueAdapter({ clock: { now: () => new Date() }, logger: silent }),
+  eventSource: new StaticEventSourceControlAdapter(),
+  workerInvoke: new InProcessFunctionInvokeAdapter(async () => undefined),
+  storageLimitBytes: STORAGE_LIMIT_BYTES,
 });
 
 const document = api.getOpenAPI31Document({
