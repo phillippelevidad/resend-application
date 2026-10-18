@@ -31,7 +31,12 @@ export class ResumeEventSourceCommand {
   }
 
   async execute(_input: ResumeEventSourceInput = {}): Promise<ResumeEventSourceResult> {
-    const parsed = resumeResultSchema.safeParse(await this.#workerInvoke.invoke(RESUME_EVENT));
+    // As in `GetHealthReader`: an invoke failure is raised as `internal_error`, so an SDK socket
+    // error is never read as the database by `onError`'s classifier (D20).
+    const answer = await this.#workerInvoke.invoke(RESUME_EVENT).catch((err: unknown) => {
+      throw new LedgerError('internal_error', errorRegistry.internal_error.message, { cause: err });
+    });
+    const parsed = resumeResultSchema.safeParse(answer);
     if (!parsed.success) {
       throw new LedgerError('internal_error', errorRegistry.internal_error.message, {
         cause: parsed.error,

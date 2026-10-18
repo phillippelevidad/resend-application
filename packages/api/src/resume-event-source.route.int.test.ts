@@ -105,4 +105,20 @@ describe('worker.resumeEventSource', () => {
     expect(status).toBe(500);
     expect(body.error.code).toBe('internal_error');
   });
+
+  // An SDK network failure carries a socket code the database classifier also matches; D20 still
+  // answers it `500`, never `503 database_unavailable`.
+  it('an invoke failing with a socket error code answers 500 internal_error, not 503', async () => {
+    class SocketFailingInvoke extends FakeFunctionInvoke {
+      override async invoke(payload: unknown): Promise<unknown> {
+        this.payloads.push(payload);
+        throw Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+      }
+    }
+
+    const { status, body } = await resume(new SocketFailingInvoke(), operate);
+
+    expect(status).toBe(500);
+    expect(body.error.code).toBe('internal_error');
+  });
 });

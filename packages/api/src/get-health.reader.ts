@@ -1,6 +1,11 @@
-import type { EventSourceState } from '@ledger/core';
+import { type EventSourceState, errorRegistry } from '@ledger/core';
 import { classifyDatabaseError, databaseRepository, type Executor } from '@ledger/db';
-import type { EventSourceControlPort, QueueAttributesPort, QueueSnapshot } from '@ledger/shared';
+import {
+  type EventSourceControlPort,
+  LedgerError,
+  type QueueAttributesPort,
+  type QueueSnapshot,
+} from '@ledger/shared';
 
 // `verified: false` is the auth middleware's outage mark: its token lookup already found the
 // database unreachable (D18).
@@ -34,10 +39,15 @@ export class GetHealthReader {
 
   async execute(input: GetHealthInput): Promise<HealthRead> {
     const { queueAttributes, eventSource, storageLimitBytes } = this.#deps;
+    // Raised as `internal_error` with the AWS error as `cause`, so `onError` answers `500` as D19
+    // says. Left raw, an SDK socket error (`ECONNRESET`, `ENOTFOUND`) would match the database
+    // classifier and answer `503 database_unavailable`, a status this route does not declare.
     const [queue, eventSourceState] = await Promise.all([
       queueAttributes.read(),
       eventSource.getState(),
-    ]);
+    ]).catch((err: unknown) => {
+      throw new LedgerError('internal_error', errorRegistry.internal_error.message, { cause: err });
+    });
     return {
       queue,
       eventSourceState,

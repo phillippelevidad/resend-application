@@ -1,6 +1,6 @@
 import { createDatabase, type Database, STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { type OutageDatabase, startOutageDatabase } from '@ledger/db/testing';
-import { createLogger, type Logger, mintApiToken } from '@ledger/shared';
+import { createLogger, type Logger, mintApiToken, type QueueAttributesPort } from '@ledger/shared';
 import { FakeEventSourceControl, FakeQueueAttributes } from '@ledger/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
@@ -111,6 +111,38 @@ describe('health.get with Postgres up', () => {
         error_name: 'FakeFailure',
       }),
     ]);
+  });
+
+  it('a failing event-source read answers 500 internal_error and logs the error name', async () => {
+    const eventSource = new FakeEventSourceControl();
+    eventSource.failGetState = true;
+    const { logger, lines } = recordingLogger();
+    const api = createApi(testApiDeps(database.db, { eventSource, logger }));
+
+    const { status, body } = await get(api, '/health', token);
+
+    expect(status).toBe(500);
+    expect(body.error.code).toBe('internal_error');
+    expect(lines()).toEqual([
+      expect.objectContaining({ message: 'api.internal_error', error_name: 'FakeFailure' }),
+    ]);
+  });
+
+  // An SDK network failure carries a socket code the database classifier also matches; D19 still
+  // answers an AWS read error `500`, never `503 database_unavailable`, which the route does not
+  // declare.
+  it('a queue read failing with a socket error code answers 500 internal_error, not 503', async () => {
+    const queueAttributes: QueueAttributesPort = {
+      read: async () => {
+        throw Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' });
+      },
+    };
+    const api = createApi(testApiDeps(database.db, { queueAttributes }));
+
+    const { status, body } = await get(api, '/health', token);
+
+    expect(status).toBe(500);
+    expect(body.error.code).toBe('internal_error');
   });
 });
 
