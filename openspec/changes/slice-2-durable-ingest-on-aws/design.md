@@ -470,7 +470,7 @@ concrete module: one implementation is no reason for a port.
 | `kill-switch.ts` → `tripKillSwitch(clients, names)`, `restoreFromTrip(clients, names, declared)` | The trip and restore steps the kill switch, re-arm and drill share (D29, D35) | Lambda `ListFunctions`, `GetFunctionConcurrency`, `PutFunctionConcurrency`, `DeleteFunctionConcurrency`; the mapping calls; `apigatewayv2` `GetApis`, `GetStage`, `UpdateStage`, `DeleteRouteSettings`; SNS `Publish` |
 | `stack-outputs.ts` | Script-only | CloudFormation `DescribeStacks` |
 | `secret-writer.ts` | Script-only (deploy step 9) | `GetSecretValue`, `PutSecretValue` |
-| `post-destroy-listing.ts` | Script-only (teardown) | Tagging `GetResources`; Secrets Manager `DescribeSecret` (pending deletion is not billable); Logs `DescribeLogGroups` (`/aws/lambda/LedgerApp-`, `/ledger/`) |
+| `post-destroy-listing.ts` | Script-only (teardown) | Tagging `GetResources`; Secrets Manager `DescribeSecret` (pending deletion is not billable); Logs `DescribeLogGroups` (`/aws/lambda/LedgerApp-`, `/aws/lambda/LedgerGuardrails-` for the kill switch's implicit group, `/ledger/`) |
 | `budget-spend.ts` | Script-only (re-arm) | Budgets `DescribeBudget` → `CalculatedSpend.ActualSpend` |
 | `alarm-control.ts` | Script-only (drill) | CloudWatch `SetAlarmState`, `DescribeAlarms`; SNS `Publish`; Lambda `Invoke` (`Event`) |
 
