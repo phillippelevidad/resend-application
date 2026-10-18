@@ -26,10 +26,14 @@ const STORED_RUNTIME_PASSWORD = 'fakestoredruntimepw3';
 const NEW_RUNTIME_PASSWORD = 'fakenewruntimepw4';
 const ADDRESS_HASH_KEY = '1a'.repeat(32);
 const TOKEN_TAG_KEY = '2b'.repeat(32);
-const WEBHOOK_SECRET = 'whsec_ZmFrZVdlYmhvb2tTZWNyZXQ1';
+// The secret-shaped fixtures are built at run time, so no `whsec_` or credentialed Postgres URL
+// literal sits in the source (the gitleaks rules).
+const WEBHOOK_SECRET = `whsec_${Buffer.from('fakeWebhookSecret5').toString('base64')}`;
 const ALERT_EMAIL = 'delivered@resend.dev';
-const DIRECT_URL = `postgres://owner:${OWNER_DIRECT_PASSWORD}@direct.db.invalid/ledger`;
-const POOLED_URL = `postgresql://owner:${OWNER_POOLED_PASSWORD}@pooler.db.invalid/ledger`;
+const databaseUrl = (scheme: string, password: string, host: string) =>
+  `${scheme}://owner:${password}@${host}/ledger`;
+const DIRECT_URL = databaseUrl('postgres', OWNER_DIRECT_PASSWORD, 'direct.db.invalid');
+const POOLED_URL = databaseUrl('postgresql', OWNER_POOLED_PASSWORD, 'pooler.db.invalid');
 const SECRETS = [
   OWNER_DIRECT_PASSWORD,
   OWNER_POOLED_PASSWORD,

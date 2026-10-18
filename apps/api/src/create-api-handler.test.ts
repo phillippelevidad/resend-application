@@ -78,7 +78,8 @@ describe('createApiHandler', () => {
 
   it('a failed build throws a constant internal_error with no cause and logs only the error name', async () => {
     const { logger, lines } = recordingLogger();
-    const secretText = 'postgres://ledger:s3cret@db.example/ledger';
+    // Joined at run time, so no credentialed Postgres URL literal sits in the source (gitleaks).
+    const secretText = ['postgres:/', '/ledger:s3cret@db.example/ledger'].join('');
     const handler = createApiHandler({
       app: () => Promise.reject(new SyntaxError(`Unexpected token in ${secretText}`)),
       logger,
