@@ -99,10 +99,16 @@ Each one produces a convincing wrong verdict.
   token into a transcript; read names only (`grep -o '^[A-Z_]*=' .env.local`). A `401` locally
   means the token is stale (slice 1's `local-loopback-no-auth`, or a recreated database): rerun
   `pnpm db:setup`, which replaces it, rather than editing the file.
-- **Deployed walks take the token through `read -rs`.** Set the deployed values in the shell, which
-  wins over `.env.local`: `export LEDGER_URL=<api url>`, then `read -rs LEDGER_TOKEN && export
-  LEDGER_TOKEN`, so the token never lands in history or the transcript. `unset LEDGER_URL
-  LEDGER_TOKEN` before walking local mode again, or the local walk silently hits the deployed stack.
+- **Deployed walks load `.env.deployed.local` into the shell.** The owner keeps the kept stack's
+  `LEDGER_URL` and bootstrap `LEDGER_TOKEN` there (git-ignored by `.env*`, carried into worktrees by
+  `.worktreeinclude`, owner's decision 2026-10-18); nothing loads it automatically, and the shell
+  wins over `.env.local`. Bash: `set -a; . ./.env.deployed.local; set +a`. An agent (K1 rejects
+  `.`): `Get-Content .env.deployed.local | Where-Object { $_ -match '^[A-Z_]+=' } | ForEach-Object
+  { $k,$v = $_ -split '=',2; Set-Item "env:$k" $v }` in the same PowerShell command as the CLI call.
+  Never print the file. Without it, `export LEDGER_URL=<api url>`, then `read -rs LEDGER_TOKEN &&
+  export LEDGER_TOKEN`. `unset LEDGER_URL LEDGER_TOKEN` before walking local mode again, or the
+  local walk silently hits the deployed stack. Never write `LEDGER_TOKEN` into `.env.local`:
+  `pnpm db:setup` replaces any token not active in the local database.
 - **`pnpm sim` is live once `.env.local` exists.** `pnpm db:setup` writes `LEDGER_URL`, so a bare
   `pnpm sim` posts to `apps/local`. Run `LEDGER_URL= pnpm sim` for an offline run; the shell's
   empty value wins over `.env.local`.
@@ -148,4 +154,4 @@ never a retry loop.
 | K1 | `Refusing to run it — a worktree-isolated session's git operations must target its own worktree. Split it into plain, separate commands` | A worktree-isolated agent session's Bash guard rejects a command whose program or operand is computed at runtime: `export "$(grep '^LEDGER_URL=' .env.local)"` (Path C), a `{{.ServerVersion}}` template in a chained command, a `$VAR` path passed to `node`, `'bad id!'` in a chained line | Run each command alone; read `LEDGER_URL` with a plain `grep '^LEDGER_URL=' .env.local` and inline the loopback URL; pass literal paths, not variables | [slice 1 run, 2026-10-17](../../../../openspec/changes/archive/2026-10-17-slice-1-local-ledger-and-read-path/WALKTHROUGH-RUN.md) |
 | K2 | `aws: command not found`; `echo "$AWS_REGION"` prints an empty line | The agent session's shell has no `AWS_PROFILE` or `AWS_REGION` and no AWS CLI on its PATH, though AWS CLI v2 is installed under `C:\Program Files\Amazon\AWSCLIV2\` | Set `AWS_PROFILE=ledger` and `AWS_REGION=us-east-2` in each command; call `& "C:\Program Files\Amazon\AWSCLIV2\aws.exe"` from PowerShell (the Bash guard, K1, rejects a quoted exe path) | [slice 2 run, 2026-10-18](../../../../openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH-RUN.md) |
 | K3 | `Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.` on the stderr of `pnpm aws:deploy` and `pnpm aws:db-check` | The Neon URLs in `.env.local` carry `sslmode=require`; `pg-connection-string` warns. Harmless: no value printed, exit code unchanged | Ignore it when judging an "exactly these lines" step, or set `sslmode=verify-full` in both deploy URLs | [slice 2 run, 2026-10-18](../../../../openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH-RUN.md) |
-| K4 | K1's refusal on `export X="$(cat <file>)"` or `X="$(cat <file>)" pnpm …`: a token or deployed URL read from a scratch file | The Bash guard rejects an environment value computed at runtime | From PowerShell: `$env:LEDGER_URL=(Get-Content <file> -Raw).Trim()`, then `pnpm -s ledger …` in the same command | [slice 2 run, 2026-10-18](../../../../openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH-RUN.md) |
+| K4 | K1's refusal on `export X="$(cat <file>)"` or `X="$(cat <file>)" pnpm …`: a token or deployed URL read from a scratch file | The Bash guard rejects an environment value computed at runtime | From PowerShell: `$env:LEDGER_URL=(Get-Content <file> -Raw).Trim()`, then `pnpm -s ledger …` in the same command; for `.env.deployed.local`, the loader in the Deployed-walks trap above | [slice 2 run, 2026-10-18](../../../../openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH-RUN.md) |

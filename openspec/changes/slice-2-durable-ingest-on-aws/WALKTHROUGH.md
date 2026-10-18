@@ -46,7 +46,9 @@ echo "$AWS_REGION"
   `LEDGER_DEPLOY_WEBHOOK_SECRETS`. `AWS_PROFILE` and `AWS_REGION` are exported in the shell, where
   both the `aws` CLI and the `pnpm aws:*` scripts read them. Every `pnpm aws:*` script, `pnpm -s ledger`
   and `pnpm sim` load `.env.local` themselves; a shell value wins over it.
-- **Deployed values go through the shell, never a file or the transcript:**
+- **Deployed values go through the shell, never the transcript:** once the owner keeps the
+  deploy's `LEDGER_URL` and bootstrap `LEDGER_TOKEN` in the git-ignored `.env.deployed.local`, load
+  it with `set -a; . ./.env.deployed.local; set +a`; otherwise
   `export LEDGER_URL=<api url>`, then `read -rs LEDGER_TOKEN && export LEDGER_TOKEN` and paste the
   token, so it never lands in history. The same `read -rs` takes the walk's other tokens
   (`WALK_READ_TOKEN`, `REVIEW_TOKEN`). A run file records every token, URL, account id and webhook
