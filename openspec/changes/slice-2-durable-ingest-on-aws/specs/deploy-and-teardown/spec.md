@@ -16,7 +16,7 @@ billable resource behind.
 - **THEN** it prints `aws:deploy: refused: <reason>` naming `LEDGER_TOKEN_TAG_KEY` and `pnpm db:setup`, exits `1`, and changes no database or stack
 
 ### Requirement: Deploy refuses an unsafe state before changing anything
-Before any migration or stack change, `pnpm aws:deploy` SHALL refuse a working tree with tracked changes, a tripped stack, a deploy that would disarm an armed kill switch, a pending contract step whose SHA is not an ancestor of the commit being deployed (ADR-018), and a synthesized template matching the CBL-01 secret pattern.
+Before any migration or stack change, `pnpm aws:deploy` SHALL refuse a working tree with tracked changes, a tripped stack, a deploy that would disarm an armed kill switch, a pending contract step whose SHA is not an ancestor of the `DeployedCommit` the already deployed app stack reports (ADR-018: the code running now must have stopped using the object), and a synthesized template matching the CBL-01 secret pattern. With no app stack deployed, the contract-step check SHALL be skipped.
 
 #### Scenario: Dirty tree
 - **WHEN** a tracked file has an uncommitted change
@@ -31,8 +31,12 @@ Before any migration or stack change, `pnpm aws:deploy` SHALL refuse a working t
 - **THEN** the deploy refuses
 
 #### Scenario: Unsafe contract step
-- **WHEN** a pending migration is marked `-- contract-step: <SHA>` and that SHA is not an ancestor of the commit being deployed
+- **WHEN** a pending migration is marked `-- contract-step: <SHA>` and that SHA is not an ancestor of the deployed app stack's `DeployedCommit`, even though it is an ancestor of the commit being deployed
 - **THEN** the deploy refuses before migrating
+
+#### Scenario: Contract step on a first deploy
+- **WHEN** a pending migration carries a contract-step marker and no app stack is deployed yet
+- **THEN** the contract-step check is skipped and the deploy continues
 
 #### Scenario: A secret in the template
 - **WHEN** the synthesized output matches `whsec_`, `re_` followed by eight key characters, a Postgres URL or an `ldg_` token

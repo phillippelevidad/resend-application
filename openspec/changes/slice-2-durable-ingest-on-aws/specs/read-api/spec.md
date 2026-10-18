@@ -26,18 +26,18 @@ Every read-API request, unmatched paths included, SHALL carry `Authorization: Be
 - **THEN** it answers `401 unauthorized`, not `404`
 
 ### Requirement: Health answers during a database outage
-During a database outage, `GET /health` with a correctly tagged token SHALL answer `200` reporting the database unreachable, and every other route SHALL answer `503 database_unavailable`. A health request SHALL make at most one database attempt.
+During a database outage, `health.get` with a correctly tagged token SHALL answer `200` reporting the database unreachable, and every other operation SHALL answer `503 database_unavailable`. A `health.get` request SHALL make at most one database attempt.
 
 #### Scenario: Postgres stopped
-- **WHEN** Postgres is stopped and `GET /health` is called with a tagged token
+- **WHEN** Postgres is stopped and `health.get` is called with a tagged token
 - **THEN** it answers `200` with `database.reachable: false` and `storage_bytes: null`
 
 #### Scenario: Bad tag during the outage
-- **WHEN** Postgres is stopped and `GET /health` is called with a bad-tag token
+- **WHEN** Postgres is stopped and `health.get` is called with a bad-tag token
 - **THEN** it answers `401 unauthorized`
 
 #### Scenario: Other routes during the outage
-- **WHEN** Postgres is stopped and `GET /emails/{email_id}` is called with a tagged token
+- **WHEN** Postgres is stopped and `email.get` is called with a tagged token
 - **THEN** it answers `503` with `code` `database_unavailable`
 
 ### Requirement: health.get reports the pipeline
@@ -52,7 +52,7 @@ During a database outage, `GET /health` with a correctly tagged token SHALL answ
 - **THEN** it answers `500 internal_error` and logs the error's name
 
 ### Requirement: worker.resumeEventSource resumes on demand
-`worker.resumeEventSource` (`operate`, `POST /worker/resume`) SHALL send the worker the resume event and answer `200` with `object: "event_source"`, the resulting `state` and `resumed`. A failed probe SHALL answer `503 database_unavailable` with the message "The database is unreachable or at its storage limit, so the event source stays paused." On an enabled source it SHALL open no database connection.
+`worker.resumeEventSource` (`operate`) SHALL send the worker the resume event and answer `200` with `object: "event_source"`, the resulting `state` and `resumed`. A failed probe SHALL answer `503 database_unavailable` with the message "The database is unreachable or at its storage limit, so the event source stays paused." On an enabled source it SHALL open no database connection.
 
 #### Scenario: Already enabled
 - **WHEN** it is called while the event source is enabled
@@ -67,7 +67,7 @@ During a database outage, `GET /health` with a correctly tagged token SHALL answ
 - **THEN** it answers `500 internal_error`
 
 ### Requirement: token.create mints a token
-`token.create` (`operate`, `POST /tokens`) SHALL take a JSON body `{ name, scope }`, where `name` is 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, `-` starting with a letter or digit and `scope` is `read` or `operate`, and SHALL answer `201` with the token object plus `token`, the plaintext, once. It is not idempotent.
+`token.create` (`operate`) SHALL take a JSON body `{ name, scope }`, where `name` is 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, `-` starting with a letter or digit and `scope` is `read` or `operate`, and SHALL answer `201` with the token object plus `token`, the plaintext, once. It is not idempotent.
 
 #### Scenario: Create a read token
 - **WHEN** an `operate` token creates `{ "name": "review-2026-10-20", "scope": "read" }`
@@ -82,7 +82,7 @@ During a database outage, `GET /health` with a correctly tagged token SHALL answ
 - **THEN** it answers `400 validation_failed` with "The request body must be a JSON object with name and scope fields."
 
 ### Requirement: token.list lists tokens newest first
-`token.list` (`operate`, `GET /tokens`) SHALL answer the list envelope `{ object: "list", has_more, data }` of token objects, active and revoked, newest first by `token_id`, with `limit` 1 to 100 (default 20) and `after` a token id. It SHALL never return a hash or a plaintext token.
+`token.list` (`operate`) SHALL answer the list envelope `{ object: "list", has_more, data }` of token objects, active and revoked, newest first by `token_id`, with `limit` 1 to 100 (default 20) and `after` a token id. It SHALL never return a hash or a plaintext token.
 
 #### Scenario: Paging
 - **WHEN** three tokens exist and `token.list` is called with `limit=2`
@@ -93,7 +93,7 @@ During a database outage, `GET /health` with a correctly tagged token SHALL answ
 - **THEN** it answers `400 validation_failed` with a message naming `limit`
 
 ### Requirement: token.revoke revokes, never the last operate token
-`token.revoke` (`operate`, `POST /tokens/{token_id}/revoke`) SHALL set `revoked_at` and answer `200` with the token object. Revoking a revoked token SHALL return it unchanged. Revoking the only active `operate` token SHALL answer `409 last_operate_token`, also under two concurrent revokes. An unknown id SHALL answer `404 token_not_found`.
+`token.revoke` (`operate`) SHALL set `revoked_at` and answer `200` with the token object. Revoking a revoked token SHALL return it unchanged. Revoking the only active `operate` token SHALL answer `409 last_operate_token`, also under two concurrent revokes. An unknown id SHALL answer `404 token_not_found`.
 
 #### Scenario: Revoke a read token
 - **WHEN** an active `read` token is revoked
@@ -116,7 +116,7 @@ During a database outage, `GET /health` with a correctly tagged token SHALL answ
 - **THEN** it answers `400 validation_failed` with a message naming `token_id`
 
 ### Requirement: token.getCurrent returns the caller
-`token.getCurrent` (`read`, `GET /tokens/current`) SHALL answer `200` with the calling token's object, never its hash.
+`token.getCurrent` (`read`) SHALL answer `200` with the calling token's object, never its hash.
 
 #### Scenario: Read token asks who it is
 - **WHEN** a `read` token calls `token.getCurrent`

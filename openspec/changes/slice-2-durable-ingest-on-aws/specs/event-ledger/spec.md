@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: A database outage pauses the event source instead of dead-lettering
-When a message fails with a database-connection error, the worker SHALL retry it once on a fresh connection. If the retry fails the same way, it SHALL report every message of the batch as failed, log `worker.database_unavailable`, disable its own event source and stop the batch, so an outage adds one receive per message and moves none to the DLQ (ADR-015).
+When a message fails with a database-connection error, the worker SHALL retry it once on a fresh connection, never on the connection that failed, and SHALL discard the failed connection without waiting on it. If the retry fails the same way, it SHALL report every message of the batch as failed, log `worker.database_unavailable`, disable its own event source and stop the batch, so an outage adds one receive per message and moves none to the DLQ (ADR-015).
 
 #### Scenario: Postgres stopped during a batch
 - **WHEN** a batch is processed while Postgres is stopped
@@ -12,6 +12,10 @@ When a message fails with a database-connection error, the worker SHALL retry it
 #### Scenario: Outage clears on the retry
 - **WHEN** the first attempt fails with a connection error and the retry on a fresh connection succeeds
 - **THEN** the message commits and the event source stays enabled
+
+#### Scenario: Unanswered query is retried elsewhere
+- **WHEN** a message's first attempt fails because a query got no answer within the query timeout
+- **THEN** the retry runs on a different database connection, the failed connection is closed, and the batch ends within one connect plus two query timeouts
 
 #### Scenario: Pause call fails
 - **WHEN** disabling the event source fails

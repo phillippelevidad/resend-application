@@ -48,8 +48,9 @@ skills. No ADR is departed from, so none is superseded.
 - One port per AWS seam (D1), each with a local implementation, so `apps/local` and the Lambda roots
   compose the same factories and a shared contract suite pins both sides.
 - Every fail-closed path decided before a deploy can lose an event: `503` on any ingest
-  infrastructure fault (D13), pause instead of dead-letter (D15), deploy refusals before migration or
-  stack change (D33), teardown refusal on queued events (D34).
+  infrastructure fault (D13), pause instead of dead-letter (D15), deploy refusals before any stack
+  change or secret write, all but the `key_id` check also before migrating (D33), teardown refusal
+  on queued events (D34).
 - The cost brake and the budget wiring proven on the template in `pnpm check`, before any deploy
   (D27, D28, D32).
 - The six owed `[Unverified]` rows settled by scripted, repeatable runs (D36, D37, D42).
@@ -75,9 +76,9 @@ command or mapper per file.
 | --- | --- |
 | `packages/core` | `token-scopes.ts` (`tokenScopes`, `tokenScopeSchema`), `event-source-states.ts` (`eventSourceStates`, `eventSourceStateSchema`) |
 | `packages/shared` | `secret-reader.port.ts`, `event-source-control.port.ts`, `queue-attributes.port.ts`, `function-invoke.port.ts`; `static-secret-reader.adapter.ts`, `static-event-source-control.adapter.ts`, `in-process-function-invoke.adapter.ts`; `in-process-queue.adapter.ts` (also implements `QueueAttributesPort`); `function-env.ts`; `api-token.ts`; `emf-metrics.adapter.ts`; `create-logger.ts` (`context`); `testing.ts` (four fakes, five contract suites) |
-| `packages/db` | `schema/api-tokens.ts`; `drizzle/0002_create-api-tokens.sql`, `0003_grant-api-tokens.sql`; `api-tokens.repository.ts`; `database.repository.ts` (`storageBytes`, `STORAGE_LIMIT_BYTES`, `STORAGE_PROBE_THRESHOLD`); `deploy-checks.ts` (`storedAddressHashKeyId`, `pendingContractSteps`); `prepare-database.ts`, `create-database.ts`, `classify-database-error.ts` (changed); `testing.ts` (timeouts, outage container helper) |
+| `packages/db` | `schema/api-tokens.ts`; `drizzle/0002_create-api-tokens.sql`, `0003_grant-api-tokens.sql`; `api-tokens.repository.ts`; `database.repository.ts` (`storageBytes`, `STORAGE_LIMIT_BYTES`, `STORAGE_PROBE_THRESHOLD`); `deploy-checks.ts` (`storedAddressHashKeyId`, `pendingContractSteps`); `run-transaction.ts` (`runTransaction`, D15); `prepare-database.ts`, `create-database.ts`, `classify-database-error.ts` (changed); `testing.ts` (timeouts, outage container helper) |
 | `packages/ingest` | `create-ingest.ts` (secret port, `SECRET_SET_TTL_MS`, `503`), `signing-secrets.schema.ts` (the Zod parse of the secret value) |
-| `packages/worker` | `create-worker.ts` (ADR-015 branch, `resume`) |
+| `packages/worker` | `create-worker.ts` (ADR-015 branch, `resume`); `record-event.command.ts` (`runTransaction` in place of `db.transaction`, D15) |
 | `packages/api` | `auth.middleware.ts` (`authMiddleware`, `requireScope`); `get-health.route.ts`, `get-health.reader.ts`, `health-response.mapper.ts`, `health-response.schema.ts`; `resume-event-source.route.ts`, `resume-event-source.command.ts`, `event-source-response.schema.ts`; `get-current-token.route.ts`, `list-tokens.route.ts`, `create-token.route.ts`, `revoke-token.route.ts` with their reader or command, `token-response.mapper.ts`, `token-response.schema.ts`; `create-api.ts` (deps, middleware, `onError` per route); `testing.ts` (`readApiContract`) |
 | `packages/sdk` | `create-ledger-client.ts` (six methods, five types), `testing.ts` (`FakeLedgerClient` grows them); regenerated `openapi.json`, `src/openapi-types.ts` |
 | `packages/aws` | The eleven modules of D26 |
@@ -195,9 +196,12 @@ set-once row of pp-database's grants). Columns in [Data model](#data-model).
 `query_timeout: 15_000` (named constants beside the factory, both below every function timeout). The
 classifier gains:
 
-- `pg`'s code-less `Query read timeout` (`pg@8.23.1/lib/client.js:707`) as connection-class: the
+- `pg`'s code-less `Query read timeout`
+  (`node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:707`) as connection-class: the
   role's `lock_timeout` (10 s, D10) ends every lock wait server-side first, so a 15 s silence means
-  the server is unreachable for the worker's purposes. A misread pauses at most one hour.
+  the server is unreachable for the worker's purposes. A misread pauses at most one hour. `pg` keeps
+  that connection open after the timeout (`client.js:706-726`; it destroys the stream only in
+  pipeline mode), which is why D15's retry must not reuse it.
 - `53100` (`disk_full`) as ADR-015's out-of-storage class. Safe either way until PG-U07 (slice 3): an
   unmatched code follows ADR-008, as today.
 
@@ -231,6 +235,13 @@ the limit.
 - `pendingContractSteps(db)`: the pending migrations' (absent from `drizzle.__drizzle_migrations`)
   first lines, parsed for `-- contract-step: <40-hex SHA>`; `replace:` markers carry no SHA and are
   skipped.
+
+Both run only in the deploy command, over the direct owner URL (D33 steps 4 and 7), and the
+runtime role cannot read the `drizzle` schema. So `deploy-checks.int.test.ts` calls them through
+the harness's owner connection, read-only. That is the role production uses for these reads.
+Granting `ledger_runtime` read on the migration journal so the test could use `t.db` would widen
+the DML-only role for a test's sake (integrations.md → Runtime role). Every other test in this
+slice uses the runtime role.
 
 ### Ingest
 
@@ -273,8 +284,27 @@ event (AWS-01):
 in order:
 
 1. Run `RecordEventCommand`. Success → next message.
-2. It throws and `classifyDatabaseError(err)` matches → run the same message once more (the pool has
-   discarded the broken client, so the retry opens a fresh connection). Success → next message.
+2. It throws and `classifyDatabaseError(err)` matches → run the same message once more, on a
+   connection other than the one that failed. Success → next message.
+
+   **The fresh connection is built, not assumed.** Drizzle 0.45.4's `transaction()` runs `rollback`
+   on the failed client and then releases it with no error
+   (`node_modules/.pnpm/drizzle-orm@0.45.4_@types+pg@8.23.1_pg@8.23.1/node_modules/drizzle-orm/node-postgres/session.cjs:224-228`),
+   and pg-pool discards a released client only when given an error or when it is no longer
+   queryable (`node_modules/.pnpm/pg-pool@3.14.0_pg@8.23.1/node_modules/pg-pool/index.js:392`).
+   After a `Query read timeout` the client is still queryable (D9), so the stock path hands the
+   hung connection back to the size-1 pool: the rollback waits another 15 s, the retry reuses it,
+   and the whole path reaches about 60 s, the worker's timeout. The Lambda then dies before step 3,
+   the batch is redelivered without a pause, and five such receives move the outage into the DLQ,
+   which is what ADR-015 exists to prevent. So `packages/db` exports
+   `runTransaction(database, fn)`, which `RecordEventCommand` uses in place of `db.transaction`: it
+   checks a client out of the pool itself, runs `BEGIN`, `fn(tx)` over a Drizzle instance bound to
+   that client, then `COMMIT`. On an error that `classifyDatabaseError` matches, it releases the
+   client **with** the error (`client.release(err)`, so pg-pool removes it) and issues no
+   `ROLLBACK` (the server rolls back when the connection closes). On any other error it rolls back
+   and releases normally. The retry therefore costs at most one connect (5 s) and one query timeout
+   (15 s), which is D27's 35 s bound. Rules out: relying on the pool to notice a hung socket, and
+   ending the whole pool, which waits on that socket.
 3. The retry matches too → list **every** message of the batch in `batchItemFailures` (a message
    already committed in this batch is redelivered as a duplicate, absorbed on `svix_id`), log
    `worker.database_unavailable`, call `eventSource.disable()`. A failing `disable` logs
@@ -416,7 +446,13 @@ names no paging flag), `token-revoke.cli.ts` (`ledger token revoke <token_id>`),
 
 #### D26 — `packages/aws`
 
-Each adapter takes its SDK client from its composition root. Each unit test hands a stub with
+Each adapter takes its SDK client from its composition root, and `packages/aws` also exports one
+factory per client (`createSqsClient()`, `createLambdaClient()`, … one per approved
+`@aws-sdk/client-*`) that the root calls at module scope. No app, script or `infra/` file imports
+`@aws-sdk/*`: root AGENTS.md → Module boundaries ("Only `packages/aws` imports `@aws-sdk/*`") and
+[pp-general → review grep 4](../../../.agents/skills/pp-general/references/boundaries.md#review-greps),
+and the clients are `dependencies` of `packages/aws` alone, so nothing else could resolve them.
+Each unit test hands a stub with
 `send(command)` that records commands and answers from a script, asserting the commands sent and the
 mapping of each answer, error names cited from the API Reference. A call only a script makes uses the
 concrete module: one implementation is no reason for a port.
@@ -450,7 +486,7 @@ Every value a named constant commented with its `AWS-NN`.
   | Function | Name | Memory | Timeout | Why the timeout |
   | --- | --- | --- | --- | --- |
   | ingest | `LedgerApp-ingest` | 256 MB | 10 s | Under Svix's 15 s delivery timeout (RS-10) and API Gateway's 30 s (AWS-02) |
-  | worker | `LedgerApp-worker` | 512 MB | 60 s | The outage path fits: one query timeout (15 s), a fresh connection (≤ 5 s) and the retry's query timeout (15 s) is 35 s, so D15 step 3's pause always runs. A slow, not down, database that times out the function fails the whole batch, redelivered and absorbed on `svix_id` (AWS-05). Feeds the visibility timeout (AWS-08) |
+  | worker | `LedgerApp-worker` | 512 MB | 60 s | The outage path fits: one query timeout (15 s), a fresh connection (≤ 5 s) and the retry's query timeout (15 s) is 35 s, with no rollback wait on the failed client (D15's `runTransaction`), so D15 step 3's pause always runs. A slow, not down, database that times out the function fails the whole batch, redelivered and absorbed on `svix_id` (AWS-05). Feeds the visibility timeout (AWS-08) |
   | read API | `LedgerApp-api` | 256 MB | 25 s | Under the 30 s integration cap (AWS-02); one connect (5 s) plus one query (15 s) is the worst case (D18, D19) |
 
 - **Queues:** source retention 13 days, DLQ 14 days (AWS-07, AWS-09), SSE-SQS (no key, AWS-25),
@@ -598,7 +634,9 @@ never generates a key: a key made per deploy would orphan every stored hash. Ste
 3. Refuse a disarming deploy: `KillSwitchArmed` is `true` and `LEDGER_KILL_SWITCH` is not `on`
    (CBL-16).
 4. Refuse an unsafe contract step: for each `pendingContractSteps` SHA, `git merge-base --is-ancestor
-   <SHA> <DeployedCommit>`; any exit but 0 refuses. Skipped with no app stack.
+   <SHA> <DeployedCommit>`; any exit but 0 refuses. `DeployedCommit` is the **already deployed**
+   app stack's output, read in step 2, never the commit about to be deployed: the check asks whether
+   the Lambdas running now have stopped using the object (ADR-018). Skipped with no app stack.
 5. `cdk synth` with the context, then CBL-01's grep over `cdk.out/`
    (`whsec_|re_[A-Za-z0-9]{8}|postgres(ql)?://|ldg_[0-9a-f]{20}`); a hit refuses.
 6. `prepareDatabase` through `LEDGER_DEPLOY_DATABASE_URL` with D10's role timeouts. Password: when the
@@ -781,7 +819,7 @@ teardown listing), which the walk records, nor Neon's pooler (PG-U02, PG-U06) or
 | R4 on SQS | `packages/aws/src/sqs-queue.adapter.test.ts` (unit, stubbed client): `SendMessage` input; a rejection propagates | — |
 | Ships 3, R5 | `apps/worker/src/worker.handler.test.ts` (unit, fake worker): three records, one failure → exactly that id; a throw → rethrown constant; resume event → `ResumeResult`; unknown event → constant throw | An empty or assumed response |
 | Ships 4, R6 (classification) | `packages/db/src/classify-database-error.test.ts` (unit, extended): `Query read timeout`, `53100` | The classification |
-| Ships 4, R6, R7 | `packages/worker/src/database-outage.int.test.ts` (int, own container): batch with Postgres stopped → every id listed, `FakeEventSourceControl` reads `paused` after one batch, nothing dead-lettered; a non-connection failure lists only its message and leaves the source enabled | The pause; the single retry |
+| Ships 4, R6, R7 | `packages/worker/src/database-outage.int.test.ts` (int, own container): batch with Postgres stopped → every id listed, `FakeEventSourceControl` reads `paused` after one batch, nothing dead-lettered; a non-connection failure lists only its message and leaves the source enabled. `packages/db/src/run-transaction.int.test.ts` (int): a first attempt ending in `Query read timeout` (the owner holds the row's lock, the test pool's `query_timeout` below the role's `lock_timeout`) is retried on a different backend (`pg_backend_pid()`), and the failed backend is gone from `pg_stat_activity` | The pause; the single retry; the fresh connection |
 | Ships 4, R8 | `packages/worker/src/resume.int.test.ts` (int): enabled → `already_enabled` over a pool on a closed port; paused, database up → `resumed`; storage limit 1 byte → `probe_failed`, still `paused` | The probe; the storage check |
 | Ships 4 (on demand) | `packages/api/src/resume-event-source.route.int.test.ts` (int, `FakeFunctionInvoke`): `operate` → `200`; `read` → `403`; `probe_failed` → `503` with the override | — |
 | Ships 5, R9, R11–R13 | `packages/db/src/api-tokens.repository.int.test.ts` (int, as `ledger_runtime`): identity insert; scope members insert, outsider → `23514`; bootstrap twice → one row; two concurrent revokes of the last two `operate` → one `last_operate_token`. `packages/shared/src/api-token.test.ts` (unit). `packages/api/src/auth.middleware.test.ts` (unit, database at `127.0.0.1:1`): no, malformed, bad-tag → `401`, no connection. `packages/api/src/*token*.route.int.test.ts`: unknown and revoked → `401`; `read` on each `operate` route → `403`; create → `201`, plaintext once, hash stored; list paging; revoke idempotent; `token_not_found`; `last_operate_token` | Auth; the bootstrap key; the revoke lock |

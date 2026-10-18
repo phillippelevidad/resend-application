@@ -31,14 +31,14 @@ The app stack SHALL hold a source queue retaining messages 13 days and a DLQ ret
 - **THEN** the source queue's visibility timeout in the template changes with it, by the AWS-08 derivation
 
 ### Requirement: The HTTP API routes ingest and the read API
-The app stack's HTTP API SHALL route `POST /webhooks/resend` to ingest and every other request to the read API, on a stage whose default-route throttle is rate 100 and burst 200 (aws.md → Budget alarms item 7).
+The app stack's HTTP API SHALL route the ingest endpoint (api-contract.md → Ingest boundary) to ingest and every other request to the read API, on a stage whose default-route throttle is rate 100 and burst 200 (aws.md → Budget alarms item 7).
 
 #### Scenario: Throttle on the app template
 - **WHEN** the app template is synthesized
 - **THEN** its `$default` stage carries the default-route throttle at rate 100 and burst 200
 
 ### Requirement: Each function's environment is exactly its names
-Each function's environment variables SHALL equal, as a set, the keys of its names object in `packages/shared/src/function-env.ts`, and every value SHALL be an ARN, URL or name, never a secret.
+Each function's environment variables SHALL equal, as a set, the keys of the names object the shared kernel declares for that function, and every value SHALL be an ARN, URL or name, never a secret.
 
 #### Scenario: A variable on the wrong function
 - **WHEN** a variable is set on a function whose names object does not list it

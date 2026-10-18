@@ -10,7 +10,7 @@ The local process SHALL enforce bearer tokens exactly as the deployed read API d
 - **THEN** it answers `401` with `code` `unauthorized`
 
 #### Scenario: Local health without a database
-- **WHEN** `GET /health` is called with a tag-valid token while `DATABASE_URL` points at nothing
+- **WHEN** `health.get` is called with a tag-valid token while `DATABASE_URL` points at nothing
 - **THEN** it answers `200` with `database.reachable: false`
 
 #### Scenario: Local resume
