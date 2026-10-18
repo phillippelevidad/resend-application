@@ -355,6 +355,17 @@ describe('the alert address and the drill budget', () => {
     disarmed.resourcePropertiesCountIs('AWS::SNS::Subscription', { Protocol: 'email' }, 0);
   });
 
+  // The owner's kept deployment: armed, with an alert address, no drill. `armed` sets every flag at
+  // once, so only this variant shows each flag keys its own resources: a drill budget keyed off
+  // `killSwitch` would trip the whole stack on its first cent.
+  it('keys each flag alone: armed with an address and no drill holds one budget, the subscription and both emails', () => {
+    const owner = synth({ killSwitch: true, alertEmail: ALERT_EMAIL });
+    owner.resourceCountIs('AWS::Budgets::Budget', 1);
+    owner.resourcePropertiesCountIs('AWS::SNS::Subscription', { Protocol: 'lambda' }, 1);
+    owner.resourcePropertiesCountIs('AWS::SNS::Subscription', { Protocol: 'email' }, 2);
+    expect(owner.toJSON().Outputs.KillSwitchArmed.Value).toBe('true');
+  }, 60_000);
+
   it('holds the drill budget only with its flag: ACTUAL above USD 0.01 to the trip topic (D28, D36, C14)', () => {
     disarmed.resourceCountIs('AWS::Budgets::Budget', 1);
     armed.resourceCountIs('AWS::Budgets::Budget', 2);

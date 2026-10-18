@@ -247,6 +247,41 @@ describe('cost brake on the app template', () => {
   });
 });
 
+// The assertions below read every number from the stack's own constants, so a changed constant
+// moves template and test together. These are the values the aws-stacks spec and aws.md pin, as
+// literals: a `MAX_RECEIVE_COUNT` of 1 would drain an outage to the DLQ in one receive (ADR-015).
+describe('the constants hold the values the spec pins', () => {
+  it('queues, mapping, throttle, usage trip and schedule (aws-stacks spec, aws.md → Budget alarms item 7)', () => {
+    expect({
+      SOURCE_RETENTION_DAYS,
+      DLQ_RETENTION_DAYS,
+      MAX_RECEIVE_COUNT,
+      MAPPING_BATCH_SIZE,
+      MAPPING_MAX_CONCURRENCY,
+      THROTTLE_RATE_LIMIT,
+      THROTTLE_BURST_LIMIT,
+      USAGE_TRIP_PERIOD_SECONDS,
+      USAGE_TRIP_THRESHOLD,
+      HOURLY_CRON,
+      SCHEDULE_RETRY_ATTEMPTS,
+      SCHEDULE_MAX_EVENT_AGE_SECONDS,
+    }).toEqual({
+      SOURCE_RETENTION_DAYS: 13,
+      DLQ_RETENTION_DAYS: 14,
+      MAX_RECEIVE_COUNT: 5,
+      MAPPING_BATCH_SIZE: 10,
+      MAPPING_MAX_CONCURRENCY: 5,
+      THROTTLE_RATE_LIMIT: 100,
+      THROTTLE_BURST_LIMIT: 200,
+      USAGE_TRIP_PERIOD_SECONDS: 900,
+      USAGE_TRIP_THRESHOLD: 15_000,
+      HOURLY_CRON: 'cron(0 * * * ? *)',
+      SCHEDULE_RETRY_ATTEMPTS: 0,
+      SCHEDULE_MAX_EVENT_AGE_SECONDS: 60,
+    });
+  });
+});
+
 describe('wiring of the app template', () => {
   it('names every function and the HTTP API with the app stack prefix the kill switch finds them by (D27, D29)', () => {
     for (const name of ['ingest', 'worker', 'api']) functionNamed(name);
