@@ -7,6 +7,20 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@aws-sdk/client-apigatewayv2": "3.1152.0",
+    "@aws-sdk/client-budgets": "3.1152.0",
+    "@aws-sdk/client-cloudformation": "3.1152.0",
+    "@aws-sdk/client-cloudwatch": "3.1152.0",
+    "@aws-sdk/client-cloudwatch-logs": "3.1152.0",
+    "@aws-sdk/client-lambda": "3.1152.0",
+    "@aws-sdk/client-resource-groups-tagging-api": "3.1152.0",
+    "@aws-sdk/client-secrets-manager": "3.1152.0",
+    "@aws-sdk/client-sns": "3.1152.0",
+    "@aws-sdk/client-sqs": "3.1152.0",
+    "@ledger/core": "workspace:*",
+    "@ledger/shared": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "catalog:"
   }
