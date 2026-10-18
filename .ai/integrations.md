@@ -215,10 +215,15 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   retention job lands (slice 7), column-level `UPDATE` on the columns it rewrites; never `DELETE`.
   **Order (MUST)**, through the direct URL:
   1. The deploy command ensures the role exists (idempotent: created only if absent), and sets
-     `ALTER ROLE <runtime role> SET idle_in_transaction_session_timeout = …` and
-     `SET lock_timeout = …`, both below the worker timeout (values fixed by slice 2). They bound,
-     server-side, the locks of a Lambda killed or frozen mid-transaction: both default to 0, and a
-     client timeout dies with its client. Whether the pooler applies role settings is PG-U06.
+     `ALTER ROLE <runtime role> SET idle_in_transaction_session_timeout = '5000ms'` and
+     `SET lock_timeout = '10000ms'` (`RUNTIME_ROLE_TIMEOUTS` in `packages/db`), on every run.
+     Both sit below the worker's 60 s timeout, and the idle bound below the lock bound, so an idle
+     holder is ended before a waiter's lock wait expires. They bound, server-side, the locks of a
+     Lambda killed or frozen mid-transaction: both default to 0, and a client timeout dies with
+     its client. Whether the pooler applies role settings is PG-U06. Evidence: the role's
+     `rolconfig` holds both after `prepareDatabase`
+     ([runtime-role.int.test.ts](../packages/db/src/runtime-role.int.test.ts)), and every call
+     re-sets them ([prepare-database.int.test.ts](../packages/db/src/prepare-database.int.test.ts)).
   2. It runs the migrations. Each change that creates a table grants that table's DML to the
      role, in a custom migration right after the generated one; pending migrations apply in one
      transaction, so the table never exists ungranted.

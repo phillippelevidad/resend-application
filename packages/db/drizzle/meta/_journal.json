@@ -15,6 +15,20 @@
       "when": 1792269405525,
       "tag": "0001_grant-ledger-tables",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792288168891,
+      "tag": "0002_create-api-tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792288176842,
+      "tag": "0003_grant-api-tokens",
+      "breakpoints": true
     }
   ]
 }

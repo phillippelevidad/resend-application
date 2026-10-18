@@ -2,7 +2,8 @@ import { DatabaseUnavailableError } from './database-unavailable.error.ts';
 
 // pp-database → Connection-error classification: the one list, in `packages/db` only.
 
-// SQLSTATE class 08 (connection exception) plus the class 57 shutdown codes (Postgres errcodes).
+// SQLSTATE class 08 (connection exception) plus the class 57 shutdown codes (Postgres errcodes),
+// plus `53100`.
 const CONNECTION_SQLSTATES: ReadonlySet<string> = new Set([
   '08000',
   '08001',
@@ -14,6 +15,10 @@ const CONNECTION_SQLSTATES: ReadonlySet<string> = new Set([
   '57P01',
   '57P02',
   '57P03',
+  // `disk_full`: ADR-015's out-of-storage class, not a connection error, classified so the worker
+  // pauses instead of draining to the DLQ. Whether Neon's storage limit raises it is PG-U07 (D9);
+  // until then an unmatched code follows ADR-008, as before.
+  '53100',
 ]);
 
 // Node system error codes a socket raises when the server is unreachable or drops the connection.
@@ -36,6 +41,10 @@ const CONNECTION_MESSAGES: ReadonlySet<string> = new Set([
   'Connection terminated unexpectedly',
   'Connection terminated due to connection timeout',
   'Client has encountered a connection error and is not queryable',
+  // `query_timeout` fired (pg 8.23.1 `lib/client.js:707`). The runtime role's `lock_timeout` (10 s)
+  // ends every lock wait server-side before the pool's 15 s, so this silence means the server is
+  // unreachable (D9). pg keeps that connection open, so the retry must not reuse it (D15).
+  'Query read timeout',
 ]);
 
 // Drizzle wraps a failed query in `DrizzleQueryError` with the driver error as `cause`; pg-pool

@@ -22,6 +22,8 @@ const connectionSqlstates = [
   '57P01',
   '57P02',
   '57P03',
+  // `disk_full`, ADR-015's out-of-storage class (D9).
+  '53100',
 ];
 const socketCodes = [
   'ECONNREFUSED',
@@ -37,6 +39,8 @@ const pgMessages = [
   'Connection terminated unexpectedly',
   'Connection terminated due to connection timeout',
   'Client has encountered a connection error and is not queryable',
+  // `query_timeout` fired (D9).
+  'Query read timeout',
 ];
 
 describe('classifyDatabaseError', () => {

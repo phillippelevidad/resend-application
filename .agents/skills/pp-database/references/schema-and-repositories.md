@@ -17,7 +17,9 @@ packages/db/
     <kebab>.repository.ts    # one per table
     executor.ts              # the Executor and Transaction types
     create-database.ts       # the connection factory
+    run-transaction.ts       # runTransaction: a transaction that discards a failed connection
     prepare-database.ts      # ensure the runtime role, then migrate (pp-database → migrations)
+    deploy-checks.ts         # the deploy command's read-only refusal checks (owner URL only)
     classify-database-error.ts  # the classifier
     database-unavailable.error.ts  # the database_unavailable subclass it returns
     testing.ts, testing/     # the int harness, exported as @ledger/db/testing (pp-testing)
@@ -45,8 +47,10 @@ against). Biome skips the folder: the files are drizzle-kit's output, never refo
   then a one-line comment saying when it is null (`event_created_at`: a schema-failing payload).
 - **Timestamps:** `timestamp('<col>', { withTimezone: true })`; row times default to `now()`.
 - **Surrogate keys:** identity `bigint`, `.generatedAlwaysAsIdentity()`, `mode: 'number'` (ids stay
-  below 2^53 at the [scale ceiling](../../../../.ai/about.md#platform-scale-assumptions)). Drizzle's
-  docs show identity on `integer`; on `bigint` it is `[Unverified]` against the installed version.
+  below 2^53 at the [scale ceiling](../../../../.ai/about.md#platform-scale-assumptions)). On
+  drizzle-orm 0.45.4, `bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity()` generates
+  `bigint GENERATED ALWAYS AS IDENTITY` and reads ids back as numbers (`api_tokens`, slice 2,
+  [api-tokens.repository.int.test.ts](../../../../packages/db/src/api-tokens.repository.int.test.ts)).
 - **Closed sets:** the core Zod enum's `as const` tuple feeds the column's `enum` option (types
   only: Drizzle "won't check runtime values", [column types](https://orm.drizzle.team/docs/column-types/pg)),
   and a `check()` lists the same members. The integration test inserts every member of the tuple
@@ -127,6 +131,25 @@ repository never opens one. On the `packages/db` side:
   advisory key a named constant in `packages/db`. The pooler is in transaction mode
   ([integrations.md → Decision — Neon](../../../../.ai/integrations.md#decision--neon)).
 
+### runTransaction
+
+`runTransaction(database, fn)` in `run-transaction.ts` is the transaction a caller opens when it
+retries a connection-class failure (the worker's `RecordEventCommand`, ADR-015, D15 of the slice 2
+change). It checks a client out of the pool itself, runs `BEGIN`, `fn(tx)` over a Drizzle
+transaction bound to that client, then `COMMIT`. On an error `classifyDatabaseError` matches, it
+releases the client **with** the error (`client.release(err)`, so pg-pool closes it) and sends no
+`ROLLBACK`: the server rolls back when the connection closes. On any other error it rolls back and
+releases normally.
+
+Why not `db.transaction`: drizzle-orm 0.45.4 rolls back on the failed client and then releases it
+with no error, and pg-pool keeps a released client that is still queryable, which a
+`Query read timeout` leaves it. On a size-1 pool the rollback waits another query timeout and the
+retry reuses the hung socket, which runs the worker past its function timeout before it can pause.
+With `runTransaction` the retry costs one connect and one query timeout. Evidence: a retry after a
+`Query read timeout` reports a different `pg_backend_pid()` and the timed-out backend leaves
+`pg_stat_activity`; with `db.transaction` in its place the retry reports the same backend
+([run-transaction.int.test.ts](../../../../packages/db/src/run-transaction.int.test.ts)).
+
 ## Connection
 
 One factory, called once at module scope by a composition root with typed config:
@@ -142,8 +165,12 @@ One factory, called once at module scope by a composition root with typed config
   `statement_timeout` or `lock_timeout` in this config: `pg` sends them as startup parameters
   ([source](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js)),
   which PgBouncer rejects by default ([`ignore_startup_parameters`](https://www.pgbouncer.org/config.html))
-  and Neon's pooler page does not address; never `SET` either (pooler-safe SQL). The values, and
-  whether a `Query read timeout` error is connection-class, are the slice 2 pre-proposal's.
+  and Neon's pooler page does not address; never `SET` either (pooler-safe SQL). The values are
+  `CONNECTION_TIMEOUT_MS = 5_000` and `QUERY_TIMEOUT_MS = 15_000`, constants beside the factory:
+  the query bound sits above the runtime role's `lock_timeout` (10 s), which ends every lock wait
+  server-side first, so a query unanswered for 15 s means the server is unreachable, and its
+  `Query read timeout` is connection-class ([below](#connection-error-classification)). A timed-out
+  client stays open and queryable, so a retry MUST NOT reuse it ([runTransaction](#runtransaction)).
   These bound only a live client. A frozen or killed Lambda's open transaction is bounded
   server-side by the runtime role's `idle_in_transaction_session_timeout` and `lock_timeout`,
   set by the role-ensure step ([grants](migrations-and-grants.md#grants), PG-U06).
@@ -172,8 +199,8 @@ and `pg-pool` attaches the connect error as `cause` on its timeout. A match anyw
 | SQLSTATE class `08` (`08000`, `08001`, `08003`, `08004`, `08006`, `08007`, `08P01`) | [Postgres errcodes](https://www.postgresql.org/docs/current/errcodes-appendix.html) |
 | `57P01` `admin_shutdown`, `57P02` `crash_shutdown`, `57P03` `cannot_connect_now` | same |
 | Node socket codes: `ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`, `EPIPE`, `ENOTFOUND`, `EAI_AGAIN`, `EHOSTUNREACH`, `ENETUNREACH` | Node system errors |
-| `pg` errors with no `code`, by exact message: `Connection terminated unexpectedly`, `Connection terminated due to connection timeout`, `Client has encountered a connection error and is not queryable` | [pg client](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js), [pg-pool](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg-pool/index.js) |
-| Neon's storage-limit error on a Free project at its cap (likely `53100` `disk_full`; the SQLSTATE and how `pg` surfaces it are PG-U07, `[Unverified]`). Not a connection error: classified here so the worker pauses and the queue holds instead of draining to the DLQ | [ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) |
+| `pg` errors with no `code`, by exact message: `Connection terminated unexpectedly`, `Connection terminated due to connection timeout`, `Client has encountered a connection error and is not queryable`, and `Query read timeout` (the pool's `query_timeout` fired, slice 2) | [pg client](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js), [pg-pool](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg-pool/index.js) |
+| `53100` `disk_full`, classified for Neon's storage-limit error on a Free project at its cap (whether Neon raises exactly this, and how `pg` surfaces it, is PG-U07, `[Unverified]`; an unmatched code follows ADR-008, as before). Not a connection error: classified here so the worker pauses and the queue holds instead of draining to the DLQ | [ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) |
 
 Never pg-pool's `timeout exceeded when trying to connect`: it is raised, with no `cause`, when no
 pooled client frees up in time, which on a size-1 pool is a leaked checkout or a `db` call inside a

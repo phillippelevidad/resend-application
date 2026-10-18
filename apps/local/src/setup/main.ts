@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
-import { classifyDatabaseError, prepareDatabase } from '@ledger/db';
+import { classifyDatabaseError, prepareDatabase, RUNTIME_ROLE_TIMEOUTS } from '@ledger/db';
 import { type LocalEnvName, mergeLocalEnv } from './merge-local-env.ts';
 
 // `pnpm db:setup` (D31): fill `.env.local` with every local name still unset, then ensure the
@@ -71,7 +71,12 @@ async function setup(): Promise<string | undefined> {
   // password is never needed again.
   const runtimePassword = randomBytes(24).toString('hex');
   try {
-    await prepareDatabase({ ownerUrl, runtimePassword });
+    await prepareDatabase({
+      ownerUrl,
+      runtimePassword,
+      roleTimeouts: RUNTIME_ROLE_TIMEOUTS,
+      resetPassword: false,
+    });
   } catch (error) {
     return classifyDatabaseError(error)
       ? 'Postgres is unreachable at DATABASE_URL; start it with pnpm db:up'

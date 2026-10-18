@@ -1,11 +1,18 @@
 // @ledger/db/testing: the int harness's per-file handle (pp-testing → Postgres harness). Only
 // `*.int.test.ts` files import it; the `int` project's global setup provides what it injects.
 import { randomUUID } from 'node:crypto';
-import type { Logger } from '@ledger/shared';
+import { LedgerError, type Logger } from '@ledger/shared';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Client, escapeIdentifier, Pool } from 'pg';
 import { inject } from 'vitest';
 import { createDatabase } from './create-database.ts';
+import { RUNTIME_ROLE } from './prepare-database.ts';
+import {
+  preparePostgres,
+  startPostgresContainer,
+  withCredentials,
+  withDatabase,
+} from './testing/postgres-container.ts';
 
 export type TestDatabase = {
   // Connected as the runtime role, through the deployed factory: what tests pass to repositories,
@@ -85,15 +92,49 @@ async function onMaintenance(maintenanceUrl: string, statement: string): Promise
   }
 }
 
-function withDatabase(url: string, database: string): string {
-  const parsed = new URL(url);
-  parsed.pathname = `/${database}`;
-  return parsed.toString();
-}
+export type OutageDatabase = {
+  // The runtime role's URL on the container's own database, for the pools the test composes. It
+  // stays valid across `stop` and `start`: the container, its port and its data persist.
+  runtimeUrl: string;
+  // The owner on the same database: fault injection and re-running `prepareDatabase` only.
+  ownerUrl: string;
+  // A fast shutdown: every open session ends with `57P01`, every new connection then fails.
+  stop: () => Promise<void>;
+  // Starts Postgres again and resolves once it accepts connections.
+  start: () => Promise<void>;
+  // Removes the container.
+  close: () => Promise<void>;
+};
 
-function withCredentials(url: string, user: string, password: string): string {
-  const parsed = new URL(url);
-  parsed.username = encodeURIComponent(user);
-  parsed.password = encodeURIComponent(password);
-  return parsed.toString();
+const OUTAGE_DATABASE = 'ledger_outage';
+
+// pp-testing → Outage tests: a test that stops the server gets its own container, prepared through
+// the same steps as the shared one (role, timeouts, migrations), so stopping it breaks no other
+// file. The one exception to one container per run. Its start costs seconds: one per file, in
+// `beforeAll`.
+export async function startOutageDatabase(): Promise<OutageDatabase> {
+  const container = await startPostgresContainer(OUTAGE_DATABASE, { stoppable: true });
+  try {
+    const ownerUrl = container.getConnectionUri();
+    const runtimePassword = await preparePostgres(ownerUrl);
+    // `pg_ctl` runs as the server's own user, against the image's `PGDATA`.
+    const pgCtl = async (args: string[]): Promise<void> => {
+      const result = await container.exec(['pg_ctl', ...args], { user: 'postgres' });
+      if (result.exitCode !== 0) {
+        throw new LedgerError('internal_error', 'pg_ctl failed in the outage container.');
+      }
+    };
+    return {
+      runtimeUrl: withCredentials(ownerUrl, RUNTIME_ROLE, runtimePassword),
+      ownerUrl,
+      stop: () => pgCtl(['stop', '-m', 'fast', '-w']),
+      start: () => pgCtl(['start', '-w', '-l', '/tmp/postgres.log']),
+      close: async () => {
+        await container.stop();
+      },
+    };
+  } catch (err) {
+    await container.stop();
+    throw err;
+  }
 }
