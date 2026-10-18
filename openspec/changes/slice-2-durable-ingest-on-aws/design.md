@@ -730,7 +730,9 @@ change.
 scripts/migration-lint.mjs' }` right after `lint`. A canary first: an in-memory
 `ALTER TABLE t DROP COLUMN c;` that must fail and a marked copy that must pass. Then every
 `packages/db/drizzle/*.sql`: a statement matching `\bDROP\b`, `\bRENAME\b`, `\bALTER\b[^;]*\bTYPE\b`
-or `\bSET\s+NOT\s+NULL\b` (case-insensitive, `--` comments stripped) fails unless line 1 is
+or `\bSET\s+NOT\s+NULL\b` (case-insensitive, `--` comments and double-quoted identifiers stripped,
+so a column named `"type"` is no keyword; string literals are kept, so a `DROP` inside a `DO`
+block's `EXECUTE '…'` still fails) fails unless line 1 is
 `-- contract-step: <40-hex SHA>` or `-- contract-step: replace: <name>, <widen|narrow>`. Prints
 `migrations: canary caught 1/1` and `migrations: <n> checked, <k> unmarked`; exit 1 when `k > 0` or
 the canary misses.

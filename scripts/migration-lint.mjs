@@ -7,7 +7,8 @@
 // A statement holding `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` (case-insensitive) fails
 // its file unless line 1 is `-- contract-step: <40-hex SHA>` or
 // `-- contract-step: replace: <name>, <widen|narrow>`. `--` comments are stripped first, and so are
-// quoted identifiers and string literals, which can never be a keyword (a column named "type").
+// double-quoted identifiers, which can never be a keyword (a column named "type"). String literals
+// stay: `EXECUTE 'ALTER TABLE t DROP COLUMN c'` inside a `DO` block is a contract step too.
 //
 // A canary runs first, in memory: an unmarked `ALTER TABLE t DROP COLUMN c;` must fail and a marked
 // copy must pass, or the stage exits 1 before reading any migration. Node built-ins only.
@@ -25,8 +26,10 @@ const CONTRACT = [
   { label: 'SET NOT NULL', pattern: /\bSET\s+NOT\s+NULL\b/i },
 ];
 // One left-to-right pass, so a `--` inside a literal is not a comment and a quote inside a comment
-// opens nothing: a string literal, a quoted identifier, or a comment to the end of its line.
+// opens nothing: a string literal, a quoted identifier, or a comment to the end of its line. Only
+// the last two are blanked; a literal is matched only so its contents are never read as either.
 const NOT_CODE = /'(?:[^']|'')*'|"(?:[^"]|"")*"|--[^\n]*/g;
+const blankNonCode = (token) => (token.startsWith("'") ? token : ' ');
 const CANARY = 'ALTER TABLE t DROP COLUMN c;\n';
 const CANARY_MARKER = `-- contract-step: ${'0'.repeat(40)}\n`;
 const say = (message) => console.log(`migrations: ${message}`);
@@ -36,7 +39,7 @@ const fail = (message) => console.error(`migrations: ${message}`);
 function lint(sql) {
   const firstLine = sql.split(/\r?\n/, 1)[0];
   if (MARKER.test(firstLine)) return [];
-  const code = sql.replace(NOT_CODE, ' ');
+  const code = sql.replace(NOT_CODE, blankNonCode);
   const found = [];
   for (const statement of code.split(';')) {
     for (const { label, pattern } of CONTRACT) {
