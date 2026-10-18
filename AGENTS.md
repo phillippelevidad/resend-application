@@ -226,11 +226,14 @@ pnpm test:int      # Vitest project int (real Postgres: one Testcontainers conta
 pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
 
 # Full gate: mirrors CI by construction (CI runs exactly this)
-pnpm verify        # install, docker, secrets, lint, links, typecheck, drift, unit, int, synth, e2e;
-                   # exit 0 = VERIFY PASSED
+pnpm verify        # install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int,
+                   # synth, e2e; exit 0 = VERIFY PASSED
 pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
 node scripts/secret-scan.mjs # the secrets stage: a canary of each custom .gitleaks.toml rule, then
                              # gitleaks (pinned image, needs Docker) over every commit on every ref
+node scripts/migration-lint.mjs   # the migrations stage: a canary first, then every
+                                  # packages/db/drizzle/*.sql; DROP, RENAME, ALTER … TYPE or SET NOT
+                                  # NULL fails unless line 1 is a `-- contract-step:` marker (ADR-018)
 node scripts/check-links.mjs [file …]   # the links stage: relative links and anchors in README.md,
                                         # or in the named files; a canary first; no network
 node scripts/openapi-drift.mjs   # the drift stage: regenerates the OpenAPI document and SDK types
@@ -284,8 +287,7 @@ pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```
 
-`pnpm verify` needs Docker. Its planned stage, one entry in `scripts/verify.mjs`: migration lint
-(slice 2).
+`pnpm verify` needs Docker.
 Document every command here when it lands.
 
 ## Module boundaries

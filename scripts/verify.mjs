@@ -10,10 +10,12 @@
 // built-ins, so CI runs it before anything is installed and the install stage runs everywhere.
 import { spawnSync } from 'node:child_process';
 
-// Later slices add a stage by adding one entry here, each when it has something to check: migration
-// lint (slice 2). Slice 1 landed two: `drift` regenerates the OpenAPI document and the SDK types and
-// fails when the committed copies differ, its canary first (D42); the `int` tier's global setup
-// starts one Testcontainers Postgres and applies every migration before any test runs.
+// Later slices add a stage by adding one entry here, each when it has something to check. Slice 1
+// landed two: `drift` regenerates the OpenAPI document and the SDK types and fails when the
+// committed copies differ, its canary first (D42); the `int` tier's global setup starts one
+// Testcontainers Postgres and applies every migration before any test runs. Slice 2 landed
+// `migrations`: a contract-breaking statement fails unless its file carries the contract-step
+// marker, its canary first (ADR-018).
 const STAGES = [
   { name: 'install', command: 'pnpm install --frozen-lockfile' },
   {
@@ -24,6 +26,7 @@ const STAGES = [
   },
   { name: 'secrets', command: 'node scripts/secret-scan.mjs' },
   { name: 'lint', command: 'pnpm exec biome ci .' },
+  { name: 'migrations', command: 'node scripts/migration-lint.mjs' },
   { name: 'links', command: 'node scripts/check-links.mjs' },
   { name: 'typecheck', command: 'pnpm typecheck' },
   { name: 'drift', command: 'node scripts/openapi-drift.mjs' },

@@ -15,6 +15,11 @@ description = "Resend webhook signing secret (whsec_ prefix)"
 regex = '''\bwhsec_[A-Za-z0-9+/]{20,}={0,2}'''
 
 [[rules]]
+id = "ledger-api-token"
+description = "Ledger API token (ldg_ prefix, random part and tag)"
+regex = '''ldg_[0-9a-f]{64}_[0-9a-f]{64}'''
+
+[[rules]]
 id = "postgres-url"
 description = "Postgres connection URL that carries a password"
 regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#'"`)>]+'''
