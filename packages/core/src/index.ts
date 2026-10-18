@@ -14,6 +14,12 @@ export {
   RUNBOOK_BASE_URL,
 } from './error-codes.ts';
 export { eventRank } from './event-rank.ts';
+export {
+  type EventSourceState,
+  eventSourceStateFromLambda,
+  eventSourceStateSchema,
+  eventSourceStates,
+} from './event-source-states.ts';
 export { addressHashKeyId, hashAddress } from './hash-address.ts';
 export {
   eventSourceSchema,
@@ -34,4 +40,5 @@ export { projectRecipient, type RecipientState } from './project-recipient.proje
 export { type SanitizeForJsonbResult, sanitizeForJsonb } from './sanitize-for-jsonb.ts';
 export { type SoftSignal, softSignalSchema } from './soft-signal.schema.ts';
 export { type StickySignal, stickySignalSchema } from './sticky-signal.schema.ts';
+export { type TokenScope, tokenScopeSchema, tokenScopes } from './token-scopes.ts';
 export { type WebhookEnvelope, webhookEnvelopeSchema } from './webhook-envelope.schema.ts';
