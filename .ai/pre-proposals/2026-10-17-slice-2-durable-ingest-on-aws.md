@@ -10,8 +10,8 @@
 | Track | Spine (0 → 1 → **2** → 3 → …) |
 | Touches | `packages/core`, `packages/shared`, `packages/db`, `packages/ingest`, `packages/worker`, `packages/api`, `packages/sdk`, `packages/aws`, `apps/ingest`, `apps/worker`, `apps/api`, `apps/kill-switch` (new), `apps/local`, `apps/cli`, `infra`, `scripts/`, root `package.json`, `.gitleaks.toml`, `.env.example`, `.ai/` docs, root `AGENTS.md`, seven skills' text |
 | Earlier pre-proposal | None for this slice |
-| Branch | `worktree-slice-2` (at `e62bf50`) |
-| Checked | Not yet |
+| Branch | `worktree-slice-2` (at `a0039a1`: `e62bf50` plus this document) |
+| Checked | 2026-10-17: 15 repaired, 0 for the owner |
 
 ## 1. Why now
 
@@ -88,7 +88,7 @@ Also out, each with its carrier:
 - **Env vars:** seven new public variables (§18), all owner-approved 2026-10-17. `pnpm db:setup`
   writes `LEDGER_TOKEN_TAG_KEY` and a real `LEDGER_TOKEN` locally (D41).
 - **`[Unverified]` rows the slice owes** ([about.md](../about.md#open-questions)): MUST settle
-  AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06; closed or safe either way: RS-U07, AWS-U03,
+  AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06; closed, or proved safe under both answers: RS-U07, AWS-U03,
   AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04; library bullets: the Lambda
   log-level filter, Drizzle identity on `bigint` and the identity-sequence grant, `pg`'s code-less
   errors, and the four CDK bundling and synth bullets. None blocks building; each settles in task
@@ -96,20 +96,21 @@ Also out, each with its carrier:
 
 ## 5. Reality check — per-`Ships`-item verdict
 
-Checked against the repo at `e62bf50` on 2026-10-17.
+Checked against the repo at `e62bf50` on 2026-10-17, and re-checked at `a0039a1` (no code changed
+since). Every `file:line` below is the file's own numbering.
 
 | # | Verdict | Evidence | What remains |
 | --- | --- | --- | --- |
-| 1 | **absent** | `infra/src/app.stack.ts:17-25` is empty (acknowledges F0001); `infra/src/app.stack.test.ts:50` asserts zero resources. `packages/shared/src/function-env.ts` does not exist. `apps/ingest/src/ingest.handler.ts`, `apps/worker/src/worker.handler.ts` and `apps/api/src/api.handler.ts` are `export {}` stubs. `packages/aws/src/index.ts` is `export {}` and lists no `@aws-sdk/*` dependency. `esbuild` is not a root dependency (only transitive copies 0.18.20, 0.25.12, 0.28.2 in `node_modules/.pnpm`) | Everything: function construct, stacks, names object, assertions, adapters, handlers |
+| 1 | **absent** | `infra/src/app.stack.ts:5-14` is empty (acknowledges F0001 at lines 9-12); `infra/src/app.stack.test.ts:10-12` asserts zero resources. `packages/shared/src/function-env.ts` does not exist. `apps/ingest/src/ingest.handler.ts`, `apps/worker/src/worker.handler.ts` and `apps/api/src/api.handler.ts` are `export {}` stubs. `packages/aws/src/index.ts` is `export {}` and lists no `@aws-sdk/*` dependency. `esbuild` is not a root dependency (only transitive copies 0.18.20, 0.25.12, 0.28.2 in `node_modules/.pnpm`) | Everything: function construct, stacks, names object, assertions, adapters, handlers |
 | 2 | **partial** | `packages/ingest/src/create-ingest.ts:81-137` already answers `200` after enqueue, `401` on no match and `503` on a rejected enqueue, with unit tests in `create-ingest.test.ts`. Secrets are static typed config (`create-ingest.ts:18-21`); no secret-reading port, no TTL cache, no Lambda adapter, no base64 decode | The Lambda handler with both encodings and its unit tests; the secret-reader port, the 5-minute cache and the `503` on an unreadable set (D13, D14) |
-| 3 | **partial** | `packages/worker/src/create-worker.ts:184-198` builds `batchItemFailures` from per-message results; `create-worker.int.test.ts` proves it on Postgres. No SQS-event adaptation exists | The worker handler (SQS records ↔ messages, response) and its batch-failure **unit** test (D17) |
-| 4 | **partial** | `packages/db/src/classify-database-error.ts:126-191` classifies connection errors, with `classify-database-error.test.ts`; `DatabaseUnavailableError` exists. `createWorker` has no `resume`, no retry, no pause; no event-source port; no schedule | The ADR-015 branch, `resume`, the event-source port and adapter, the resume event, the hourly schedule, `worker.resumeEventSource`, `ledger worker resume`, the classifier additions, the outage Testcontainers test (D9, D15–D17, D20) |
-| 5 | **absent** | No `api_tokens` schema (`packages/db/src/schema/` holds four files); `drizzle/` holds `0000` and `0001` only; no mint or tag check in `packages/shared`; `createApi` has no auth middleware (`create-api.ts:92-95`); the SDK has `emails` and `recipients` only; the CLI registers two commands (`create-program.ts:139-140`). All four token error codes already exist in core (`error-codes.ts:5-25`) | Table, migrations, repository, mint, middleware, four routes, SDK methods, four CLI commands, bootstrap issuance, tests |
+| 3 | **partial** | `packages/worker/src/create-worker.ts:31-44` builds `batchItemFailures` from per-message results; `create-worker.int.test.ts` proves it on Postgres. No SQS-event adaptation exists | The worker handler (SQS records ↔ messages, response) and its batch-failure **unit** test (D17) |
+| 4 | **partial** | `packages/db/src/classify-database-error.ts:6-71` classifies connection errors, with `classify-database-error.test.ts`; `DatabaseUnavailableError` exists. `createWorker` has no `resume`, no retry, no pause; no event-source port; no schedule | The ADR-015 branch, `resume`, the event-source port and adapter, the resume event, the hourly schedule, `worker.resumeEventSource`, `ledger worker resume`, the classifier additions, the outage Testcontainers test (D9, D15–D17, D20) |
+| 5 | **absent** | No `api_tokens` schema (`packages/db/src/schema/` holds four files); `drizzle/` holds `0000` and `0001` only; no mint or tag check in `packages/shared`; `createApi` has no auth middleware (`create-api.ts:92-95`); the SDK has `emails` and `recipients` only; the CLI registers two commands (`create-program.ts:25-26`). All four token error codes already exist in core (`error-codes.ts:5-24`) | Table, migrations, repository, mint, middleware, four routes, SDK methods, four CLI commands, bootstrap issuance, tests |
 | 6 | **absent** | No health route, reader or SDK method. The in-process queue keeps no enqueue time (`in-process-queue.adapter.ts:14-22`) | Route, reader, ports, SDK, CLI, the outage integration test |
-| 7 | **absent** | `infra/src/guardrails.stack.ts:31-40` is empty | The whole guardrails stack, `apps/kill-switch`, the trip and restore module, re-arm, trip drill, assertions |
-| 8 | **absent** | `scripts/verify.mjs:16-30`: no migration lint stage (its header names it "migration lint (slice 2)") | `scripts/migration-lint.mjs` with its canary, the `migrations` stage |
-| 9 | **absent** | No deploy or teardown script; root `package.json` has `synth` only. `prepareDatabase` exists (`packages/db/src/prepare-database.ts:64-79`) and is the step the deploy reuses | Both commands, every refusal and its test, the post-destroy listing |
-| 10 | **partial** | The runtime role exists and holds per-table DML (`drizzle/0001_grant-ledger-tables.sql`: `SELECT, INSERT` on `webhook_events`). `ensureRuntimeRole` (`prepare-database.ts:81-91`) creates the role only: no `ALTER ROLE … SET`. No refusal or idle-holder test | Role timeouts, the password path (D10), the three integration tests |
+| 7 | **absent** | `infra/src/guardrails.stack.ts:5-14` is empty | The whole guardrails stack, `apps/kill-switch`, the trip and restore module, re-arm, trip drill, assertions |
+| 8 | **absent** | `scripts/verify.mjs:17-35`: no migration lint stage (the comment at lines 13-14 names it "migration lint (slice 2)") | `scripts/migration-lint.mjs` with its canary, the `migrations` stage |
+| 9 | **absent** | No deploy or teardown script; root `package.json` has `synth` only. `prepareDatabase` exists (`packages/db/src/prepare-database.ts:23-38`) and is the step the deploy reuses | Both commands, every refusal and its test, the post-destroy listing |
+| 10 | **partial** | The runtime role exists and holds per-table DML (`drizzle/0001_grant-ledger-tables.sql`: `SELECT, INSERT` on `webhook_events`). `ensureRuntimeRole` (`prepare-database.ts:40-50`) creates the role only: no `ALTER ROLE … SET`. No refusal or idle-holder test | Role timeouts, the password path (D10), the three integration tests |
 | 11 | **absent** | integrations.md rows PG-U01, PG-U02, PG-U06 `[Unverified]` | Neon docs read; `pnpm aws:db-check` (D37) run against the deploy |
 | 12 | **partial** | RS-U14 is already settled ([RS-42](../resend.md#facts), slice 1); [resend.md → Onboarding reality](../resend.md#onboarding-reality) still lists the verify stage "Not done" | The deployed verify walk; AWS-U04 from the delivery's log line (D44). The RS-U14 clause needs no new work (C2) |
 | 13 | **already done** | `[x]` on the card; [RS-43](../resend.md#facts); [about.md → Resolved](../about.md#open-questions) | Nothing |
@@ -183,7 +184,7 @@ No error code is added: every code slice 2 raises is in the registry and the cor
 
 | Port | Methods | Implementations |
 | --- | --- | --- |
-| `SecretReaderPort` (`secret-reader.port.ts`) | `read(secretId: string): Promise<string>` | `SecretsManagerSecretReaderAdapter` (`packages/aws`); locally none: `apps/local` passes its parsed values straight to the factories (D13, D40) |
+| `SecretReaderPort` (`secret-reader.port.ts`) | `read(secretId: string): Promise<string>` | `SecretsManagerSecretReaderAdapter` (`packages/aws`); `StaticSecretReaderAdapter` (`packages/shared`) for local mode, built from the values `apps/local`'s config parsed, so the factory always takes the port ([pp-backend → Ports](../../.agents/skills/pp-backend/references/composition.md#ports), Secret reading row) (D13, D40) |
 | `EventSourceControlPort` (`event-source-control.port.ts`) | `getState(): Promise<EventSourceState>`, `enable(): Promise<void>`, `disable(): Promise<void>` | `LambdaEventSourceControlAdapter` (`packages/aws`), bound to one function name; `StaticEventSourceControlAdapter` (`packages/shared`, reports `enabled`, enable and disable are no-ops) for local mode ([worker.resumeEventSource](../api-contract.md#workerresumeeventsource): "In local mode it is a no-op that reports the state") |
 | `QueueAttributesPort` (`queue-attributes.port.ts`) | `read(): Promise<QueueSnapshot>`, `QueueSnapshot = { visible, inFlight, oldestAgeSeconds: number \| null, dlqVisible, dlqInFlight }` | `SqsQueueAttributesAdapter` (`packages/aws`: `GetQueueAttributes` on both queues, plus one CloudWatch statistic, C4); `InProcessQueueAdapter` implements it too (D40) |
 | `FunctionInvokePort` (`function-invoke.port.ts`) | `invoke(payload: unknown): Promise<unknown>` (synchronous: awaits the function's result) | `LambdaFunctionInvokeAdapter` (`packages/aws`, `RequestResponse`), bound to one function name; `InProcessFunctionInvokeAdapter` (`packages/shared`) over a local function |
@@ -192,6 +193,19 @@ The asynchronous invoke the dispatcher and reconciler need is slices 4 and 6's. 
 per port, go in `@ledger/shared/testing` (`FakeSecretReader`, `FakeEventSourceControl`,
 `FakeQueueAttributes`, `FakeFunctionInvoke`): each holds the state the port reads and writes, and a
 test asserts the resulting state ([pp-testing → fakes](../../.agents/skills/pp-testing/references/fakes-and-doubles.md#which-double-per-seam)).
+
+**Shared port contract suites.** Slice 2 gives five ports a second implementation: `QueuePort`
+(in-process, SQS), and the four above. Each port gets one suite in `@ledger/shared/testing`
+(`queuePortContract`, `secretReaderPortContract`, `eventSourceControlPortContract`,
+`queueAttributesPortContract`, `functionInvokePortContract`), run once per implementation: the local
+one directly, the `packages/aws` one over its stubbed client (D26). A suite holds only the behavior
+both implementations share (for `QueuePort`: `enqueue` resolves on acceptance and rejects on a
+failed send, which R4 rests on; for `EventSourceControlPort`: `getState` answers a member of
+`eventSourceStates` and `enable` / `disable` resolve); a behavior only one side has stays in that
+side's own test. Authority: [pp-testing → AWS adapters](../../.agents/skills/pp-testing/references/fakes-and-doubles.md#aws-adapters)
+("When a second implementation of the port exists, the adapter also runs the port's shared contract
+suite"); [shared contract suites](../../.agents/skills/pp-testing/references/vitest-layout.md#shared-contract-suites).
+
 Authority: ADR-013; pp-backend → Ports ("Each port's exact name and methods are settled by the slice
 that lands it").
 
@@ -275,12 +289,13 @@ The `key_id` check's read, `storedAddressHashKeyId`, is not a token function (D1
 `connectionTimeoutMillis: 5_000` and `query_timeout: 15_000` (named constants beside the factory,
 both below every function's timeout, D27). The classifier gains:
 
-- `pg`'s code-less `Query read timeout` (`pg` 8.23.1 `lib/client.js:707`, the `query_timeout` error),
+- `pg`'s code-less `Query read timeout` (`node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:707`, the `query_timeout` error),
   as connection-class. A server that answers no statement within 15 s, while the role's
   `lock_timeout` (10 s, D10) ends every lock wait server-side first, is unreachable for the worker's
   purposes. A misread pauses at most one hour (the hourly resume, [Risks](../architecture.md#risks--mitigations)).
 - `53100` (`disk_full`), Neon's likely storage-limit SQLSTATE, as ADR-015's out-of-storage class.
-  Safe either way until PG-U07 settles in slice 3: an unmatched code follows ADR-008, as today.
+  Safe under both answers until PG-U07 settles in slice 3: an unmatched code follows ADR-008, as
+  today.
 
 Authority: [pp-database → Connection](../../.agents/skills/pp-database/references/schema-and-repositories.md#connection)
 ("The values, and whether a `Query read timeout` error is connection-class, are the slice 2
@@ -324,16 +339,23 @@ probe also reads storage used and fails while it is at the storage budget's limi
 
 ### Ingest
 
-**D13 — The secret set on AWS.** `createIngest` takes `loadSecrets: () => Promise<IngestSecrets>` in
-place of the static `secrets`. Ingest caches the last successful result per container for
+**D13 — The secret set on AWS.** `createIngest` takes `secretReader: SecretReaderPort` and
+`signingSecretsId: string` in place of the static `secrets.resend`; `simulatorSecret: string |
+undefined` stays typed config until slice 3 gives the simulator secret its own read (ADR-016).
+Ingest reads `signingSecretsId` through the port and parses the value with Zod as a JSON array of
+`whsec_…` strings (the [Secrets layout](../integrations.md#secrets-layout) row), so the parse lives
+in `packages/ingest` and is tested once. It caches the last successful result per container for
 `SECRET_SET_TTL_MS = 300_000` against the clock port ([ADR-009](../architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance)).
-After the TTL it refreshes; a failed refresh, or a set with no secret at all, answers `503` with the
-fixed body `unavailable`, logs `ingest.secrets_unavailable` with `error_name`, enqueues nothing and
-emits no metric. A failed refresh never serves an expired set. On AWS, `apps/ingest`'s root builds
-`loadSecrets` from the `SecretReaderPort`: `ledger/webhook-signing-secrets` parsed with Zod as a JSON
-array of `whsec_…` strings (the [Secrets layout](../integrations.md#secrets-layout) row), simulator
-`undefined` until slice 3. Locally, `apps/local` passes `async () => config.secrets`. Authority:
-ADR-001, ADR-009, C12.
+After the TTL it refreshes; a failed read, a value that fails the parse, or a set with no secret at
+all (no Resend secret and no simulator secret) answers `503` with the fixed body `unavailable`, logs
+`ingest.secrets_unavailable` with `error_name`, enqueues nothing and emits no metric. A failed
+refresh never serves an expired set. On AWS, `apps/ingest`'s root passes the
+`SecretsManagerSecretReaderAdapter` and `SIGNING_SECRETS_ARN` (D2), simulator `undefined`. Locally,
+`apps/local` passes a `StaticSecretReaderAdapter` that answers `JSON.stringify` of its parsed
+`LEDGER_WEBHOOK_SECRETS` for the one id it was built with and rejects any other (D1). Authority:
+ADR-001, ADR-009, C12; [pp-backend → Ports](../../.agents/skills/pp-backend/references/composition.md#ports)
+(Secret reading: "locally `apps/local`'s `main.ts` passes a static implementation over the values
+its config parsed from `.env.local`, so the factory always takes the port").
 
 **D14 — `apps/ingest`.** `ingest.handler.ts` exports `createIngestHandler(ingest)` and
 `handler = createIngestHandler(<the root's ingest>)`. Per event (API Gateway payload 2.0,
@@ -399,7 +421,8 @@ It branches on the event:
 A thrown error from `processBatch` is rethrown as a constant (AWS-05: a thrown exception fails the
 whole batch, which is redelivered, never acknowledged). The root reads `ledger/database` once per
 container on the first invocation, through a memoized promise (D32), and builds the size-1 pool from
-it.
+it. Authority: ADR-008, AWS-05 ("a thrown exception" is complete failure); [pp-backend → Worker, per batch](../../.agents/skills/pp-backend/references/ingest-and-worker.md#worker-per-batch);
+the resume event's shape is this slice's to fix ([Database outage](../../.agents/skills/pp-backend/references/ingest-and-worker.md#database-outage-adr-015)).
 
 ### Read API
 
@@ -421,7 +444,12 @@ failed. `apps/local` enforces the same middleware ([Conventions](../api-contract
 
 **D19 — `health.get`** (`get-health.route.ts`, `GetHealthReader`): reads `QueueAttributesPort`,
 `EventSourceControlPort` and, under a try, `storageBytes`. A classified database error →
-`database.reachable: false`, `storage_bytes: null`; it never fails the response. An AWS read error →
+`database.reachable: false`, `storage_bytes: null`; it never fails the response. When the caller is
+`verified: false` (D18 step 2 already classified the database unreachable), the reader skips
+`storageBytes` and reports `reachable: false` at once. So a request makes at most one database
+attempt: on a database that hangs rather than refuses, two stacked attempts (15 s query timeout,
+then a 5 s reconnect and another 15 s, D9) would pass the read API's 25 s timeout and API Gateway's
+30 s (AWS-02), and `ledger health` would get `api_unavailable` exactly when Ships 6 says it answers. An AWS read error →
 `500 internal_error`, logged (§3 holds the tripwire for partial answers). The CloudWatch read is
 `GetMetricStatistics` of `AWS/SQS` `ApproximateAgeOfOldestMessage`, `Maximum`, dimension
 `QueueName` (the source queue URL's last segment), period 60 s over the last 5 minutes; no datapoint
@@ -432,7 +460,11 @@ failed. `apps/local` enforces the same middleware ([Conventions](../api-contract
 `{ "ledger": "resume-event-source" }`, parses the `ResumeResult` with Zod, and answers `200`
 `{ object: 'event_source', state, resumed }`. `probe_failed` → `503 database_unavailable` with
 §12's message. An invoke failure or a result that fails the parse → `500 internal_error`. On an
-enabled source it opens no database connection (the worker's step 1).
+enabled source it opens no database connection (the worker's step 1). Authority:
+[worker.resumeEventSource](../api-contract.md#workerresumeeventsource) ("It invokes the worker with
+the resume event … `database_unavailable` (the probe failed, so the source stays paused)");
+[pp-backend → Ports](../../.agents/skills/pp-backend/references/composition.md#ports) (Function
+invoke, synchronous: "API → worker resume").
 
 **D21 — Token routes** (each one route file, one command or reader, one mapper):
 
@@ -443,7 +475,9 @@ enabled source it opens no database connection (the worker's step 1).
   `name` matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; `scope` ∈ `tokenScopes`. Mints (D3), inserts
   with `bootstrap = false`, answers `201` with the row plus `token` (the plaintext, once).
 - `token.revoke` → `POST /tokens/{token_id}/revoke` (`operate`): `token_id` matches
-  `^[1-9][0-9]{0,15}$`. One transaction: `lockActiveOperate`, then `lockById`. No row →
+  `^[1-9][0-9]{0,14}$` (as does `token.list`'s `after`). `token_id` is a JSON number on the wire, so
+  the pattern stops at 15 digits, every value inside `Number.MAX_SAFE_INTEGER`: a 16-digit id could
+  round to a different row's id. The column is read with Drizzle's `bigint({ mode: 'number' })`. One transaction: `lockActiveOperate`, then `lockById`. No row →
   `404 token_not_found`. Already revoked → `200` with the row unchanged. Target active and
   `operate`, and the only active `operate` row → `409 last_operate_token`. Otherwise `markRevoked`,
   `200` with the revoked row. A token MAY revoke itself unless it is the last `operate` one.
@@ -462,7 +496,9 @@ route's path. Authority: [pp-backend → read-api](../../.agents/skills/pp-backe
 `handle(app)` from `@hono/aws-lambda`; the app is built on the first invocation from the memoized
 database secret (D32). The SDK ↔ API contract cases move into `@ledger/api/testing` as
 `readApiContract(name, make)` ([shared contract suites](../../.agents/skills/pp-testing/references/vitest-layout.md#shared-contract-suites):
-"written when the second implementation lands"). `apps/local/src/sdk-contract.int.test.ts` runs it
+"the same app object passes the same contract tests under `@hono/node-server` and through the
+Lambda adapter"; [pp-testing](../../.agents/skills/pp-testing/SKILL.md) writes a shared suite when "A
+second implementation of that port exists in the repo"). `apps/local/src/sdk-contract.int.test.ts` runs it
 under `@hono/node-server`; `apps/api/src/api-lambda-contract.int.test.ts` runs it through the
 `@hono/aws-lambda` handler with synthetic payload-2.0 events. Authority: ADR-019 Evidence ("the same
 app object passes the same contract tests … through the Lambda adapter (slice 2)").
@@ -523,8 +559,8 @@ A call only a script makes uses the concrete module: one implementation is no re
   | Function | Name | Memory | Timeout | Why the timeout |
   | --- | --- | --- | --- | --- |
   | ingest | `LedgerApp-ingest` | 256 MB | 10 s | Under Svix's 15 s delivery timeout (RS-10) and API Gateway's 30 s (AWS-02) |
-  | worker | `LedgerApp-worker` | 512 MB | 60 s | Ten messages one at a time, each bounded by the 15 s query timeout plus one 5 s reconnect; feeds the visibility timeout (AWS-08) |
-  | read API | `LedgerApp-api` | 256 MB | 25 s | Under the 30 s integration cap (AWS-02); one connect (5 s) plus one query (15 s) fits |
+  | worker | `LedgerApp-worker` | 512 MB | 60 s | The outage path fits with margin: one query timeout (15 s), the fresh connection (≤ 5 s) and the retry's query timeout (15 s) is 35 s, so D15 step 3's pause always runs before the function times out. A healthy batch of ten short transactions takes far less; a timeout anyway (a slow, not down, database) fails the whole batch, redelivered and absorbed on `svix_id` (AWS-05). Feeds the visibility timeout (AWS-08) |
+  | read API | `LedgerApp-api` | 256 MB | 25 s | Under the 30 s integration cap (AWS-02). A classified database error ends every request at its first database attempt (D18, D19), so one connect (5 s) plus one query (15 s) is the worst case; the resume invoke is one probe of the same size (D16) |
 
 - **Queues:** source retention 13 days, DLQ 14 days (AWS-07, AWS-09), SSE-SQS (no key, AWS-25),
   `maxReceiveCount` 5, visibility timeout `6 × 60 + 0 = 360` s derived in code (AWS-08). No physical
@@ -556,13 +592,18 @@ A call only a script makes uses the concrete module: one implementation is no re
   `DlqUrl`, `WorkerFunctionName`, `ThrottleRateLimit`, `ThrottleBurstLimit`.
 - **Tag:** `Tags.of(app).add('ledger-project', 'ledger')` once in `infra/src/main.ts`.
 
+Authority: ADR-008 (batch, `ReportBatchItemFailures`, `maxReceiveCount`), ADR-010 (no VPC, two
+stacks), each value's `AWS-NN` as cited; [aws.md → Budget alarms](../aws.md#budget-alarms) items 1
+and 7 (stack-prefixed names, the throttle, the usage trip); [pp-infra → cdk-app](../../.agents/skills/pp-infra/references/cdk-app.md).
+
 **D28 — The guardrails stack** (`LedgerGuardrails`; imports nothing from the app stack):
 
 - **Topics**, unencrypted ([AWS-35](../aws.md#aws-budgets-and-cost-anomaly-detection)), fixed names:
   `LedgerGuardrails-trip` (the kill switch subscribes) and `LedgerGuardrails-alert`. Each topic policy
   grants `SNS:Publish` to `budgets.amazonaws.com` and to `cloudwatch.amazonaws.com`, conditioned on
-  `aws:SourceAccount`. Granting CloudWatch explicitly is safe either way: a CDK topic policy replaces
-  the default policy, and the drill's alarm-driven trip (D36) proves the path. With
+  `aws:SourceAccount`. CloudWatch is granted explicitly whatever the default policy would allow,
+  because a CDK topic policy replaces the default one; the drill's alarm-driven trip (D36) proves
+  the path. With
   `LEDGER_ALERT_EMAIL` set, it subscribes to both topics (two confirmations, CBL-03).
 - **Budget** `LedgerGuardrails-monthly`: plain, monthly, cost, `CostTypes.IncludeCredit: false`
   (AWS-52), limit `LEDGER_BUDGET_USD` (default 50). Notifications (4 of AWS-33's 5): ACTUAL 50 %,
@@ -653,7 +694,18 @@ sequences with injected steps, so order and fail-closed behavior are unit-tested
 the env vars of §18, the context keys `ledger:commit`, `ledger:alertEmail`, `ledger:budgetUsd`,
 `ledger:killSwitch`, `ledger:budgetDrill` passed as `-c key=value`, and the CDK CLI spawned as
 `spawn(process.execPath, [require.resolve('aws-cdk/bin/cdk'), …])` (aws-cdk 2.1145.0 exports
-`./bin/cdk`; no shell). Steps, each fail-closed:
+`./bin/cdk`; no shell). Before step 1, the inputs are parsed with Zod, the boot-time assertion
+([pp-general → config-and-env](../../.agents/skills/pp-general/references/config-and-env.md)):
+`LEDGER_DEPLOY_DATABASE_URL`, `LEDGER_DEPLOY_DATABASE_POOLED_URL` and `LEDGER_ALERT_EMAIL` required;
+`LEDGER_ADDRESS_HASH_KEY` and `LEDGER_TOKEN_TAG_KEY` required as 64 lowercase hex. A missing or
+malformed one refuses, naming the variable, never its value; for either key the reason adds `run
+pnpm db:setup once to generate it`. The deploy command never generates a key: the address-hash key
+"is generated once by the setup script, and is placed in the `ledger/database` secret by the deploy
+command" ([data-modeling.md → PII & retention](../data-modeling.md#pii--retention)), and a key made
+per deploy would orphan every stored hash. `pnpm db:setup` writes both keys before it touches a
+database, so it generates them on a machine with no local Postgres too (it then ends `db:setup:
+failed: Postgres is unreachable …`, which root AGENTS.md → Commands says to expect beside
+`pnpm aws:deploy`, §22). Steps, each fail-closed:
 
 1. Refuse a working tree with tracked changes (`git status --porcelain --untracked-files=no`), so
    `DeployedCommit` names the code deployed.
@@ -720,9 +772,11 @@ Authority: [Budget alarms](../aws.md#budget-alarms) item 6.
 5. `restoreFromTrip`, then poll for the restored state.
 6. Print `reconcile → slice 4` (C7) and a summary without any id or URL.
 
-AWS-U01 settles separately, because a budget refresh takes hours (AWS-34): `pnpm aws:deploy
---budget-drill`, wait for the drill budget's notification (the trip email, then the kill switch's
-report), `pnpm aws:rearm`, then `pnpm aws:deploy` without the flag, which removes the drill budget.
+The recorded trip drill Ships 7 names has two parts, recorded together in the walk (§21 path G).
+This script is the alarm part, run in minutes. The budget part settles AWS-U01 and runs on its own
+clock, because a budget refresh takes hours (AWS-34): `pnpm aws:deploy --budget-drill`, wait for
+the drill budget's notification (the trip email, then the kill switch's report), `pnpm aws:rearm`,
+then `pnpm aws:deploy` without the flag, which removes the drill budget.
 Authority: [Budget alarms](../aws.md#budget-alarms) item 8; [pp-infra → Trip drill](../../.agents/skills/pp-infra/references/scripts.md#trip-drill).
 
 **D37 — `pnpm aws:db-check --email-id <id> [--idle-minutes <n>]`** (`db-check.ts`): reads
@@ -748,9 +802,10 @@ It prints `migrations: canary caught 1/1` and `migrations: <n> checked, <k> unma
 ADR-018; [the marker](../../.agents/skills/pp-database/references/migrations-and-grants.md#the-contract-step-marker).
 
 **D39 — The gitleaks rule.** `.gitleaks.toml` gains `ledger-api-token`, regex
-`ldg_[0-9a-f]{64}_[0-9a-f]{64}`; `secret-scan.mjs`'s canary gains one fake token of that shape. Lens
-clause 6: slice 2 is the first to mint a credential that can read the ledger. CBL-10's grep already
-names `ldg_`.
+`ldg_[0-9a-f]{64}_[0-9a-f]{64}`; `secret-scan.mjs`'s canary gains one fake token of that shape.
+CBL-10's grep already names `ldg_`. Authority: the decision lens, clause 6 (security exposure):
+slice 2 is the first to mint a credential that can read the ledger; [check-before-launch.md](../check-before-launch.md)
+CBL-10.
 
 ### Local mode
 
@@ -758,7 +813,8 @@ names `ldg_`.
 composition adds the auth middleware's key; `InProcessQueueAdapter` as `QueueAttributesPort` (it
 gains `enqueuedAt` per message: `visible` = messages waiting, `inFlight` = messages delivering,
 `oldestAgeSeconds` from the oldest `enqueuedAt`, `dlqVisible` = the dead list, `dlqInFlight` 0);
-`StaticEventSourceControlAdapter`; and `InProcessFunctionInvokeAdapter` over the local worker's
+`StaticEventSourceControlAdapter`; `StaticSecretReaderAdapter` over the parsed
+`LEDGER_WEBHOOK_SECRETS` (D13); and `InProcessFunctionInvokeAdapter` over the local worker's
 `resume`, which answers `already_enabled`. `--host` stays loopback-only; its refusal line drops
 "because local mode skips auth" and reads `refusing to start: --host must be 127.0.0.1, ::1 or
 localhost`. Slice 2B decides the bind for `docker compose`. Authority: C6, C10, ADR-013.
@@ -793,6 +849,14 @@ as the owner (`DATABASE_URL`), as slice 1's D30 connects locally. Authority: C9;
 | AWS-U12 | Safe either way: every handler's catch-at-edge unit test (D14, D17) | Safe |
 | PG-U04 | Safe either way (a connection error is retryable, D15); `--idle-minutes 6` observes it on the deploy | Safe |
 | Library bullets | Identity on `bigint` and the sequence grant: the `api_tokens` repository test inserting as `ledger_runtime`; `pg`'s code-less errors: D9's classifier test plus PG-U04; CDK bundling: D32's tests; synth without an account: `pnpm synth` in CI; CDK CLI entry: `aws-cdk/bin/cdk` (read 2026-10-17); Cost Explorer read cost: AWS-U10; Lambda level filter: moot under TEXT (C15) | Settle |
+
+Authority: [architecture.md → Open questions owed by slice](../architecture.md#open-questions-owed-by-slice)
+row 2 (which rows MUST settle and which MAY close safe under both answers); each row's own "What
+would settle it" in [aws.md](../aws.md#unverified) and [integrations.md](../integrations.md#unverified).
+PG-U01's wording: the row asks about "a project that a scheduled tick touches hourly", but slice 2's
+kept deploy opens no connection on an idle hour (R8) until slice 4's reconciler writes a
+`reconcile_runs` row each hour. The question put to Neon's docs or support is therefore what counts
+as activity, and whether an idle project is deleted, not only whether hourly ticks suffice (§24).
 
 **D43 — RS-U07 is proved safe by the exact-`200` contract**, with no experiment and no live write.
 Ingest answers `401` only for a request no configured secret verifies, and every infrastructure fault
@@ -1068,7 +1132,8 @@ exit `1` for the last two. Refusal reasons are constants naming the variable or 
 - **R12** `token.revoke` MUST be idempotent and MUST refuse to leave no active `operate` token, also
   under two concurrent revokes.
 - **R13** Re-running the deploy command MUST insert no second bootstrap token and print none.
-- **R14** The deploy command MUST refuse, before any migration or stack change: a dirty tree, a tripped
+- **R14** The deploy command MUST refuse, before any migration or stack change: a missing or malformed
+  required input (either key included), a dirty tree, a tripped
   stack, a disarming deploy, an unsafe contract step, a CBL-01 grep hit; and before writing the key, a
   mismatched `key_id`. It MUST deploy the guardrails stack before the app stack and MUST restore a
   recorded pause after `cdk deploy` started.
@@ -1163,9 +1228,10 @@ yet.
 **Self-service test** ([Guiding principles](../about.md#guiding-principles),
 [Adopter lifecycle](../features.md#adopter-lifecycle)):
 
-- **deploy:** one command, `pnpm aws:deploy`, after a Neon project and five `.env.local` lines. It
-  migrates, deploys both stacks, writes the secrets and prints the first `operate` token. No console
-  click, no SQL. The CDK bootstrap and the Neon project are one-time prerequisites the README names.
+- **deploy:** one command, `pnpm aws:deploy`, after a Neon project, three `.env.local` lines (the two
+  Neon URLs, `LEDGER_ALERT_EMAIL`) and the two keys `pnpm db:setup` generates (D33). It migrates,
+  deploys both stacks, writes the secrets and prints the first `operate` token. No console click, no
+  SQL, no hand-made key. The CDK bootstrap and the Neon project are one-time prerequisites the README names.
   Nothing owed.
 - **connect the webhook:** one documented manual step per installation, on the adopter's path:
   create the webhook in Resend (dashboard or `POST /webhooks`, RS-13), put its secret in
@@ -1209,13 +1275,14 @@ yet.
 | Ships 4 (resume path) | `packages/api/src/resume-event-source.route.int.test.ts` (int, `FakeFunctionInvoke`): `operate` → `200`; `read` → `403`; `probe_failed` → `503` with the override | — |
 | Ships 5, R9, R11–R13 | `packages/db/src/api-tokens.repository.int.test.ts` (int, as `ledger_runtime`): identity insert works (library bullet); scope tuple members insert, an outsider → `23514`; `insertBootstrapIfAbsent` twice → one row, second `undefined`; two concurrent revokes of the last two `operate` tokens → one `last_operate_token`. `packages/shared/src/api-token.test.ts` (unit): format, tag check, constant-time path, hash. `packages/api/src/auth.middleware.test.ts` (unit, database at `127.0.0.1:1`): no, malformed and bad-tag tokens → `401` with no connection attempted. `packages/api/src/*token*.route.int.test.ts`: unknown and revoked → `401`; `read` on each `operate` route → `403`; create → `201`, plaintext once, hash stored; list paging; revoke idempotent; `token_not_found`; `last_operate_token` | Auth; the bootstrap key; the revoke lock |
 | Ships 5 (deploy) | `infra/scripts/run-deploy.test.ts` (unit, fakes): a re-run inserts no second token and prints none; `--issue-operate-token` prints one | The bootstrap path in the deploy |
-| Ships 6, R10 | `packages/api/src/get-health.route.int.test.ts` (int, its own container, the real middleware): Postgres stopped → `GET /health` with a tagged token `200`, `reachable: false`; a bad-tag token → `401`; `GET /emails/{id}` → `503`. With Postgres up: the storage fields; the fakes' queue and source values pass through | The outage exception |
+| Ships 6, R10 | `packages/api/src/get-health.route.int.test.ts` (int, its own container, the real middleware): Postgres stopped → `GET /health` with a tagged token `200`, `reachable: false`; a bad-tag token → `401`; `GET /emails/{id}` → `503`. With Postgres up: the storage fields; the fakes' queue and source values pass through. `get-health.reader.test.ts` (unit): a `verified: false` caller makes no `storageBytes` call (D19) | The outage exception; the one-attempt bound |
 | Ships 8, R18 | The `migrations` stage itself: its `DROP COLUMN` canary on every run | The lint |
-| Ships 9, R14 | `infra/scripts/run-deploy.test.ts` (unit): each refusal (dirty tree, tripped, disarming, unsafe contract step over a throwaway git repo, CBL-01 hit, key mismatch) stops before the next step; guardrails before app; the pause restored also when deploy fails. `packages/db/src/deploy-checks.int.test.ts` (int): `storedAddressHashKeyId`, `pendingContractSteps` | Each refusal |
+| Ships 9, R14 | `infra/scripts/run-deploy.test.ts` (unit): each refusal (a missing or malformed key or URL, dirty tree, tripped, disarming, unsafe contract step over a throwaway git repo, CBL-01 hit, key mismatch) stops before the next step; guardrails before app; the pause restored also when deploy fails. `packages/db/src/deploy-checks.int.test.ts` (int): `storedAddressHashKeyId`, `pendingContractSteps` | Each refusal |
 | Ships 9, R15 | `infra/scripts/run-teardown.test.ts` (unit, fakes): non-empty queue or DLQ refuses without the flag; guardrails destroyed only after the app's success; a billable leftover exits `1`, a pending secret does not | The queue refusal; the order |
 | Ships 10, R17 | `packages/db/src/runtime-role.int.test.ts` (int): `DELETE FROM webhook_events` and `CREATE TABLE` as `ledger_runtime` → `42501`; `rolconfig` holds both settings. `packages/worker/src/idle-lock-holder.int.test.ts`: a runtime-role client locks the email row and idles → terminated, and the worker commits one row of everything ([harness → idle holder](../../.agents/skills/pp-testing/references/postgres-harness.md#faults-and-concurrency)) | The grants; the role timeouts |
 | R16 | `packages/aws/src/kill-switch.test.ts` (unit, stubbed clients): order (mapping first), every prefixed function, both throttle kinds, re-run issues no change; `restoreFromTrip` restores | The order; a missed function |
 | Adapters | One unit test per `packages/aws` module (D26) | Command drift |
+| D1, R4 | The five shared port contract suites in `@ledger/shared/testing` (unit), each run by both of its implementations: the local one directly, the AWS one over its stubbed client (D1) | Two implementations of one port drifting apart |
 | D40, D41, R19 | `apps/local/src/main.e2e.test.ts` (updated, no Docker): `GET /` without a token → `401`; `GET /health` with a tag-valid token over a placeholder `DATABASE_URL` → `200`, `reachable: false`; non-loopback host → exit `1`; missing `LEDGER_TOKEN_TAG_KEY` → exit `1` naming it. `merge-local-env.test.ts`: the tag key written once; `LEDGER_TOKEN` replaced only in its four cases | The local auth; the token repair |
 | D23 | `readApiContract` run by `apps/local/src/sdk-contract.int.test.ts` and `apps/api/src/api-lambda-contract.int.test.ts` (int): every operation's success and error paths through `createLedgerClient` | Adapter drift |
 | D25 | One `--json` test per new command ([cli-tests](../../.agents/skills/pp-cli/references/cli-tests.md#what-every-commands-test-asserts)), plus: `token create` plaintext on stdout once, never stderr; `token list`'s notice on `has_more` | Exit mapping; the plaintext rule |
@@ -1284,8 +1351,10 @@ needs no webhook update (§3).
   secret never pasted into a transcript. C2: put the secret in `LEDGER_DEPLOY_WEBHOOK_SECRETS`.
   C3 **Ask-first:** `pnpm aws:deploy` → the secret written. C4 **Ask-first:** one send to
   `delivered@resend.dev` (the format's worked example). C5: `pnpm -s ledger email <id> --json` →
-  `"status": "delivered"`. C6: `pnpm -s ledger health` → queue and DLQ at 0; the ingest log line's
-  `body_base64_count` read in CloudWatch Logs Insights (AWS-U04).
+  `"status": "delivered"`. C6: `pnpm -s ledger health` → queue and DLQ at 0; then
+  `aws logs filter-log-events --log-group-name /ledger/LedgerApp-ingest --filter-pattern '"ingest.request_decoded"'`
+  (read-only; the line carries allow-listed fields only) → the delivery's `body_base64_count`
+  (AWS-U04).
 - **Path D — support lookup, deployed (Support / on-call engineer).** D1: `ledger email <id>`,
   human layout. D2: `ledger recipient delivered@resend.dev` → `ok`, masked.
 - **Path E — operate the deployed pipeline (Operator).** E1: `curl` `$LEDGER_URL/health` with no
@@ -1397,7 +1466,8 @@ Change `slice-2-durable-ingest-on-aws` at `openspec/changes/slice-2-durable-inge
 Task groups, each one or more commits pushed as it lands:
 
 1. **Dependencies** (Ask-first, §7). Gate `pnpm check`.
-2. **Kernel and core:** ports and fakes, `function-env.ts`, token mint, EMF adapter, logger context,
+2. **Kernel and core:** ports, fakes, the static and in-process local implementations and the five
+   port contract suites (D1), `function-env.ts`, token mint, EMF adapter, logger context,
    `tokenScopes`, `eventSourceStates`; unit tests.
 3. **Database** (schema + migrations + Model index tick in one commit): `api_tokens`, repository,
    `prepareDatabase` (timeouts, password), classifier additions, storage read, deploy helpers; int
@@ -1405,7 +1475,8 @@ Task groups, each one or more commits pushed as it lands:
    container helper. Gate `pnpm check` + `pnpm test:int`.
 4. **Gate stages** (Ask-first CI): `migration-lint.mjs` and the `migrations` stage; the gitleaks rule
    and canary.
-5. **`packages/aws`:** every module of D26 with its stubbed-client test.
+5. **`packages/aws`:** every module of D26 with its stubbed-client test; each port adapter also runs
+   its port's contract suite (D1).
 6. **Ingest:** `loadSecrets`, the cache and the `503`; `apps/ingest`; tests (Ships 2).
 7. **Worker:** the ADR-015 branch, `resume`; `apps/worker`; unit and int tests (Ships 3, 4).
 8. **Read API:** middleware, health, resume, tokens; route tests; `readApiContract`;
@@ -1435,6 +1506,7 @@ Task groups, each one or more commits pushed as it lands:
 | `pg_database_size` and Neon's storage accounting differ | Medium | The probe pauses early or late | D11's 95 % threshold; PG-U07 in slice 3 |
 | The budget-drill notification takes longer than a day | Low | The slice closes later | Start G4 right after the first deploy |
 | Identity inserts need a sequence grant | Low | One extra line in `0003` | The repository int test, before the migration freezes |
+| Neon's inactivity rule (PG-U01) reaches an idle Free project in AWS regions, and the kept slice 2 deploy, which opens no connection on an idle hour (R8), sees no traffic for that long before slice 4's hourly reconciler lands | Unknown until PG-U01 settles | The ledger is deleted (lens clause 6) | PG-U01 read at apply, before the first deploy; the answer goes to the owner with what counts as activity |
 
 ## 25. Owner ops still open
 
@@ -1446,7 +1518,8 @@ Task groups, each one or more commits pushed as it lands:
 - **Confirm** both SNS email subscriptions after the first deploy and after the redeploy (CBL-03).
 - **Resend:** create the production webhook for the printed ingest URL and copy its secret into
   `LEDGER_DEPLOY_WEBHOOK_SECRETS` yourself (it is a signing secret, RS-05); approve the verify send.
-- **PG-U01:** if Neon's docs do not settle the 90-day rule for an AWS-region project touched hourly,
-  ask Neon support; the change records the answer.
+- **PG-U01:** if Neon's docs do not settle the 90-day rule for an AWS-region Free project, ask Neon
+  support what counts as activity. Slice 2's kept deploy touches the database only on traffic (R8);
+  from slice 4 the reconciler touches it hourly. The change records the answer (D42).
 - **AWS-U02's billing half:** read API Gateway usage in Cost Explorer for the drill day.
 - **Approve each live action** when it runs (§7: AWS runs, live Resend writes).
