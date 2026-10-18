@@ -131,6 +131,9 @@ async function check(): Promise<0 | 1> {
     }
     const first = openPool(pooledUrl);
     const second = openPool(pooledUrl);
+    // B connects before A takes the lock, so B's measured wait is the lock wait alone, never a cold
+    // pooler connect that could read as serialization with no lock held.
+    await databaseRepository.sessionTimeouts(second.db);
     let markLocked: () => void = () => {};
     const locked = new Promise<void>((resolve) => {
       markLocked = resolve;
@@ -140,7 +143,8 @@ async function check(): Promise<0 | 1> {
       markLocked();
       await sleep(LOCK_HOLD_MS);
     });
-    await locked;
+    // A holder that fails before it locks ends the check as `failed` instead of waiting forever.
+    await Promise.race([locked, holder]);
     const askedAt = performance.now();
     const waiter = runTransaction(second, async (tx) => {
       await emailStateRepository.lockEmail(tx, emailId);
