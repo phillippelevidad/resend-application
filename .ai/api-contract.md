@@ -30,8 +30,8 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
     `LEDGER_ADDRESS_HASH_KEY` (the address-hash key, 64 hex characters, written once by
     `pnpm db:setup` and never changed; [data-modeling.md → PII & retention](data-modeling.md#pii--retention)),
     `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`, `AWS_PROFILE`, and any such variable added later.
-  - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
-    mapping UUID, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
+  - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's function
+    name, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
     `as const` object per function, imported by `infra/src/function-env.ts`, which sets each value
     only on its reader, and by each `apps/*` `.config.ts` for its schema keys; one `Template`
     assertion per function checks it carries exactly its keys
@@ -217,7 +217,7 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
 - **In / Out:** none → health summary. It has no table of its own: the queue and event-source fields come from SQS and Lambda, and only the storage, last-run and outbox fields read Postgres ([reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run), [outbox](data-modeling.md#outbox--reactions-awaiting-delivery))
 - **Errors:** none of its own. It MUST answer during a database outage, reporting the database as unreachable rather than failing, because an outage is when the operator needs it. Auth then rests on the token's tag alone ([Conventions → Auth](#conventions))
-- **Idempotency / rate limit:** idempotent. No Resend call. One SQS attribute read and one Lambda read per call, inside the free tier (AWS-24)
+- **Idempotency / rate limit:** idempotent. No Resend call. Per call: two SQS attribute reads (the source queue and the DLQ), one Lambda read (the worker's event source mapping) and one CloudWatch statistic (`GetMetricStatistics` of `ApproximateAgeOfOldestMessage`, since `GetQueueAttributes` returns no age; AWS-22), inside the free tiers (AWS-24, AWS-57)
 - **Slices:** 2 — Durable ingest on AWS; 4 — Recovery; 2B — Local-mode queue and docker compose; 6 — Reactions
 
 #### gaps.list
