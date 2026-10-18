@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { serve } from '@hono/node-server';
 import { createApi } from '@ledger/api';
-import { createDatabase } from '@ledger/db';
+import { createDatabase, STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { createIngest } from '@ledger/ingest';
 import {
   type ClockPort,
@@ -12,6 +12,8 @@ import {
   type Logger,
   LogMetricsAdapter,
   loadConfig,
+  StaticEventSourceControlAdapter,
+  StaticSecretReaderAdapter,
 } from '@ledger/shared';
 import { createWorker } from '@ledger/worker';
 import { ingestFetch } from './ingest-fetch.ts';
@@ -90,15 +92,28 @@ function start({ port, host }: Flags, config: LocalConfig): void {
   const apiDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: apiLogger });
 
   const queue = new InProcessQueueAdapter({ clock, logger: workerLogger });
+  // D13: ingest reads its signing-secret set through the port in both runtimes; locally the set is
+  // the parsed `LEDGER_WEBHOOK_SECRETS`, held under one local id in the JSON form Secrets Manager
+  // holds on AWS.
+  const signingSecretsId = 'local/webhook-signing-secrets';
   const ingest = createIngest({
-    secrets: config.secrets,
+    secretReader: new StaticSecretReaderAdapter(
+      signingSecretsId,
+      JSON.stringify(config.secrets.resend),
+    ),
+    signingSecretsId,
+    simulatorSecret: config.secrets.simulator,
     queue,
     clock,
     logger: ingestLogger,
     metrics: new LogMetricsAdapter(ingestLogger),
   });
   const worker = createWorker({
-    db: workerDatabase.db,
+    database: workerDatabase,
+    // D40: no event source mapping to pause locally; it reports `enabled`, so `resume` answers
+    // `already_enabled` and opens no connection.
+    eventSource: new StaticEventSourceControlAdapter(),
+    storageLimitBytes: STORAGE_LIMIT_BYTES,
     clock,
     logger: workerLogger,
     metrics: new LogMetricsAdapter(workerLogger),

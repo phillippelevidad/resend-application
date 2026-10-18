@@ -22,7 +22,7 @@ let record: RecordEventCommand;
 beforeAll(async () => {
   t = await createTestDatabase();
   record = new RecordEventCommand({
-    db: t.db,
+    database: t.database,
     clock,
     metrics: new RecordingMetrics(),
     addressHashKey: key,

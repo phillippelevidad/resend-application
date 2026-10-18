@@ -114,12 +114,25 @@ One `RecordEventCommand`-shaped transaction per message ([commands-and-readers.m
   The probe also reads storage used and fails while it is at the storage budget's limit: a
   read-only probe succeeds on a full database, which would re-enable, fail and re-pause hourly,
   spending receives until the queue drained ([ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
-- The resume event's shape, and how the worker learns its own ESM UUID (an internal variable CDK
-  sets, or a lookup), are the pre-proposal of the slice that ships the pause and resume (slice 2).
+- **The fresh connection is built, not assumed.** `RecordEventCommand` runs its transaction through
+  `packages/db`'s `runTransaction`, which discards a connection that failed connection-class instead
+  of handing it back to the size-1 pool, so the retry connects anew and never waits on a hung socket
+  (slice 2, D15).
+- **The resume event** is `{ "ledger": "resume-event-source" }`, Zod-parsed by `apps/worker`'s
+  handler beside the SQS batch; it answers `ResumeResult`, `{ outcome: 'resumed' |
+  'already_enabled' | 'probe_failed'; state }`. The hourly schedule sends it asynchronously, the
+  read API's `worker.resumeEventSource` synchronously through the function invoke port (slice 2,
+  D16, D17).
+- **The worker finds its own ESM by its own name**, read from the reserved `AWS_LAMBDA_FUNCTION_NAME`
+  (AWS-56): `LambdaEventSourceControlAdapter` lists the function's mappings once per container,
+  requires exactly one and caches its UUID. A function cannot carry its own mapping's UUID as a
+  variable, because that reference would be a CloudFormation cycle (slice 2, D16, C5).
 
 ## Evidence these paths owe
 
 The tier rules are [pp-workflow → Test tiers](../../pp-workflow/SKILL.md#test-tiers); the harness is
 [pp-testing](../../pp-testing/SKILL.md#postgres-harness). Duplicate delivery → one row; crash between
 steps → nothing or everything; two emails sharing a recipient → no deadlock, both projected
-(slice 1); batch-failure unit test; database stopped → no message in the DLQ (slice 2).
+(slice 1); batch-failure unit test ([create-worker-handler.test.ts](../../../../apps/worker/src/create-worker-handler.test.ts));
+database stopped → no message in the DLQ ([database-outage.int.test.ts](../../../../packages/worker/src/database-outage.int.test.ts));
+the resume probe ([resume.int.test.ts](../../../../packages/worker/src/resume.int.test.ts)) (slice 2).

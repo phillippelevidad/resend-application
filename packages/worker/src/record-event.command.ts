@@ -14,6 +14,7 @@ import {
   emailRecipientsRepository,
   emailStateRepository,
   recipientStateRepository,
+  runTransaction,
   type Transaction,
   webhookEventsRepository,
 } from '@ledger/db';
@@ -21,7 +22,8 @@ import { type ClockPort, LedgerError, type MetricsPort } from '@ledger/shared';
 import { type LedgerRow, toLedgerRow } from './to-ledger-row.ts';
 
 export type RecordEventDeps = {
-  db: Database['db'];
+  // The whole handle, not just Drizzle's: `runTransaction` checks its client out of the pool (D15).
+  database: Database;
   clock: ClockPort;
   metrics: MetricsPort;
   // D2: the 32-byte address-hash key the composition root decoded.
@@ -55,14 +57,16 @@ const toRecipientState = (row: EmailRecipientRow): EmailRecipientState => ({
 // D14: one transaction per message at READ COMMITTED (the Postgres default ADR-004 relies on): the
 // ledger insert and every projection write commit together or not at all. No external call runs
 // inside it, and the metrics are emitted after the commit, so a rolled-back attempt counts nothing.
+// Slice 2, D15: the transaction runs through `runTransaction`, which discards a connection that
+// failed connection-class, so the worker's ADR-015 retry runs on a fresh one.
 export class RecordEventCommand {
-  readonly #db: Database['db'];
+  readonly #database: Database;
   readonly #clock: ClockPort;
   readonly #metrics: MetricsPort;
   readonly #addressHashKey: Uint8Array;
 
-  constructor({ db, clock, metrics, addressHashKey }: RecordEventDeps) {
-    this.#db = db;
+  constructor({ database, clock, metrics, addressHashKey }: RecordEventDeps) {
+    this.#database = database;
     this.#clock = clock;
     this.#metrics = metrics;
     this.#addressHashKey = addressHashKey;
@@ -78,18 +82,21 @@ export class RecordEventCommand {
     // D17.
     const ledgerRow = toLedgerRow(envelope, payload, this.#addressHashKey);
 
-    const outcome = await this.#db.transaction(async (tx): Promise<RecordEventOutcome> => {
-      // Step 3, ADR-004: the primary key dedupes; no row returned is a duplicate.
-      if (!(await webhookEventsRepository.insertIfAbsent(tx, ledgerRow.row))) {
-        return 'duplicate';
-      }
-      // Step 4: stored raw, never projected, never dead-listed (ADR-004).
-      if (!ledgerRow.projectable) {
-        return 'unprojectable';
-      }
-      await project(tx, ledgerRow);
-      return 'projected';
-    });
+    const outcome = await runTransaction(
+      this.#database,
+      async (tx): Promise<RecordEventOutcome> => {
+        // Step 3, ADR-004: the primary key dedupes; no row returned is a duplicate.
+        if (!(await webhookEventsRepository.insertIfAbsent(tx, ledgerRow.row))) {
+          return 'duplicate';
+        }
+        // Step 4: stored raw, never projected, never dead-listed (ADR-004).
+        if (!ledgerRow.projectable) {
+          return 'unprojectable';
+        }
+        await project(tx, ledgerRow);
+        return 'projected';
+      },
+    );
 
     // Step 9 and D16, after the commit.
     const svixId = envelope.svixId;

@@ -7,7 +7,8 @@
   "dependencies": {
     "@ledger/aws": "workspace:*",
     "@ledger/core": "workspace:*",
-    "@ledger/shared": "workspace:*"
+    "@ledger/shared": "workspace:*",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "vitest": "catalog:"

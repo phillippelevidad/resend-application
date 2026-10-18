@@ -5,7 +5,7 @@ import { LedgerError, type Logger } from '@ledger/shared';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Client, escapeIdentifier, Pool } from 'pg';
 import { inject } from 'vitest';
-import { createDatabase } from './create-database.ts';
+import { createDatabase, type Database } from './create-database.ts';
 import { RUNTIME_ROLE } from './prepare-database.ts';
 import {
   preparePostgres,
@@ -18,6 +18,9 @@ export type TestDatabase = {
   // Connected as the runtime role, through the deployed factory: what tests pass to repositories,
   // commands and readers, so a missing grant fails as `permission denied`.
   db: NodePgDatabase;
+  // The same size-1 pool as `db` with its Drizzle handle, for code that takes the whole `Database`:
+  // the worker's `runTransaction` checks clients out of the pool itself (D15).
+  database: Database;
   // The runtime role's URL for this clone, for a test that opens its own size-1 pools (a
   // concurrency test simulates one per Lambda container, ADR-005).
   runtimeUrl: string;
@@ -55,6 +58,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
 
   return {
     db: runtime.db,
+    database: runtime,
     runtimeUrl,
     owner: drizzle({ client: ownerPool }),
     drop: async () => {

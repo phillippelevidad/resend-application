@@ -59,7 +59,7 @@ beforeAll(async () => {
 
   // Seeded through the worker's command, so the API reads exactly what the worker commits.
   const record = new RecordEventCommand({
-    db: t.db,
+    database: t.database,
     clock: new FakeClock('2026-10-17T12:01:00.000Z'),
     metrics: new RecordingMetrics(),
     addressHashKey,

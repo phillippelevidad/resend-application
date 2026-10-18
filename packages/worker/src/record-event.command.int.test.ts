@@ -18,12 +18,13 @@ import {
   emailRecipientsRepository,
   emailStateRepository,
   recipientStateRepository,
+  STORAGE_LIMIT_BYTES,
   type Transaction,
   webhookEventsRepository,
 } from '@ledger/db';
 import { createTestDatabase, sqlStateOf, type TestDatabase } from '@ledger/db/testing';
 import type { Logger } from '@ledger/shared';
-import { FakeClock, RecordingMetrics } from '@ledger/shared/testing';
+import { FakeClock, FakeEventSourceControl, RecordingMetrics } from '@ledger/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorker } from './create-worker.ts';
 import { RecordEventCommand } from './record-event.command.ts';
@@ -103,8 +104,8 @@ function body(svixId: string, payload: Payload): string {
   return JSON.stringify(envelope);
 }
 
-function command(metrics: RecordingMetrics, db: Database['db'] = t.db): RecordEventCommand {
-  return new RecordEventCommand({ db, clock, metrics, addressHashKey: key });
+function command(metrics: RecordingMetrics, database: Database = t.database): RecordEventCommand {
+  return new RecordEventCommand({ database, clock, metrics, addressHashKey: key });
 }
 
 const metricLines = (metrics: RecordingMetrics, name: string) =>
@@ -301,10 +302,10 @@ describe('one ledger row per event (ADR-004)', () => {
     const release = await holdInOwnerTransaction((tx) =>
       emailStateRepository.lockEmail(tx, emailId),
     );
-    const first = command(metricsA, workerA.db).execute({ body: message });
+    const first = command(metricsA, workerA).execute({ body: message });
     await waitUntilBlockedOnLock('worker_a');
     // B waits on A's uncommitted `svix_id`.
-    const second = command(metricsB, workerB.db).execute({ body: message });
+    const second = command(metricsB, workerB).execute({ body: message });
     await waitUntilBlockedOnLock('worker_b');
     await release();
 
@@ -326,7 +327,9 @@ describe('one ledger row per event (ADR-004)', () => {
     );
     const metrics = new RecordingMetrics();
     const worker = createWorker({
-      db: t.db,
+      database: t.database,
+      eventSource: new FakeEventSourceControl(),
+      storageLimitBytes: STORAGE_LIMIT_BYTES,
       clock,
       logger: silentLogger,
       metrics,
@@ -412,7 +415,9 @@ describe('unstorable characters never dead-letter an event (D3)', () => {
     const svixId = fresh('msg_surrogate');
     const metrics = new RecordingMetrics();
     const worker = createWorker({
-      db: t.db,
+      database: t.database,
+      eventSource: new FakeEventSourceControl(),
+      storageLimitBytes: STORAGE_LIMIT_BYTES,
       clock,
       logger: silentLogger,
       metrics,
@@ -487,7 +492,9 @@ describe('unprojectable events are stored raw (ADR-004, D19)', () => {
       const payload = payloadFor(emailId);
       const metrics = new RecordingMetrics();
       const worker = createWorker({
-        db: t.db,
+        database: t.database,
+        eventSource: new FakeEventSourceControl(),
+        storageLimitBytes: STORAGE_LIMIT_BYTES,
         clock,
         logger: silentLogger,
         metrics,
@@ -579,7 +586,7 @@ describe('projections equal the event set (ADR-003)', () => {
 });
 
 describe('lock order prevents deadlock (ADR-004)', () => {
-  type Side = { db: Database['db']; name: string };
+  type Side = { database: Database; name: string };
 
   // `held` is named only by the first email and sorts after both shared recipients, so in sorted
   // order the first message takes both shared rows, then waits on the owner's uncommitted `held`
@@ -609,9 +616,13 @@ describe('lock order prevents deadlock (ADR-004)', () => {
         { addressHash: hashAddress(key, held), addressMasked: 'd***', deliverability: 'ok' },
       ]),
     );
-    const firstRun = command(new RecordingMetrics(), first.db).execute({ body: firstMessage });
+    const firstRun = command(new RecordingMetrics(), first.database).execute({
+      body: firstMessage,
+    });
     await waitUntilBlockedOnLock(first.name);
-    const secondRun = command(new RecordingMetrics(), second.db).execute({ body: secondMessage });
+    const secondRun = command(new RecordingMetrics(), second.database).execute({
+      body: secondMessage,
+    });
     await waitUntilBlockedOnLock(second.name);
     await release();
 
@@ -621,10 +632,16 @@ describe('lock order prevents deadlock (ADR-004)', () => {
   }
 
   it('two emails sharing recipients in opposite data.to order commit when A holds and B waits', async () => {
-    await interleave({ db: workerA.db, name: 'worker_a' }, { db: workerB.db, name: 'worker_b' });
+    await interleave(
+      { database: workerA, name: 'worker_a' },
+      { database: workerB, name: 'worker_b' },
+    );
   });
 
   it('two emails sharing recipients in opposite data.to order commit when B holds and A waits', async () => {
-    await interleave({ db: workerB.db, name: 'worker_b' }, { db: workerA.db, name: 'worker_a' });
+    await interleave(
+      { database: workerB, name: 'worker_b' },
+      { database: workerA, name: 'worker_a' },
+    );
   });
 });

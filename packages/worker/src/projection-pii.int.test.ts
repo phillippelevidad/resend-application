@@ -52,7 +52,7 @@ async function rowsOf(table: string): Promise<Record<string, unknown>[]> {
 describe('no raw PII in projection rows (projection-privacy)', () => {
   it('no text column of any projection row holds a normalized address, the raw from or the raw subject', async () => {
     const command = new RecordEventCommand({
-      db: t.db,
+      database: t.database,
       clock: new FakeClock('2026-10-17T12:01:00.000Z'),
       metrics: new RecordingMetrics(),
       addressHashKey: key,
