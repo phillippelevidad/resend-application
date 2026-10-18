@@ -105,6 +105,20 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
 - The suite lives in the `testing.ts` surface of the package that declares the port or the
   contract, and is written when the **second** implementation lands, not before
   ([Case-by-case](../SKILL.md#case-by-case)).
+- **Slice 2's five**, in `packages/shared/src/testing/<port>-port-contract.ts`, exported through
+  `@ledger/shared/testing` (D1). Each takes a name and a `make` that builds a fresh implementation
+  per case, plus the controls the shared cases need:
+
+  | Suite | `make` | Shared cases |
+  | --- | --- | --- |
+  | `queuePortContract` | `() => { port, failSends, accepted }` | `enqueue` resolves on acceptance, the raw body byte-identical; after `failSends()` it rejects and nothing is accepted (R4) |
+  | `secretReaderPortContract` | `({ secretId, value }) => port` | `read` answers the value for its id; rejects any other id |
+  | `eventSourceControlPortContract` | `() => port` | `getState` answers a member of `eventSourceStates`; `enable` and `disable` resolve |
+  | `queueAttributesPortContract` | `() => { port, holdWaiting(count, oldestAgeSeconds) }` | Empty reads all zeros and `oldestAgeSeconds: null`; waiting messages read `visible` with their age |
+  | `functionInvokePortContract` | `(fn) => port` | `invoke` resolves with `fn`'s result for the payload; rejects when `fn` fails |
+
+  The local side runs each in its own test in `packages/shared` (the in-process queue runs two); the
+  `packages/aws` side, over its stubbed client ([AWS adapters](fakes-and-doubles.md#aws-adapters)).
 - Each implementation's own test file calls it, plus that implementation's specifics.
 - The queue suite asserts at-least-once delivery, never exactly-once (AWS-06): exactly-once effects
   are the worker's job, on `svix_id` ([ADR-004](../../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).

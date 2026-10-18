@@ -18,7 +18,7 @@ are [pp-backend → Ports](../../pp-backend/references/composition.md#ports)'s.
 | A `packages/aws` adapter | Its [port contract](#aws-adapters) with the SDK client stubbed | An SQS fake in a consumer's test |
 | Postgres | The [harness](postgres-harness.md): real Postgres | A mocked client, a stubbed repository |
 | Logger | The real logger, its output captured: `createLogger({ functionName, stream })` with a sink (`{ write: (chunk) => lines.push(chunk) }`) gets the same format and allow-list over a Winston Stream transport, one JSON line per call ([logging-and-pii.md](../../pp-general/references/logging-and-pii.md#logger), D15) | Asserting the logger was called; assert the line |
-| Event source control, queue attributes, function invoke, DLQ, secret reading ([ports](../../pp-backend/references/composition.md#ports)) | A stateful fake from `@ledger/shared/testing` holding what the port reads and writes (`enabled`, depth, a scripted invoke answer); the test asserts the resulting state (`enabled: false` after an outage) | A recorded-call stub asserting "disable was called" |
+| Event source control, queue attributes, function invoke, DLQ, secret reading ([ports](../../pp-backend/references/composition.md#ports)) | A stateful fake from `@ledger/shared/testing` holding what the port reads and writes; the test asserts the resulting state (`state: 'paused'` after an outage). Slice 2's four: `FakeEventSourceControl` (`state`; `failGetState`, `failEnable`, `failDisable`), `FakeQueueAttributes` (`snapshot`, `failing`), `FakeFunctionInvoke` (the scripted `answer`, `failing`, the `payloads` it was sent), `FakeSecretReader` (`secrets` by id, `failing`, `reads`). A failing fake rejects with a plain `FakeFailure` error carrying no registry code, as an SDK failure would. The DLQ fake is slice 3's | A recorded-call stub asserting "disable was called" |
 | SDK, for CLI and MCP tests | A fake SDK ([pp-cli](../../pp-cli/SKILL.md#output-and-exit-codes), [pp-mcp](../../pp-mcp/SKILL.md#tool-registration-and-least-privilege)) | The database |
 
 - A fake lives in the `testing.ts` surface of the package that owns the port or the client, named
@@ -69,7 +69,8 @@ A `packages/aws` adapter is the outermost seam: its own dependency is the AWS SD
   (AWS-21's one active task per queue), the stub cannot prove the mapping: the slice's walk triggers
   it once on the deployed stack and records the observed name beside the test.
 - When a second implementation of the port exists, the adapter also runs the port's
-  [shared contract suite](vitest-layout.md#shared-contract-suites).
+  [shared contract suite](vitest-layout.md#shared-contract-suites), its `make` building the adapter
+  over the stubbed client (slice 2: all five of `packages/aws`'s port adapters).
 - These are `*.test.ts`: no Postgres, no Docker.
 
 ## DLQ redrive
