@@ -145,12 +145,12 @@ secret.
 
 ## 14. Walkthrough
 
-- [ ] 14.1 Write `openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (names only, `read -rs LEDGER_TOKEN`); paths A, B, G, T, C, D, E, F in that order with their personas; every AWS action and live Resend write marked `**Ask-first:**`; the walk's teardown; the "cannot reach today" table. Verify: every card `UI surfaces` entry is reached by a numbered step; the Operator, Application developer, Support / on-call engineer and Reviewer each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; no step carries a blocked word without `→ slice N`; `node scripts/check-links.mjs openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH.md` exits 0.
+- [x] 14.1 Write `openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (names only, `read -rs LEDGER_TOKEN`); paths A, B, G, T, C, D, E, F in that order with their personas; every AWS action and live Resend write marked `**Ask-first:**`; the walk's teardown; the "cannot reach today" table. Verify: every card `UI surfaces` entry is reached by a numbered step; the Operator, Application developer, Support / on-call engineer and Reviewer each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; no step carries a blocked word without `→ slice N`; `node scripts/check-links.mjs openspec/changes/slice-2-durable-ingest-on-aws/WALKTHROUGH.md` exits 0.
 - [ ] 14.2 Verify every `Ships` box on the card is ticked (13 already was), or `Status` is `[!]` with its reason from 13.8. `Status` stays `[~]` until the walk passes (Workflow follow-up). Commit and push. Verify: `git status --short` is empty after the push.
 
 ## 15. Gate
 
-- [ ] 15.1 Run `pnpm exec openspec validate slice-2-durable-ingest-on-aws --type change --strict`. Verify: it reports the change is valid.
+- [x] 15.1 Run `pnpm exec openspec validate slice-2-durable-ingest-on-aws --type change --strict`. Verify: it reports the change is valid.
 - [ ] 15.2 After the final push, run `gh run list --branch worktree-slice-2 --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `migrations` stage passing. Report an in-progress run as in progress.
 - [ ] 15.3 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
 
