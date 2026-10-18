@@ -47,6 +47,19 @@ const template = Template.fromStack(
   }),
 );
 
+// The guardrails stack at its most (armed, with the drill budget and an alert address), for the
+// alarm count across both stacks. Synthesized here, not inside the test: bundling the kill switch
+// took 10 s on a loaded machine, past the per-test timeout.
+const fullGuardrails = Template.fromStack(
+  new GuardrailsStack(new App(), GUARDRAILS_STACK_NAME, {
+    appStackName: APP_STACK_NAME,
+    budgetUsd: 50,
+    killSwitch: true,
+    budgetDrill: true,
+    alertEmail: 'delivered@resend.dev',
+  }),
+);
+
 // Every resource these stacks declare carries `Properties`.
 type Resource = { Type: string; Properties: Record<string, unknown>; DeletionPolicy?: string };
 type Statement = {
@@ -208,16 +221,7 @@ describe('cost brake on the app template', () => {
   });
 
   it('keeps the standard alarms of both stacks within the free count, with no composite alarm (AWS-28)', () => {
-    // The guardrails stack at its most: armed, with the drill budget and an alert address.
-    const guardrails = Template.fromStack(
-      new GuardrailsStack(new App(), GUARDRAILS_STACK_NAME, {
-        appStackName: APP_STACK_NAME,
-        budgetUsd: 50,
-        killSwitch: true,
-        budgetDrill: true,
-        alertEmail: 'delivered@resend.dev',
-      }),
-    );
+    const guardrails = fullGuardrails;
     const alarms = [template, guardrails].map(
       (t) => Object.keys(t.findResources('AWS::CloudWatch::Alarm')).length,
     );
