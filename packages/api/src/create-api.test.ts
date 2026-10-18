@@ -124,3 +124,53 @@ describe('createApi error mapping', () => {
     expect(response.headers.get('x-request-id')).toBeNull();
   });
 });
+
+// read-api spec → OpenAPI document, "Exported document". The drift stage only byte-compares the
+// regenerated document with the committed one, so a route that lost its `401` or its security entry,
+// re-exported, would pass it; this reads what the routes declare.
+describe('the OpenAPI document', () => {
+  const inert = createDatabase({
+    url: 'postgres://inert@127.0.0.1:1/inert',
+    max: 1,
+    logger: recordingLogger().logger,
+  });
+
+  afterAll(async () => {
+    await inert.pool.end();
+  });
+
+  it('holds the eight operations, each requiring bearerAuth and listing a 401, and token.create documents 201', () => {
+    type Operation = {
+      operationId?: string;
+      security?: Record<string, string[]>[];
+      responses?: Record<string, unknown>;
+    };
+    const document = createApi(testApiDeps(inert.db)).getOpenAPI31Document({
+      openapi: '3.1.0',
+      info: { title: 'Ledger read API', version: '0.0.0' },
+    });
+    const operations = Object.values(document.paths ?? {}).flatMap(
+      (item) => Object.values(item as Record<string, Operation>) as Operation[],
+    );
+
+    expect(operations.map((operation) => operation.operationId).sort()).toEqual(
+      [
+        'email.get',
+        'health.get',
+        'recipient.get',
+        'token.create',
+        'token.getCurrent',
+        'token.list',
+        'token.revoke',
+        'worker.resumeEventSource',
+      ].sort(),
+    );
+    expect(Object.keys(document.components?.securitySchemes ?? {})).toEqual(['bearerAuth']);
+    for (const operation of operations) {
+      expect(operation.security, operation.operationId).toEqual([{ bearerAuth: [] }]);
+      expect(Object.keys(operation.responses ?? {}), operation.operationId).toContain('401');
+    }
+    const create = operations.find((operation) => operation.operationId === 'token.create');
+    expect(Object.keys(create?.responses ?? {})).toContain('201');
+  });
+});
