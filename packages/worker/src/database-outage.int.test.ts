@@ -205,6 +205,44 @@ describe('database outage (ADR-015)', () => {
     expect(messagesNamed(lines(), 'worker.database_unavailable')).toEqual([]);
   }, 30_000);
 
+  // D15 through the worker: the message's transaction must run on a client `runTransaction` checked
+  // out itself. A socket that dies mid-transaction with no ErrorResponse first makes pg emit `error`
+  // on the checked-out client; through Drizzle's own `transaction()` that emit is uncaught and fails
+  // this run (on Lambda it kills the process before the retry or the pause).
+  it('a socket reset mid-transaction is retried on a fresh connection and commits; the source stays enabled', async () => {
+    const { worker, eventSource } = harness();
+    const emailId = fresh('e_reset');
+    expect(
+      await worker.processBatch([
+        { messageId: 'sqs-seed', body: body(fresh('msg_seed'), emailId) },
+      ]),
+    ).toEqual({ batchItemFailures: [] });
+
+    let client: { connection: { stream: { destroy(err: Error): void } } } | undefined;
+    const onAcquire = (acquired: unknown): void => {
+      client = acquired as typeof client;
+    };
+    database.pool.on('acquire', onAcquire);
+    try {
+      const delivered = fresh('msg_reset');
+      const release = await holdEmailLock(emailId);
+      const running = worker.processBatch([
+        { messageId: 'sqs-reset', body: body(delivered, emailId, 'email.delivered', 1) },
+      ]);
+      await workerWaitingOnLock();
+      client?.connection.stream.destroy(
+        Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      );
+      await release();
+
+      expect(await running).toEqual({ batchItemFailures: [] });
+      expect(eventSource.state).toBe('enabled');
+      expect(await webhookEventsRepository.countPresent(database.db, [delivered])).toBe(1);
+    } finally {
+      database.pool.off('acquire', onAcquire);
+    }
+  }, 30_000);
+
   it('a non-connection failure with Postgres up lists only that message and leaves the source enabled', async () => {
     const { worker, eventSource } = harness();
     const { batch, svixIds } = batchOfThree('poison');
