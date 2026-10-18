@@ -239,7 +239,9 @@ redaction replace a raw value with its mask without changing any projection.
   with a `from` and a subject, no text column of any projection row holds either normalized
   address, the raw `from` or the raw subject, in
   [projection-pii.int.test.ts](../packages/worker/src/projection-pii.int.test.ts).
-- Slice 2: a deploy-command test that refuses a mismatched `key_id`.
+- Slice 2: a deploy-command test that refuses a mismatched `key_id`, after migrating and before any
+  stack deploy or secret write, and passes on a database that holds no hash, in
+  [run-deploy.test.ts](../infra/scripts/run-deploy.test.ts).
 - Slice 7: a rebuild after redaction yields identical projections.
 
 #### Log fields

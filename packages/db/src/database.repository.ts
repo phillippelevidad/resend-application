@@ -16,4 +16,19 @@ export const databaseRepository = {
     );
     return Number(result.rows[0]?.bytes ?? 0);
   },
+
+  // `pnpm aws:db-check` (D37, PG-U06): the two role-level timeouts as the server applied them to
+  // this session, in Postgres' own units (`5s`). Through Neon's pooler this answers whether the
+  // pooler's server sessions carry the role's settings. One statement, so it holds in transaction
+  // mode.
+  async sessionTimeouts(
+    db: Executor,
+  ): Promise<{ idleInTransactionSessionTimeout: string; lockTimeout: string }> {
+    const result = await db.execute<{ idle: string; lock: string }>(
+      sql`select current_setting('idle_in_transaction_session_timeout') as idle,
+                 current_setting('lock_timeout') as lock`,
+    );
+    const row = result.rows[0];
+    return { idleInTransactionSessionTimeout: row?.idle ?? '', lockTimeout: row?.lock ?? '' };
+  },
 };

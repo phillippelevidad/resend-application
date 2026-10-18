@@ -263,6 +263,30 @@ pnpm db:generate --name <what-it-does>   # drizzle-kit generate in packages/db, 
 pnpm deps          # pnpm install only when the lockfile or a package.json changed
 pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
 
+# AWS (infra/scripts; every run against AWS is Ask-first; loads .env.local; each line is prefixed
+# `aws:<name>: ` and the last is `done`, `refused: <reason>` or `failed: <reason>` (exit 1); no line
+# holds a secret, key, database URL or account id; CDK's own output goes to a temp file named on failure)
+pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
+                   # needs LEDGER_DEPLOY_DATABASE_URL, LEDGER_DEPLOY_DATABASE_POOLED_URL,
+                   # LEDGER_ALERT_EMAIL, LEDGER_ADDRESS_HASH_KEY and LEDGER_TOKEN_TAG_KEY (refuses
+                   # naming the first missing one, before contacting AWS; pnpm db:setup writes both
+                   # keys before it touches a database, so it writes them even with no local Postgres,
+                   # then ends `db:setup: failed: Postgres is unreachable …`); optional
+                   # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD.
+                   # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
+                   # step, a CBL-01 hit in cdk.out, a key_id mismatch; migrates, deploys
+                   # LedgerGuardrails then LedgerApp, writes the secrets, prints the bootstrap token
+                   # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed
+pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag
+                   # discards them); destroys LedgerApp, then LedgerGuardrails only if that succeeded;
+                   # lists billable leftovers (exit 1 on any); prints the two steps outside AWS
+pnpm aws:rearm     # restores a tripped stack, warns when the month's spend is at the budget
+pnpm aws:trip-drill   # forces the usage trip, records five ingest status codes, forces a
+                   # kill-switch failure until its Errors alarm fires, restores; refuses a disarmed
+                   # or tripped stack. It trips the whole stack while it runs
+pnpm aws:db-check --email-id <id> [--idle-minutes <n ≥ 6>]   # read-only, through the runtime role's
+                   # pooled URL: PG-U06's role timeouts, PG-U02's lock serialization, PG-U04's idle pool
+
 # Simulator (every flag optional; no `--` before them)
 pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shuffle
                    # prints `sim seed=… namespace=…` (the replay pair, chosen when not given), the

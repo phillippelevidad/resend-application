@@ -52,7 +52,7 @@ of them against AWS or a live Resend account is Ask-first ([Permissions](../../.
 
 - `aws-cdk` is a devDependency pinned by the lockfile (Ask-first, slice 2), never a global install.
 - **No shell.** Spawn the CLI's JavaScript entry with Node itself:
-  `spawn(process.execPath, [cdkEntry, 'deploy', …args], { stdio: 'inherit' })`. On Windows a
+  `spawn(process.execPath, [cdkEntry, 'deploy', …args], { stdio: ['ignore', 'pipe', 'pipe'] })`. On Windows a
   `.cmd` shim "cannot be launched using `execFile()`", a `shell` option is "not recommended, see
   DEP0190", and with a shell "any input containing shell metacharacters may be used to trigger
   arbitrary command execution" ([Node child_process](https://nodejs.org/docs/latest-v24.x/api/child_process.html),
@@ -61,6 +61,13 @@ of them against AWS or a live Resend account is Ask-first ([Permissions](../../.
   2026-10-17), so `cdkEntry` is `createRequire(import.meta.url).resolve('aws-cdk/bin/cdk')` from a
   file under `infra/`, whose `package.json` declares `aws-cdk` (D33). The deploy command's spawn is
   what proves it runs (slice 2's scripts).
+- **CDK's output never reaches the terminal.** `cdk deploy` prints stack ARNs, which carry the
+  account id no script line may show (deploy-and-teardown spec → Script output carries no secret).
+  [`cdk-cli.ts`](../../../../infra/scripts/cdk-cli.ts) pipes the child's stdout and stderr to a log
+  file in the OS temp folder, which the script names only on a failure, and drops every `LEDGER_*`
+  variable and `DATABASE_URL` from the child's environment (the CDK app reads context only).
+- **Deploy what was scanned.** `cdk deploy --app cdk.out` deploys the assembly step 5 synthesized
+  and scanned, so nothing is synthesized between the CBL-01 scan and the deploy.
 - Deploy inputs go as `-c key=value` arguments ([env-and-inputs.md → Deploy inputs](env-and-inputs.md#deploy-inputs)).
 
 ## Deploy
