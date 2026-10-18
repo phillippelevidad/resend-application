@@ -146,9 +146,7 @@ This table is the canonical layout (adapted from the frozen
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
 scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools and `infra`'s two empty
-stacks. `apps/api`'s handler is an `export {}` stub until slice 2: `createApi(deps)` needs a
-database, a logger and the address-hash key, which only slice 2's composition root supplies, so
-until then `apps/local` alone serves the read API (`@hono/node-server`, loopback-only).
+stacks.
 
 | Project | Role | Logic lands |
 | --- | --- | --- |
@@ -253,9 +251,12 @@ pnpm dev:stop      # compose stop; stops the dev server only if it belongs to th
 pnpm dev           # apps/local under node --watch, loading .env.local if present
 pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
 pnpm db:setup      # (pnpm --filter @ledger/app-local run setup; `setup` alone is a pnpm built-in)
-                   # writes each of DATABASE_URL, LEDGER_ADDRESS_HASH_KEY, LEDGER_SIMULATOR_SECRET,
-                   # LEDGER_URL, LEDGER_TOKEN to .env.local only when unset or empty, printing
-                   # names, never values; ensures the runtime role, applies pending migrations;
+                   # writes each of DATABASE_URL, LEDGER_ADDRESS_HASH_KEY, LEDGER_TOKEN_TAG_KEY,
+                   # LEDGER_SIMULATOR_SECRET, LEDGER_URL to .env.local only when unset or empty,
+                   # before touching the database, printing names, never values; ensures the runtime
+                   # role and its timeouts, applies pending migrations; then mints an `operate`
+                   # LEDGER_TOKEN (the bootstrap token, else one named local-setup) only when the
+                   # current one is empty, `local-loopback-no-auth`, tag-invalid or not active;
                    # ends `db:setup: ready` or `db:setup: failed: <reason>` (exit 1). Rerun-safe
 pnpm db:generate --name <what-it-does>   # drizzle-kit generate in packages/db, flags passed
                    # through (--custom for a grant); writes packages/db/drizzle/, read the SQL
@@ -281,8 +282,10 @@ pnpm -s ledger recipient <address> [--json]   # the address goes in the request 
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
 pnpm --filter @ledger/app-local start   # ingest (POST /webhooks/resend), worker and read API in one
                                         # process on 127.0.0.1:3200; --port, --host (loopback only);
-                                        # needs DATABASE_URL, LEDGER_ADDRESS_HASH_KEY and at least one
-                                        # of LEDGER_WEBHOOK_SECRETS, LEDGER_SIMULATOR_SECRET
+                                        # needs DATABASE_URL, LEDGER_ADDRESS_HASH_KEY,
+                                        # LEDGER_TOKEN_TAG_KEY and at least one of
+                                        # LEDGER_WEBHOOK_SECRETS, LEDGER_SIMULATOR_SECRET; every
+                                        # route but ingest needs a bearer token (LEDGER_TOKEN)
 pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```
