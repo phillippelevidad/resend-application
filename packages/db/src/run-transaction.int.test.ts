@@ -122,6 +122,34 @@ describe('runTransaction', () => {
     await waitUntilGone(failedPid ?? 0);
   }, 15_000);
 
+  // A socket the server drops mid-query (no ErrorResponse first, as `pg_terminate_backend` sends)
+  // makes pg emit `error` on the checked-out client before the query rejects. Unhandled, that emit
+  // is an uncaught exception that ends the process (and fails this run) before the caller can
+  // classify and retry (ADR-015).
+  it('turns a socket dropped mid-query into a classified rejection, then retries on a new backend', async () => {
+    let client: { connection: { stream: { destroy(err: Error): void } } } | undefined;
+    worker.pool.once('acquire', (acquired) => {
+      client = acquired as unknown as typeof client;
+    });
+    let droppedPid: number | undefined;
+    const failure = await runTransaction(worker, async (tx) => {
+      droppedPid = await backendPid(tx);
+      const pending = tx.execute(sql`select pg_sleep(0.5)`);
+      client?.connection.stream.destroy(
+        Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      );
+      await pending;
+    }).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+
+    expect(client).toBeDefined();
+    expect(classifyDatabaseError(failure)).toBeInstanceOf(DatabaseUnavailableError);
+    const retryPid = await runTransaction(worker, (tx) => backendPid(tx));
+    expect(retryPid).not.toBe(droppedPid);
+  });
+
   it('rolls back on an ordinary error and keeps the connection for the next transaction', async () => {
     const emailId = 'email-run-transaction-rollback';
     const lastEventAt = new Date('2026-10-17T12:00:00.000Z');

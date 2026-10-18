@@ -21,6 +21,13 @@ export async function runTransaction<T>(
   fn: (tx: Transaction) => Promise<T>,
 ): Promise<T> {
   const client = await database.pool.connect();
+  // pg-pool removes its idle `error` listener at checkout and restores it on release. A socket the
+  // server drops mid-query (`ECONNRESET`, a Neon restart) makes pg 8.23.1 emit `error` on the client
+  // synchronously, before the query's own rejection, which it defers to the next tick
+  // (`lib/client.js` `_handleErrorEvent`, `_errorAllQueries`). With no listener that emit is an
+  // uncaught exception that kills the Lambda before D15 can retry or pause, so the batch drains to
+  // the DLQ (ADR-015). The rejection still reaches the catch below, which classifies it.
+  client.on('error', ignoreClientError);
   // The same dialect and session `drizzle({ client })` builds, bound to this one client.
   const dialect = new PgDialect();
   const tx: Transaction = new NodePgTransaction<NoSchema, ExtractTablesWithRelations<NoSchema>>(
@@ -32,16 +39,25 @@ export async function runTransaction<T>(
     await client.query('BEGIN');
     const result = await fn(tx);
     await client.query('COMMIT');
-    client.release();
+    release(client);
     return result;
   } catch (err) {
     if (classifyDatabaseError(err) !== undefined) {
-      client.release(err instanceof Error ? err : true);
+      release(client, err instanceof Error ? err : true);
     } else {
       await rollbackAndRelease(client);
     }
     throw err;
   }
+}
+
+function ignoreClientError(): void {}
+
+// Hands the client back with the pool's own idle listener restored, so a late socket error after
+// release reaches the pool's `error` handler (`createDatabase`'s `db.pool_error`) instead.
+function release(client: PoolClient, err?: Error | true): void {
+  client.removeListener('error', ignoreClientError);
+  client.release(err);
 }
 
 // Any other error leaves a healthy connection: roll back and return it to the pool. A rollback that
@@ -50,8 +66,8 @@ async function rollbackAndRelease(client: PoolClient): Promise<void> {
   try {
     await client.query('ROLLBACK');
   } catch (rollbackError) {
-    client.release(rollbackError instanceof Error ? rollbackError : true);
+    release(client, rollbackError instanceof Error ? rollbackError : true);
     return;
   }
-  client.release();
+  release(client);
 }
