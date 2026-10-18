@@ -434,15 +434,19 @@ _Evidence: the slice 0 item and the slice 1 schema and concurrency items hold; t
   (`read`), with no MCP surface ([api-contract.md](api-contract.md#tokencreate)).
 
 _Schema: [`packages/db/src/schema/api-tokens.ts`](../packages/db/src/schema/api-tokens.ts)._
-_Evidence: the schema item holds; the other items are pending (slice 2)._
+_Evidence (slice 2):_
 - Schema: the identity insert as the runtime role with no sequence grant, the `scope` `CHECK`
   against `tokenScopes` (`23514` outside it), the bootstrap key (a second bootstrap insert inserts
   no row), `markRevoked` setting `revoked_at` and `updated_at` once, and two concurrent revokes of
   the last two `operate` tokens serialized by `lockActiveOperate` (exactly one succeeds), in
   [api-tokens.repository.int.test.ts](../packages/db/src/api-tokens.repository.int.test.ts).
-- A revoked token gets `401`.
-- A `read` token gets `403` on an `operate` route.
-- A re-run deploy command inserts no second first-token, and `--issue-operate-token` mints exactly one new one.
+- A revoked token gets `401` on its next request, its row kept, in
+  [auth.middleware.int.test.ts](../packages/api/src/auth.middleware.int.test.ts) and
+  [revoke-token.route.int.test.ts](../packages/api/src/revoke-token.route.int.test.ts).
+- A `read` token gets `403` on each of the four `operate` routes, and none of them acts, in
+  [auth.middleware.int.test.ts](../packages/api/src/auth.middleware.int.test.ts).
+- A re-run deploy command inserts no second first-token, and `--issue-operate-token` mints exactly
+  one new one, in [run-deploy.test.ts](../infra/scripts/run-deploy.test.ts) (unit, fake steps).
 
 - **Slices:** 2 — Durable ingest on AWS
 
