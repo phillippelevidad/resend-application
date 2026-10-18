@@ -159,7 +159,7 @@ until then `apps/local` alone serves the read API (`@hono/node-server`, loopback
 | **packages/worker** | Worker logic: ledger transaction, projections, outbox (ADR-004, ADR-015) | 1 |
 | **packages/api** | Hono app factory: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)); source of the OpenAPI document (ADR-011, ADR-019) | 1 |
 | **packages/sdk** | Public TS client for the read API: generated types plus a thin client (ADR-011, ADR-019) | 1 |
-| **packages/aws** | The only `@aws-sdk/*` importer: SQS queue adapter, Secrets Manager, ESM control, SQS attributes, DLQ receive and redrive, Lambda invoke (ADR-013) | 2 |
+| **packages/aws** | The only `@aws-sdk/*` importer: one factory per SDK client; the port adapters for the SQS queue, SQS attributes, Secrets Manager, ESM control and Lambda invoke; the kill switch's trip and restore steps; the AWS reads and writes the `aws:*` scripts make. DLQ receive and redrive land in slice 3 (ADR-013) | 2 |
 | **packages/reconciler** | Reconciler logic: gap detection + replay (ADR-007) | 4 |
 | **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) | 4 |
 | **packages/dispatcher** | Dispatcher logic: outbox delivery (ADR-006, ADR-017) | 6 |

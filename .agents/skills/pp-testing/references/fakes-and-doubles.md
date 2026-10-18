@@ -73,6 +73,24 @@ A `packages/aws` adapter is the outermost seam: its own dependency is the AWS SD
   over the stubbed client (slice 2: all five of `packages/aws`'s port adapters).
 - These are `*.test.ts`: no Postgres, no Docker.
 
+**As built (slice 2).** The stub is `StubClient` in `packages/aws/src/testing/stub-client.ts`,
+used only by that package's own tests (no `./testing` export):
+
+- `answer(name, fn)` scripts one command by its operation name (`'SendMessage'`, the SDK class name
+  less `Command`); `fn` gets the command's `input` and returns the output or throws. An unscripted
+  command fails the test. `stub.as<SQSClient>()` hands it to the module as its client type.
+- `sent` (name and `input`, in order), `names()` and `inputs(name)` are what the test asserts.
+- A scripted error is the SDK's own exception class, built as the SDK builds it
+  (`new QueueDoesNotExist({ message, $metadata: {} })`), so its `name` is the one the API Reference
+  lists; the test file's header cites that page.
+- An adapter rejects with the SDK's error unchanged (its `name` is what a consumer logs as
+  `error_name`), and throws a constant `LedgerError('internal_error', …)` only for a condition it
+  detects itself (no mapping, a `FunctionError`, a non-JSON payload, a missing attribute). Each test
+  covers both kinds.
+- A test whose subject spans several clients or holds state across calls (the kill switch) scripts
+  the stubs over one small account state and wraps each `send` to append to one shared log, so it
+  asserts both the order of commands across services and the state they leave.
+
 ## DLQ redrive
 
 Redrive runs through SQS, not Postgres (`StartMessageMoveTask`, AWS-21). Its evidence:
