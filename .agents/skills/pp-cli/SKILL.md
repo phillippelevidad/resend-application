@@ -19,7 +19,10 @@ stdout and stderr discipline, `--json`, colour · waiting on a `202` · the CLI'
 · the error class → [pp-general → errors](../pp-general/references/errors.md) · test tiers →
 [pp-testing](../pp-testing/SKILL.md) · human output layouts → the slice 1 pre-proposal's
 [§12 Surfaces](../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md#12-surfaces)
-(`ledger email`, `ledger recipient`), then each slice for the commands it adds.
+(`ledger email`, `ledger recipient`), slice 2's
+[design.md → Surfaces](../../../openspec/changes/slice-2-durable-ingest-on-aws/design.md#surfaces)
+(`ledger health`, `ledger worker resume`, `ledger token create|list|revoke|current`), then each
+slice for the commands it adds.
 
 ## Precedence
 
@@ -50,6 +53,13 @@ pp-general; a doc beats both.
   kebab-cased (`email.get` → `email-get.cli.ts` → `emailGetCli`; `dlq.listMessages` →
   `dlq-list-messages.cli.ts`). The command, its arguments and flags are copied from the operation's
   **Surfaces** line. `reconcile.getRun` has no command: `ledger reconcile` calls it to wait.
+- **A group is a plain `.command()` with no action** (`worker`, `token`, later `dlq`), made on the
+  configured root in `create-program.ts`; each operation under it registers on the group through
+  its own `.cli.ts`, which takes the group as its `parent` (`ledger token create` →
+  `token-create.cli.ts` → `tokenCreateCli(token, deps)`). The file is still named for the operation
+  id, not the group (`worker.resumeEventSource` → `worker-resume-event-source.cli.ts`). A group
+  run with no subcommand prints its help to stderr and exits `2`
+  ([anatomy](references/command-anatomy.md#the-composition-root)).
 - **`main.ts`** is the composition root: it reads `LEDGER_URL` and `LEDGER_TOKEN` once through the
   shared loader ([config](../pp-general/references/config-and-env.md#parse-once-at-the-composition-root)),
   builds one SDK client, registers every command and maps the exit code.

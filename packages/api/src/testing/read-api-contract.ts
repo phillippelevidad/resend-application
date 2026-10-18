@@ -6,10 +6,11 @@ import {
   maskFrom,
   maskText,
 } from '@ledger/core';
+import { STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
 import { createLedgerClient, type LedgerClient, type SdkError } from '@ledger/sdk';
 import { mintApiToken } from '@ledger/shared';
-import { FakeClock, RecordingMetrics } from '@ledger/shared/testing';
+import { FakeClock, FakeFunctionInvoke, RecordingMetrics } from '@ledger/shared/testing';
 import { RecordEventCommand } from '@ledger/worker';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ApiDeps } from '../create-api.ts';
@@ -53,6 +54,19 @@ const registryError = (code: keyof typeof errorRegistry): SdkError => ({
   docs: errorRegistry[code].docs,
 });
 
+// `validation_failed` names its field in the message; its hint and docs are the registry's.
+const validationFailed = (message: string): SdkError => ({
+  code: 'validation_failed',
+  message,
+  hint: errorRegistry.validation_failed.hint,
+  docs: errorRegistry.validation_failed.docs,
+});
+
+// The worker's `ResumeResult` on an enabled source (D16, D20).
+const ALREADY_ENABLED = { outcome: 'already_enabled', state: 'enabled' } as const;
+
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 // Neither a raw address, the raw from or subject, nor the bounce diagnostics, anywhere in the body.
 function expectMasksOnly(data: unknown): void {
   const text = JSON.stringify(data);
@@ -84,6 +98,12 @@ export function readApiContract(
     let served: ReadApiUnderTest;
     let client: LedgerClient;
     let token: string;
+    let tokenId: number;
+    // The only active `operate` token in this database, so revoking it is `last_operate_token`.
+    let operator: LedgerClient;
+    let operatorTokenId: number;
+    // The worker's answer to the resume invoke, set per case (D20).
+    let workerInvoke: FakeFunctionInvoke;
 
     beforeAll(async () => {
       t = await createTestDatabase();
@@ -108,9 +128,13 @@ export function readApiContract(
       ]) {
         await record.execute({ body });
       }
-      ({ token } = await issueTestToken(t.db, { scope: 'read' }));
-      served = await make(testApiDeps(t.db, { addressHashKey }));
+      ({ token, tokenId } = await issueTestToken(t.db, { scope: 'read', name: 'contract-reader' }));
+      const operate = await issueTestToken(t.db, { scope: 'operate', name: 'contract-operator' });
+      operatorTokenId = operate.tokenId;
+      workerInvoke = new FakeFunctionInvoke(ALREADY_ENABLED);
+      served = await make(testApiDeps(t.db, { addressHashKey, workerInvoke }));
       client = createLedgerClient({ baseUrl: served.baseUrl, token });
+      operator = createLedgerClient({ baseUrl: served.baseUrl, token: operate.token });
     });
 
     afterAll(async () => {
@@ -276,6 +300,215 @@ export function readApiContract(
       const without = await fetch(`${served.baseUrl}/emails`, { method: 'DELETE' });
       expect(without.status).toBe(401);
       expect(await without.json()).toEqual({ error: registryError('unauthorized') });
+    });
+
+    // Slice 2's six operations (D19–D21, D24): each success and each error its entry names.
+
+    it('health.get answers a read token with the queue, DLQ, event source and database', async () => {
+      const { data, error } = await client.health.get();
+
+      expect(error).toBeNull();
+      expect(data).toEqual({
+        object: 'health',
+        queue: { visible: 0, in_flight: 0, oldest_age_seconds: null },
+        dlq: { visible: 0, in_flight: 0 },
+        event_source: { state: 'enabled' },
+        database: {
+          reachable: true,
+          storage_bytes: expect.any(Number),
+          storage_limit_bytes: STORAGE_LIMIT_BYTES,
+        },
+      });
+    });
+
+    it('every slice 2 method with a token no row holds comes back as error unauthorized, data null', async () => {
+      const stranger = createLedgerClient({
+        baseUrl: served.baseUrl,
+        token: mintApiToken(TEST_TOKEN_TAG_KEY).token,
+      });
+      const unauthorized = { data: null, error: registryError('unauthorized') };
+
+      expect(await stranger.health.get()).toEqual(unauthorized);
+      expect(await stranger.worker.resumeEventSource()).toEqual(unauthorized);
+      expect(await stranger.tokens.getCurrent()).toEqual(unauthorized);
+      expect(await stranger.tokens.list()).toEqual(unauthorized);
+      expect(await stranger.tokens.create({ name: 'nope', scope: 'read' })).toEqual(unauthorized);
+      expect(await stranger.tokens.revoke(String(tokenId))).toEqual(unauthorized);
+    });
+
+    it('every operate method with a read token comes back as error forbidden, data null', async () => {
+      const forbidden = { data: null, error: registryError('forbidden') };
+
+      expect(await client.worker.resumeEventSource()).toEqual(forbidden);
+      expect(await client.tokens.list()).toEqual(forbidden);
+      expect(await client.tokens.create({ name: 'nope', scope: 'operate' })).toEqual(forbidden);
+      expect(await client.tokens.revoke(String(operatorTokenId))).toEqual(forbidden);
+    });
+
+    it('worker.resumeEventSource returns the event source and whether it resumed', async () => {
+      workerInvoke.answer = ALREADY_ENABLED;
+      expect(await operator.worker.resumeEventSource()).toEqual({
+        data: { object: 'event_source', state: 'enabled', resumed: false },
+        error: null,
+      });
+
+      workerInvoke.answer = { outcome: 'resumed', state: 'changing' };
+      try {
+        expect(await operator.worker.resumeEventSource()).toEqual({
+          data: { object: 'event_source', state: 'changing', resumed: true },
+          error: null,
+        });
+      } finally {
+        workerInvoke.answer = ALREADY_ENABLED;
+      }
+      expect(workerInvoke.payloads).toContainEqual({ ledger: 'resume-event-source' });
+    });
+
+    it('worker.resumeEventSource on a failed probe comes back as database_unavailable with the override message', async () => {
+      workerInvoke.answer = { outcome: 'probe_failed', state: 'paused' };
+      try {
+        expect(await operator.worker.resumeEventSource()).toEqual({
+          data: null,
+          error: {
+            ...registryError('database_unavailable'),
+            message:
+              'The database is unreachable or at its storage limit, so the event source stays paused.',
+          },
+        });
+      } finally {
+        workerInvoke.answer = ALREADY_ENABLED;
+      }
+    });
+
+    it('tokens.getCurrent returns the calling token, never a hash', async () => {
+      const { data, error } = await client.tokens.getCurrent();
+
+      expect(error).toBeNull();
+      expect(data).toEqual({
+        object: 'token',
+        token_id: tokenId,
+        name: 'contract-reader',
+        scope: 'read',
+        created_at: expect.stringMatching(RFC3339),
+        revoked_at: null,
+      });
+      expect(JSON.stringify(data)).not.toMatch(/"(token|token_hash|bootstrap)":/);
+    });
+
+    it('tokens.list returns every token newest first, and has_more when a page is short', async () => {
+      const { data, error } = await operator.tokens.list({ limit: 100 });
+
+      expect(error).toBeNull();
+      expect(data?.object).toBe('list');
+      expect(data?.has_more).toBe(false);
+      const ids = data?.data.map((row) => row.token_id) ?? [];
+      expect(ids).toEqual([...ids].sort((a, b) => b - a));
+      expect(data?.data).toContainEqual({
+        object: 'token',
+        token_id: operatorTokenId,
+        name: 'contract-operator',
+        scope: 'operate',
+        created_at: expect.stringMatching(RFC3339),
+        revoked_at: null,
+      });
+      expect(ids).toContain(tokenId);
+      expect(JSON.stringify(data)).not.toMatch(/"(token|token_hash|bootstrap)":/);
+
+      const [newest = 0] = ids;
+      const first = await operator.tokens.list({ limit: 1 });
+      expect(first.data?.has_more).toBe(true);
+      expect(first.data?.data.map((row) => row.token_id)).toEqual([newest]);
+      const next = await operator.tokens.list({ limit: 100, after: newest });
+      expect(next.data?.data.map((row) => row.token_id)).toEqual(ids.slice(1));
+    });
+
+    it('tokens.list with a bad limit or after comes back as validation_failed naming the field', async () => {
+      expect(await operator.tokens.list({ limit: 101 })).toEqual({
+        data: null,
+        error: validationFailed('limit must be an integer from 1 to 100.'),
+      });
+      expect(await operator.tokens.list({ after: 0 })).toEqual({
+        data: null,
+        error: validationFailed('after must be a token id, a positive integer.'),
+      });
+    });
+
+    it('tokens.create returns the token object plus its plaintext, which then authenticates as itself', async () => {
+      const { data, error } = await operator.tokens.create({
+        name: 'contract-created',
+        scope: 'read',
+      });
+
+      expect(error).toBeNull();
+      expect(data).toEqual({
+        object: 'token',
+        token_id: expect.any(Number),
+        name: 'contract-created',
+        scope: 'read',
+        created_at: expect.stringMatching(RFC3339),
+        revoked_at: null,
+        token: expect.stringMatching(/^ldg_[0-9a-f]{64}_[0-9a-f]{64}$/),
+      });
+      const created = createLedgerClient({ baseUrl: served.baseUrl, token: data?.token ?? '' });
+      expect((await created.tokens.getCurrent()).data?.token_id).toBe(data?.token_id);
+    });
+
+    it('tokens.create with a bad name or scope comes back as validation_failed naming the field', async () => {
+      expect(await operator.tokens.create({ name: 'has space', scope: 'read' })).toEqual({
+        data: null,
+        error: validationFailed(
+          "name must be 1 to 64 characters from A-Z, a-z, 0-9, '.', '_' and '-', starting with a letter or digit.",
+        ),
+      });
+      // A scope the SDK's type rules out, as an untyped caller would send it.
+      const scope = 'admin' as 'read';
+      expect(await operator.tokens.create({ name: 'ok', scope })).toEqual({
+        data: null,
+        error: validationFailed('scope must be read or operate.'),
+      });
+    });
+
+    it('tokens.revoke revokes a token, whose next request is unauthorized; revoking it again changes nothing', async () => {
+      const minted = await operator.tokens.create({ name: 'contract-revoked', scope: 'read' });
+      const id = String(minted.data?.token_id);
+
+      const { data, error } = await operator.tokens.revoke(id);
+
+      expect(error).toBeNull();
+      expect(data).toEqual({
+        object: 'token',
+        token_id: minted.data?.token_id,
+        name: 'contract-revoked',
+        scope: 'read',
+        created_at: minted.data?.created_at,
+        revoked_at: expect.stringMatching(RFC3339),
+      });
+      const revoked = createLedgerClient({
+        baseUrl: served.baseUrl,
+        token: minted.data?.token ?? '',
+      });
+      expect(await revoked.tokens.getCurrent()).toEqual({
+        data: null,
+        error: registryError('unauthorized'),
+      });
+      expect(await operator.tokens.revoke(id)).toEqual({ data, error: null });
+    });
+
+    it('tokens.revoke comes back as token_not_found, validation_failed or last_operate_token', async () => {
+      expect(await operator.tokens.revoke('999999999')).toEqual({
+        data: null,
+        error: registryError('token_not_found'),
+      });
+      expect(await operator.tokens.revoke('abc')).toEqual({
+        data: null,
+        error: validationFailed('token_id must be a positive integer.'),
+      });
+      // The operator is the only active `operate` token here.
+      expect(await operator.tokens.revoke(String(operatorTokenId))).toEqual({
+        data: null,
+        error: registryError('last_operate_token'),
+      });
+      expect((await operator.tokens.getCurrent()).data?.revoked_at).toBeNull();
     });
   });
 }

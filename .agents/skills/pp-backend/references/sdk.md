@@ -36,6 +36,16 @@ no import of `@ledger/api`, `db`, `aws`, `ingest`, `worker`, `reconciler`, `disp
   `ledger.recipients.get`, `ledger.reconcile.start`, `ledger.tokens.create` (plural for collections,
   otherwise the namespace as written; [Operation template](../../../../.ai/api-contract.md#operation-template)).
   Never a generic `request(path)` on the public surface.
+- **The methods today** (slice 1, then slice 2's
+  [D24](../../../../openspec/changes/slice-2-durable-ingest-on-aws/design.md#d24--sdk-methods)):
+  `emails.get(emailId)`, `recipients.get(address)`, `health.get()`,
+  `worker.resumeEventSource()`, `tokens.getCurrent()`, `tokens.list({ limit?, after? })`,
+  `tokens.create({ name, scope })` and `tokens.revoke(tokenId: string)`, each `{ data, error }`.
+  The exported data types are the generated schemas by name: `Email`, `Recipient`, `Health`,
+  `EventSource`, `Token`, `CreatedToken`, `TokenList`. A path or query value is passed as given
+  (`tokenId` a string, `limit` and `after` numbers sent as query strings): its range and format are
+  the API's `validation_failed`, never checked in the SDK. `FakeLedgerClient` in `@ledger/sdk/testing`
+  grows the same methods and records each call as `{ method, argument }`.
 - **An address is passed as a method argument and sent in the body**, never placed in a path or
   query (`recipients.get` posts to `/recipients/lookup`).
 

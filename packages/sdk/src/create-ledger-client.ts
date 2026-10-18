@@ -5,6 +5,13 @@ import type { components, paths } from './openapi-types.ts';
 
 export type Email = components['schemas']['Email'];
 export type Recipient = components['schemas']['Recipient'];
+export type Health = components['schemas']['Health'];
+export type EventSource = components['schemas']['EventSource'];
+export type Token = components['schemas']['Token'];
+export type CreatedToken = components['schemas']['CreatedToken'];
+export type TokenList = components['schemas']['TokenList'];
+
+type TokenScope = Token['scope'];
 
 // The inner object of the one error shape (AGENTS.md → Error shape), exactly as the API sent it.
 // `code` is a string, not the registry union: an unknown code passes through (Conventions → Errors).
@@ -20,9 +27,25 @@ export type SdkResult<T> =
   | { readonly data: T; readonly error: null }
   | { readonly data: null; readonly error: SdkError };
 
+// One method per operation, named by its Surfaces line (api-contract.md; D24).
 export type LedgerClient = {
   readonly emails: { get(emailId: string): Promise<SdkResult<Email>> };
   readonly recipients: { get(address: string): Promise<SdkResult<Recipient>> };
+  readonly health: { get(): Promise<SdkResult<Health>> };
+  readonly worker: { resumeEventSource(): Promise<SdkResult<EventSource>> };
+  readonly tokens: {
+    getCurrent(): Promise<SdkResult<Token>>;
+    list(params?: {
+      readonly limit?: number;
+      readonly after?: number;
+    }): Promise<SdkResult<TokenList>>;
+    create(input: {
+      readonly name: string;
+      readonly scope: TokenScope;
+    }): Promise<SdkResult<CreatedToken>>;
+    // A string, as the CLI receives it: the API validates the id (D21, D24).
+    revoke(tokenId: string): Promise<SdkResult<Token>>;
+  };
 };
 
 export type LedgerClientConfig = { readonly baseUrl: string; readonly token: string };
@@ -93,6 +116,52 @@ export function createLedgerClient(config: LedgerClientConfig): LedgerClient {
         settle<Recipient>(() =>
           client.POST('/recipients/lookup', {
             body: { address },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+        ),
+    },
+    health: {
+      get: () =>
+        settle<Health>(() =>
+          client.GET('/health', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
+        ),
+    },
+    worker: {
+      resumeEventSource: () =>
+        settle<EventSource>(() =>
+          client.POST('/worker/resume', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
+        ),
+    },
+    tokens: {
+      getCurrent: () =>
+        settle<Token>(() =>
+          client.GET('/tokens/current', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
+        ),
+      // Query values travel as strings; their range and format are the API's to check (D21).
+      list: (params = {}) =>
+        settle<TokenList>(() =>
+          client.GET('/tokens', {
+            params: {
+              query: {
+                ...(params.limit === undefined ? {} : { limit: String(params.limit) }),
+                ...(params.after === undefined ? {} : { after: String(params.after) }),
+              },
+            },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+        ),
+      // One request per call, never retried: each call mints a new token (D24; sdk.md → Retries).
+      create: (input) =>
+        settle<CreatedToken>(() =>
+          client.POST('/tokens', {
+            body: { name: input.name, scope: input.scope },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+        ),
+      revoke: (tokenId) =>
+        settle<Token>(() =>
+          client.POST('/tokens/{token_id}/revoke', {
+            params: { path: { token_id: tokenId } },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           }),
         ),

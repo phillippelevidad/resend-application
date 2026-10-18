@@ -299,6 +299,13 @@ pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shu
 pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
 pnpm -s ledger email <email_id> [--json]
 pnpm -s ledger recipient <address> [--json]   # the address goes in the request body; output shows its mask
+pnpm -s ledger health [--json]           # queue and DLQ depth, the worker event source, the database
+pnpm -s ledger worker resume [--json]    # operate: probe the database, re-enable a paused event source
+pnpm -s ledger token create --name <name> --scope <read|operate> [--json]   # operate; the plaintext
+                   # goes to stdout this once (human mode adds a stderr notice)
+pnpm -s ledger token list [--json]       # operate; the newest 100, a stderr notice when more exist
+pnpm -s ledger token revoke <token_id> [--json]   # operate; never the last active operate token
+pnpm -s ledger token current [--json]    # the token LEDGER_TOKEN holds: id, name, scope
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
                    # without -s (pnpm's banner then precedes the output)
