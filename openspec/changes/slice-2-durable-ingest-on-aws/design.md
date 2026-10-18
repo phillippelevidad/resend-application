@@ -641,8 +641,10 @@ never generates a key: a key made per deploy would orphan every stored hash. Ste
    <SHA> <DeployedCommit>`; any exit but 0 refuses. `DeployedCommit` is the **already deployed**
    app stack's output, read in step 2, never the commit about to be deployed: the check asks whether
    the Lambdas running now have stopped using the object (ADR-018). Skipped with no app stack.
-5. `cdk synth` with the context, then CBL-01's grep over `cdk.out/`
-   (`whsec_|re_[A-Za-z0-9]{8}|postgres(ql)?://|ldg_[0-9a-f]{20}`); a hit refuses.
+5. `cdk synth` with the context, then CBL-01's grep over `cdk.out/`, its `asset.*` esbuild bundles
+   excepted (`whsec_|re_[A-Za-z0-9]{8}|postgres(ql)?://|ldg_[0-9a-f]{20}`); a hit refuses. The
+   bundles match by themselves (library code) and no deploy input reaches them; rule gate cleared
+   2026-10-17 on a measured synth (CBL-01).
 6. `prepareDatabase` through `LEDGER_DEPLOY_DATABASE_URL` with D10's role timeouts. Password: when the
    database secret exists and parses, its `pooledUrl`'s password is reused (`resetPassword: false`);
    otherwise a new 24-byte hex password, `resetPassword: true`. No running function can hold a working
