@@ -2,7 +2,7 @@ import { createDatabase } from '@ledger/db';
 import { mintApiToken } from '@ledger/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
-import { bearer, TEST_TOKEN_TAG_KEY, testApiDeps } from './testing.ts';
+import { bearer, TEST_TOKEN_TAG_KEY, testApiDeps } from './testing/api-test-deps.ts';
 
 // D18: the tag check runs before any database connection opens. The database is at 127.0.0.1:1,
 // where nothing listens: any lookup fails `ECONNREFUSED`, a connection-class error that answers

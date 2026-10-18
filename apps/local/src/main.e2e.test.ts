@@ -2,17 +2,21 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { mintApiToken } from '@ledger/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const mainPath = fileURLToPath(new URL('./main.ts', import.meta.url));
 const startupTimeoutMs = 15_000;
 
-// Placeholders the boot assertion accepts. Nothing here reaches Postgres: `pg` connects on the first
-// query, and no test sends one, so the read API starts with no database at all (port 9 is discard).
-// The secret is built at run time, so no `whsec_` literal sits in the source (the gitleaks rule).
+// Placeholders the boot assertion accepts. No Postgres listens at the URL (port 9 is discard), so
+// the process runs as during a database outage: `pg` connects on the first query, and that query
+// fails. The secret is built at run time, so no `whsec_` literal sits in the source (the gitleaks
+// rule).
+const tokenTagKeyHex = '5c'.repeat(32);
 const placeholderEnv = {
   DATABASE_URL: 'postgres://127.0.0.1:9/ledger',
   LEDGER_ADDRESS_HASH_KEY: '0a'.repeat(32),
+  LEDGER_TOKEN_TAG_KEY: tokenTagKeyHex,
   LEDGER_SIMULATOR_SECRET: `whsec_${Buffer.from('ledger-local-e2e-placeholder').toString('base64')}`,
 };
 
@@ -21,6 +25,7 @@ const placeholderEnv = {
 const configNames = [
   'DATABASE_URL',
   'LEDGER_ADDRESS_HASH_KEY',
+  'LEDGER_TOKEN_TAG_KEY',
   'LEDGER_WEBHOOK_SECRETS',
   'LEDGER_SIMULATOR_SECRET',
 ];
@@ -119,7 +124,7 @@ afterEach(async () => {
 });
 
 describe('apps/local main.ts', () => {
-  it('serves the read API and ingest on loopback with no reachable database, answering route_not_found for a path no operation serves and 401 unauthorized for an unsigned webhook', {
+  it('serves the read API and ingest on loopback with no reachable database: 401 without a token, health on the tag alone, and 401 unauthorized for an unsigned webhook', {
     timeout: startupTimeoutMs + 5_000,
   }, async () => {
     const port = await freePort();
@@ -132,9 +137,23 @@ describe('apps/local main.ts', () => {
       message: 'local server listening',
     });
 
+    // D18: every mode enforces the bearer token, an unmatched path included.
     const root = await fetch(`http://127.0.0.1:${port}/`);
-    expect(root.status).toBe(404);
-    expect(await root.json()).toMatchObject({ error: { code: 'route_not_found' } });
+    expect(root.status).toBe(401);
+    expect(await root.json()).toMatchObject({ error: { code: 'unauthorized' } });
+
+    // D18, D19: with the database unreachable, `health.get` answers on the token's tag alone.
+    const token = mintApiToken(new Uint8Array(Buffer.from(tokenTagKeyHex, 'hex'))).token;
+    const health = await fetch(`http://127.0.0.1:${port}/health`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({
+      object: 'health',
+      queue: { visible: 0, in_flight: 0, oldest_age_seconds: null },
+      event_source: { state: 'enabled' },
+      database: { reachable: false, storage_bytes: null },
+    });
 
     const unsigned = await fetch(`http://127.0.0.1:${port}/webhooks/resend`, {
       method: 'POST',
@@ -146,7 +165,7 @@ describe('apps/local main.ts', () => {
     expect(await unsigned.text()).toBe('unauthorized');
   });
 
-  it('exits 1 and serves nothing when --host is not loopback, so unauthenticated routes never leave the machine', {
+  it('exits 1 and serves nothing when --host is not loopback', {
     timeout: startupTimeoutMs + 5_000,
   }, async () => {
     const port = await freePort();
@@ -156,8 +175,28 @@ describe('apps/local main.ts', () => {
     expect(stderr).toBe('');
     const logged = lines(stdout);
     expect(logged).toHaveLength(1);
-    expect(logged[0]).toMatchObject({ level: 'error', function_name: 'local' });
-    expect(String(logged[0]?.message)).toContain('--host');
+    expect(logged[0]).toMatchObject({
+      level: 'error',
+      function_name: 'local',
+      message: 'refusing to start: --host must be 127.0.0.1, ::1 or localhost',
+    });
+  });
+
+  it('exits 1 naming LEDGER_TOKEN_TAG_KEY when it is unset, and never prints a configured value', {
+    timeout: startupTimeoutMs + 5_000,
+  }, async () => {
+    const { LEDGER_TOKEN_TAG_KEY: _unset, ...env } = placeholderEnv;
+    const { code, stdout } = await runToExit(['--port', String(await freePort())], env);
+
+    expect(code).toBe(1);
+    const logged = lines(stdout);
+    expect(logged).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        message: 'refusing to start: LEDGER_TOKEN_TAG_KEY must be 64 lowercase hex characters',
+      }),
+    ]);
+    for (const value of Object.values(env)) expect(stdout).not.toContain(value);
   });
 
   it('exits 1 naming LEDGER_ADDRESS_HASH_KEY when it is unset, and never prints a configured value', {

@@ -5,8 +5,15 @@ import { z } from 'zod';
 
 // RS-02: `webhooks.verify` takes the secret in its `whsec_` form.
 const signingSecretPattern = /^whsec_[A-Za-z0-9+/=]+$/;
-// D2: 32 bytes as 64 lowercase hex characters.
-const addressHashKeyPattern = /^[0-9a-f]{64}$/;
+// D2, D3: each key is 32 bytes as 64 lowercase hex characters.
+const hexKeyPattern = /^[0-9a-f]{64}$/;
+
+// Decoded here, at the composition root, and passed as config. An empty or malformed key would hash
+// or tag under the wrong key silently, so anything else fails the boot.
+const hexKey = z
+  .string({ error: 'must be set' })
+  .regex(hexKeyPattern, { error: 'must be 64 lowercase hex characters' })
+  .transform((hex) => new Uint8Array(Buffer.from(hex, 'hex')));
 
 // `.env.example` lists every name with an empty value, so an empty optional variable is unset.
 const emptyAsUnset = (value: unknown): unknown => (value === '' ? undefined : value);
@@ -18,12 +25,10 @@ const signingSecret = z.string().regex(signingSecretPattern, {
 export const localConfigSchema = z
   .object({
     DATABASE_URL: z.string({ error: 'must be set' }).min(1, { error: 'must be set' }),
-    // D2: decoded here, at the composition root, and passed as config. An empty or malformed key
-    // would hash under the wrong key silently, so anything else fails the boot.
-    LEDGER_ADDRESS_HASH_KEY: z
-      .string({ error: 'must be set' })
-      .regex(addressHashKeyPattern, { error: 'must be 64 lowercase hex characters' })
-      .transform((hex) => new Uint8Array(Buffer.from(hex, 'hex'))),
+    // D2: the address-hash key.
+    LEDGER_ADDRESS_HASH_KEY: hexKey,
+    // D3, D40: the token-tag key the auth middleware checks every bearer token's tag under.
+    LEDGER_TOKEN_TAG_KEY: hexKey,
     // Comma-separated, one per `resend webhooks listen` session (RS-41), tried in this order (D9).
     LEDGER_WEBHOOK_SECRETS: z
       .preprocess(emptyAsUnset, z.string().optional())
@@ -39,6 +44,7 @@ export const localConfigSchema = z
   .transform((env) => ({
     databaseUrl: env.DATABASE_URL,
     addressHashKey: env.LEDGER_ADDRESS_HASH_KEY,
+    tokenTagKey: env.LEDGER_TOKEN_TAG_KEY,
     secrets: { resend: env.LEDGER_WEBHOOK_SECRETS, simulator: env.LEDGER_SIMULATOR_SECRET },
   }));
 
@@ -51,6 +57,8 @@ const configFailureMessages = {
   DATABASE_URL: 'refusing to start: DATABASE_URL must be set',
   LEDGER_ADDRESS_HASH_KEY:
     'refusing to start: LEDGER_ADDRESS_HASH_KEY must be 64 lowercase hex characters',
+  LEDGER_TOKEN_TAG_KEY:
+    'refusing to start: LEDGER_TOKEN_TAG_KEY must be 64 lowercase hex characters',
   LEDGER_WEBHOOK_SECRETS:
     'refusing to start: each LEDGER_WEBHOOK_SECRETS entry must be whsec_ followed by base64',
   LEDGER_SIMULATOR_SECRET:

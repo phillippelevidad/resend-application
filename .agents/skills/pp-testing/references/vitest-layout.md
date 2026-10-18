@@ -125,14 +125,20 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
   The SQS adapter only enqueues (the ESM receives), so it runs the enqueue cases only; the
   receive-and-settle cases run against the in-process and Postgres-backed queues
   ([pp-backend → Ports](../../pp-backend/references/composition.md#ports)).
-- The SDK ↔ API contract tests live in `apps/local/src/sdk-contract.int.test.ts`. `packages/sdk`
-  never depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
-  so they do not live in `packages/sdk`; `apps/local` already composes the API, and takes
-  `@ledger/sdk` as a `workspace:*` dev dependency for them. They read real rows, so they are
-  `*.int.test.ts`: `createApi(deps)` under `@hono/node-server` on `127.0.0.1:0` over a harness
-  clone, rows seeded through the worker's `RecordEventCommand`, every call through
-  `createLedgerClient` (slice 1: both operations' success paths, `email_not_found`,
-  `recipient_not_found`, `validation_failed`, `route_not_found`).
+- The SDK ↔ API contract suite is `readApiContract(name, make)` in
+  [`packages/api/src/testing/read-api-contract.ts`](../../../../packages/api/src/testing/read-api-contract.ts),
+  exported through `@ledger/api/testing` (D23): `packages/api` declares the contract, and takes
+  `@ledger/sdk` and `@ledger/worker` as `workspace:*` dev dependencies for it. `packages/sdk` never
+  depends on server code ([ADR-011](../../../../.ai/architecture.md#adr-011--one-contract-many-surfaces)),
+  so the suite does not live there. `make(deps)` serves `createApi(deps)` and answers a `baseUrl`;
+  two files run it: `apps/local/src/sdk-contract.int.test.ts` under `@hono/node-server` on
+  `127.0.0.1:0`, and `apps/api/src/api-lambda-contract.int.test.ts` through the `@hono/aws-lambda`
+  handler, a loopback `node:http` bridge turning each request into a synthetic payload-2.0 event
+  (ADR-019). They read real rows, so they are `*.int.test.ts`: a harness clone, rows seeded through
+  the worker's `RecordEventCommand`, a real token from `issueTestToken`, every call through
+  `createLedgerClient` (both operations' success paths, `unauthorized`, `email_not_found`,
+  `recipient_not_found`, `validation_failed`, `route_not_found`; the slice 2 operations join with
+  their SDK methods).
 
 ## Review greps
 

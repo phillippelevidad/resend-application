@@ -48,14 +48,30 @@ payload field, even masked.
 | 4. Scope | Compares the token's scope with the **entry's Scope**, never its section (`token.list` is a read needing `operate`); `operate` implies `read` | `403 forbidden` |
 | 5. The route | Validation, then the handler | `400 validation_failed`, the entry's codes |
 
+- **Steps 2 and 3 are one app-level middleware**, [`auth.middleware.ts`](../../../../packages/api/src/auth.middleware.ts)'s
+  `authMiddleware`, registered with `app.use` after the request id and before every route, so the
+  not-found handler sits behind it too: an unmatched path without a token answers `401`, never
+  `404`. A failure throws the shared error class with the registry's default `message`, so a `401`
+  never tells which check failed, and the app's one `onError` maps it.
+- **The health exception** is matched by `health.get`'s own route `method` and `path`, which
+  `createApi` passes into the middleware, so the middleware imports no route. Only a classified
+  database error on that route continues, with the caller marked `verified: false`; the health
+  reader then skips its storage read, so a request makes at most one database attempt (D19,
+  AWS-02). Evidence: [get-health.route.int.test.ts](../../../../packages/api/src/get-health.route.int.test.ts),
+  Postgres stopped.
+- **Step 4 is per route**: each `createRoute` carries `middleware: requireScope('read' | 'operate')`,
+  its entry's Scope. Route middleware runs before the route's validators, so a short scope answers
+  `403` before any `400`. An unverified caller passes only `read`. Evidence:
+  [auth.middleware.int.test.ts](../../../../packages/api/src/auth.middleware.int.test.ts).
 - `packages/api` imports no Lambda type: the generator is a dependency of its factory
   ([composition.md](composition.md#the-factory)), so the `aws-lambda` grep stays clean.
 - **The request id is a log field, never a response header**: a new header is a public contract
   change (Ask-first). Hono's middleware sets `X-Request-Id` on the response unless `headerName` is
   empty ([source](https://raw.githubusercontent.com/honojs/hono/main/src/middleware/request-id/request-id.ts)).
-- **Slice 1** runs with no token store: the local server skips steps 2–4 only while bound to a
-  loopback address and MUST refuse to start on any other interface
-  ([Conventions → Auth in slice 1](../../../../.ai/api-contract.md#conventions)).
+- **From slice 2 every mode enforces steps 2–4**, local mode included
+  ([Conventions → Auth](../../../../.ai/api-contract.md#conventions)); the local server still binds
+  loopback only and MUST refuse to start on any other interface until slice 2B decides the
+  `docker compose` bind.
 
 ## Errors: one `onError`, one `defaultHook`
 

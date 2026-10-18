@@ -8,6 +8,7 @@ import {
   type ClockPort,
   ConfigError,
   createLogger,
+  InProcessFunctionInvokeAdapter,
   InProcessQueueAdapter,
   type Logger,
   LogMetricsAdapter,
@@ -58,12 +59,9 @@ function readFlags(): Flags | undefined {
   if (!/^\d{1,5}$/.test(values.port) || Number(values.port) > 65535) {
     return refuse(processLogger, 'refusing to start: --port must be an integer from 0 to 65535');
   }
-  // Auth is skipped in slice 1, so only a loopback bind is allowed (api-contract.md → Conventions).
+  // D40: local mode binds loopback only; slice 2B decides the bind for `docker compose`.
   if (!isLoopbackHost(values.host)) {
-    return refuse(
-      processLogger,
-      'refusing to start: --host must be 127.0.0.1, ::1 or localhost because local mode skips auth',
-    );
+    return refuse(processLogger, 'refusing to start: --host must be 127.0.0.1, ::1 or localhost');
   }
   return { port: Number(values.port), host: values.host };
 }
@@ -119,11 +117,19 @@ function start({ port, host }: Flags, config: LocalConfig): void {
     metrics: new LogMetricsAdapter(workerLogger),
     addressHashKey: config.addressHashKey,
   });
+  // D40: the same middleware as on AWS, under the local tag key; the in-process queue reports its
+  // own counts, the static event source `enabled`, and the resume runs the local worker in process,
+  // which answers `already_enabled`.
   const api = createApi({
     db: apiDatabase.db,
     logger: apiLogger,
     addressHashKey: config.addressHashKey,
-    requestId: randomUUID,
+    tokenTagKey: config.tokenTagKey,
+    requestId: () => randomUUID(),
+    queueAttributes: queue,
+    eventSource: new StaticEventSourceControlAdapter(),
+    workerInvoke: new InProcessFunctionInvokeAdapter(() => worker.resume()),
+    storageLimitBytes: STORAGE_LIMIT_BYTES,
   });
 
   // D32: the ingest endpoint (api-contract.md → Ingest boundary) goes to ingest, as slice 2's HTTP

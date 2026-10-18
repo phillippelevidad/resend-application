@@ -2,7 +2,7 @@ import { createDatabase, type Executor } from '@ledger/db';
 import { createLogger, type Logger, mintApiToken } from '@ledger/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
-import { bearer, TEST_TOKEN_TAG_KEY, testApiDeps } from './testing.ts';
+import { bearer, TEST_TOKEN_TAG_KEY, testApiDeps } from './testing/api-test-deps.ts';
 
 // D22 and D23: the read API's one error mapping, with no database behind it. Ships 8. A case that
 // needs a token to pass the lookup is in `create-api.int.test.ts`: the lookup needs the database.

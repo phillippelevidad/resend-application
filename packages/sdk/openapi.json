@@ -5,6 +5,12 @@
     "version": "0.0.0"
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
     "schemas": {
       "Email": {
         "type": "object",
@@ -277,6 +283,241 @@
         "required": [
           "address"
         ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "health"
+            ]
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "visible": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "in_flight": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oldest_age_seconds": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            },
+            "required": [
+              "visible",
+              "in_flight",
+              "oldest_age_seconds"
+            ]
+          },
+          "dlq": {
+            "type": "object",
+            "properties": {
+              "visible": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "in_flight": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "visible",
+              "in_flight"
+            ]
+          },
+          "event_source": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "paused",
+                  "changing"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "reachable": {
+                "type": "boolean"
+              },
+              "storage_bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "storage_limit_bytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "reachable",
+              "storage_bytes",
+              "storage_limit_bytes"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "queue",
+          "dlq",
+          "event_source",
+          "database"
+        ]
+      },
+      "EventSource": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "event_source"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "paused",
+              "changing"
+            ]
+          },
+          "resumed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "object",
+          "state",
+          "resumed"
+        ]
+      },
+      "Token": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "token"
+            ]
+          },
+          "token_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "operate"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "object",
+          "token_id",
+          "name",
+          "scope",
+          "created_at",
+          "revoked_at"
+        ]
+      },
+      "TokenList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            }
+          }
+        },
+        "required": [
+          "object",
+          "has_more",
+          "data"
+        ]
+      },
+      "CreatedToken": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Token"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "token": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "token"
+            ]
+          }
+        ]
+      },
+      "TokenCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "example": "review-2026-10-20"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "operate"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "scope"
+        ]
       }
     },
     "parameters": {}
@@ -286,6 +527,11 @@
       "get": {
         "operationId": "email.get",
         "summary": "The projected state of an email, its recipients and its event timeline",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -310,6 +556,16 @@
           },
           "400": {
             "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
             "content": {
               "application/json": {
                 "schema": {
@@ -355,6 +611,11 @@
       "post": {
         "operationId": "recipient.get",
         "summary": "The deliverability of an address and the email that caused it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -386,8 +647,456 @@
               }
             }
           },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`recipient_not_found`: no event has ever named this address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health.get",
+        "summary": "Queue and DLQ depth, the worker event source, and database reachability and storage",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pipeline, also during a database outage (`database.reachable: false`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worker/resume": {
+      "post": {
+        "operationId": "worker.resumeEventSource",
+        "summary": "Probe the database and re-enable the worker's paused event source",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resulting event-source state, and whether this call re-enabled it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventSource"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the token lacks the `operate` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the probe failed, so the event source stays paused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens/current": {
+      "get": {
+        "operationId": "token.getCurrent",
+        "summary": "The calling token's id, name and scope",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The calling token, never its hash.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens": {
+      "get": {
+        "operationId": "token.list",
+        "summary": "Active and revoked tokens, newest first",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[1-9][0-9]?|100)$",
+              "example": "20"
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,14}$"
+            },
+            "required": false,
+            "name": "after",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of tokens, never a hash or a plaintext token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the token lacks the `operate` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "token.create",
+        "summary": "Mint a token; its plaintext is returned this once",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new token object plus `token`, the plaintext, shown only here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the token lacks the `operate` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens/{token_id}/revoke": {
+      "post": {
+        "operationId": "token.revoke",
+        "summary": "Revoke a token; its next request answers 401",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,14}$"
+            },
+            "required": true,
+            "name": "token_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revoked token; a revoked one is returned unchanged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the token lacks the `operate` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`token_not_found`: no token with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`last_operate_token`: revoking it would leave no active `operate` token.",
             "content": {
               "application/json": {
                 "schema": {
