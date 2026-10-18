@@ -163,9 +163,23 @@ describe('database outage (ADR-015)', () => {
         receives.set(messageId, (receives.get(messageId) ?? 0) + 1);
       return worker.processBatch(batch);
     };
+    // SQS behind the mapping, while the outage lasts: it redelivers a listed batch only while the
+    // event source is enabled (AWS-18), and dead-letters a message whose receive count passes
+    // `maxReceiveCount` (AWS-09). Without the pause this loop reaches the DLQ's count.
+    const deliverWhileEnabled = async () => {
+      let last = await deliver();
+      while (
+        eventSource.state === 'enabled' &&
+        Math.max(...receives.values()) < MAX_RECEIVE_COUNT
+      ) {
+        last = await deliver();
+      }
+      return last;
+    };
 
-    const response = await whileStopped(deliver);
+    const response = await whileStopped(deliverWhileEnabled);
 
+    expect(Math.max(...receives.values())).toBe(1);
     expect(response).toEqual(allListed(batch));
     expect(eventSource.state).toBe('paused');
     expect(messagesNamed(lines(), 'worker.database_unavailable')).toHaveLength(1);
@@ -176,8 +190,7 @@ describe('database outage (ADR-015)', () => {
     expect(await worker.resume()).toEqual({ outcome: 'resumed', state: 'enabled' });
     expect(await deliver()).toEqual({ batchItemFailures: [] });
     expect(await webhookEventsRepository.countPresent(database.db, svixIds)).toBe(3);
-    expect(Math.max(...receives.values())).toBeLessThan(MAX_RECEIVE_COUNT);
-  }, 60_000);
+  }, 120_000);
 
   it('a connection dropped mid-transaction is retried on a fresh connection and commits; the source stays enabled', async () => {
     const { worker, eventSource, lines } = harness();
