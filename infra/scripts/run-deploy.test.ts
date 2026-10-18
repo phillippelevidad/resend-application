@@ -333,7 +333,21 @@ describe('the refusals before any change', () => {
     const world = newWorld({ killSwitchArmed: true });
     const run = await deploy(world, { env: { ...baseEnv, LEDGER_KILL_SWITCH: 'off' } });
     expect(lastLine(run)).toMatch(/^aws:deploy: refused: the deploy would disarm/);
+    expect(run.code).toBe(1);
     expect(world.calls).toEqual(['isTreeClean', 'readDeployedState']);
+    expectNoChange(world);
+  });
+
+  // CBL-16's named risk is the disarm by omission: a redeploy from a shell with no
+  // LEDGER_KILL_SWITCH at all.
+  it('refuses the same disarm when LEDGER_KILL_SWITCH is unset', async () => {
+    const world = newWorld({ killSwitchArmed: true });
+    const { LEDGER_KILL_SWITCH: _omitted, ...env } = baseEnv;
+    const run = await deploy(world, { env });
+    expect(lastLine(run)).toMatch(/^aws:deploy: refused: the deploy would disarm/);
+    expect(run.code).toBe(1);
+    expect(world.calls).toEqual(['isTreeClean', 'readDeployedState']);
+    expectNoChange(world);
   });
 
   it('allows a disarmed stack to stay disarmed', async () => {
@@ -346,6 +360,7 @@ describe('the refusals before any change', () => {
     const world = newWorld({ templateSecret: true });
     const run = await deploy(world);
     expect(lastLine(run)).toMatch(/^aws:deploy: refused: .*CBL-01/);
+    expect(run.code).toBe(1);
     expect(world.calls.at(-1)).toBe('findTemplateSecret');
     expectNoChange(world);
   });
