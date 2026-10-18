@@ -20,7 +20,9 @@ infra/
     guardrails.stack.ts         GuardrailsStack, stack id LedgerGuardrails
     ledger-function.construct.ts  the shared function shape
     function-env.ts             internal variable values, keyed by the names from `@ledger/shared`
-    *.test.ts                   Template assertions, beside the stack they test
+    *.stack.test.ts             Template assertions, beside the stack they test
+    esbuild-installation.test.ts  the local esbuild CDK bundles with (AWS-55)
+    bundle-smoke.test.ts        every synthesized bundle loads in Node and exports `handler`
   scripts/
     <name>.ts                   AWS-facing commands (scripts.md)
 ```
@@ -41,13 +43,13 @@ infra/
   ([imports-and-tsconfig.md](../../pp-general/references/imports-and-tsconfig.md#node-24-runs-ts-directly)).
 - **`cdk.json`** carries the feature flags `cdk init` wrote for `aws-cdk` 2.1145.0, plus
   `cli-telemetry: false`, `versionReporting: false` and `notices: false`. Among them,
-  `@aws-cdk/aws-lambda:useCdkManagedLogGroup: true` MUST be reconciled with the explicit
-  `logs.LogGroup` rule ([SKILL.md](../SKILL.md#cost-brake-in-code)) when slice 2 adds the first
-  function: the `Template` assertion on explicit log groups is the check.
+  `@aws-cdk/aws-lambda:useCdkManagedLogGroup: true` stays (slice 2, D32): it only makes CDK create a
+  group for a function given none, and every function passes its own `logGroup`. The `Template`
+  assertion on explicit log groups (each function's `LoggingConfig.LogGroup` is a `Ref` to one of
+  the stack's groups, as many groups as functions) is the check.
 - **An empty stack fails synth.** `@aws-cdk/core:validateAgainstDefaultRules` rejects a stack with
-  no resources (`CloudFormation-Validate::F0001`), so both stacks acknowledge F0001 through
-  `Validations.of(this).acknowledge(...)` until slice 2 adds their first resource, which removes
-  it. Their tests assert zero resources, and no `Fn::ImportValue` in the guardrails stack.
+  no resources (`CloudFormation-Validate::F0001`). Slice 2 gave both stacks resources and removed
+  their F0001 acknowledgements; a new stack would need one until its first resource.
 
 ## Bundling
 
@@ -59,9 +61,10 @@ new NodejsFunction(this, 'Function', {
   runtime: Runtime.NODEJS_24_X, // AWS-54
   architecture: Architecture.ARM_64, // AWS-20
   logGroup, // AWS-40: explicit, AWS-29 retention, DESTROY (AWS-38)
+  loggingFormat: LoggingFormat.TEXT, // D31: no level filter applies
   depsLockFilePath: join(repoRoot, 'pnpm-lock.yaml'),
   projectRoot: repoRoot,
-  bundling: { format: OutputFormat.ESM, target: 'node24', bundleAwsSDK: true },
+  bundling: { format: OutputFormat.ESM, target: 'node24', bundleAwsSDK: true, banner }, // banner: below
 });
 ```
 
@@ -73,8 +76,12 @@ and [BundlingOptions](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aw
   in your environment. Otherwise, bundling will happen in a Lambda compatible Docker container."
   In a monorepo "the `esbuild` dependency needs to be installed in the 'root' `package.json`
   file". So `esbuild` is a root devDependency (Ask-first, slice 2), and a missing one falls back to
-  Docker **silently**. Evidence: an infra test that resolves `esbuild` from the repo root, so the
-  fallback fails `pnpm verify` instead of silently bundling in Docker (AWS-55).
+  Docker **silently**. Evidence: [esbuild-installation.test.ts](../../../../infra/src/esbuild-installation.test.ts)
+  resolves the pinned `esbuild` from the repo root, and from aws-cdk-lib's own lookup, so the
+  fallback fails `pnpm verify` instead of silently bundling in Docker (AWS-55). aws-cdk-lib 2.273.0
+  detects esbuild with `require('esbuild/package.json')` from its own module, which under pnpm finds
+  whichever 0.x copy is hoisted, then runs the workspace binary (`pnpm exec esbuild`) from
+  `projectRoot`, which is the root's pinned one.
   `forceDockerBundling` stays `false`; `nodeModules` is never set: those modules "are installed …
   only when bundling runs in Docker".
 - **Runtime and architecture are explicit.** The runtime default is `NODEJS_LATEST` behind a
@@ -97,15 +104,19 @@ and [BundlingOptions](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aw
   esbuild bundles them through the workspace links, and nothing builds first.
 - **The entry path is absolute,** built from `import.meta.dirname`. It is a string, not an import.
 
-**[Unverified], slice 2 settles both** with a bundle smoke check (import each built `index.mjs`
-under Node 24 and assert `handler` is a function):
+**The bundle smoke check** ([bundle-smoke.test.ts](../../../../infra/src/bundle-smoke.test.ts),
+unit tier) synthesizes both stacks and imports each built `index.mjs` in its own Node 24 process,
+its internal variables set to dummy values and no AWS credentials or config reachable, asserting
+`handler` is a function. Each composition root therefore builds its clients at module scope and
+makes no AWS call before the first invocation (D32). Settled by it on 2026-10-17:
 
-- A CommonJS dependency calling `require()` inside an ES-module bundle fails at load with
-  `Dynamic require of "os" is not supported`. The documented workaround is a `banner` defining
-  `require` through `createRequire(import.meta.url)` ([esbuild #1921](https://github.com/evanw/esbuild/issues/1921)).
-  Add it only if the smoke check fails.
-- `pg`'s optional `pg-native` require may fail to resolve at bundle time. Mark only `pg-native`
-  external, and only if the build fails on it.
+- A CommonJS dependency calling `require()` inside an ES-module bundle fails at load. It did, in
+  all four functions (`Dynamic require of "util" is not supported`, from Winston's
+  `@colors/colors`), so `LedgerFunction` sets esbuild's `banner` to
+  `import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);`
+  ([esbuild #1921](https://github.com/evanw/esbuild/issues/1921)). Removing it fails all four.
+- `pg`'s optional `pg-native` require did not fail the build or the load, so nothing is marked
+  external. Mark only `pg-native`, and only if a build fails on it.
 
 ## Function configuration
 
@@ -116,8 +127,9 @@ under Node 24 and assert `handler` is a function):
   charge, [cost brake](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized)).
 - **Log format and level.** `loggingFormat` defaults to `TEXT` and the application level to
   `INFO` ([FunctionProps](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_lambda.FunctionProps.html)).
-  Slice 2 sets them together with pp-general's level-filter `[Unverified]` row
-  ([logger](../../pp-general/references/logging-and-pii.md#logger)).
+  Every function sets `LoggingFormat.TEXT` explicitly and no application or system level (D31): the
+  logger's one JSON object per line and EMF on stdout are both parsed under TEXT, and no level
+  filter applies, so pp-general's level-filter row is moot (C15). The app stack test asserts both.
 - **IAM by grant methods**, per function and only what it uses: `secret.grantRead(fn)` for the
   secrets the [Secrets layout](../../../../.ai/integrations.md#secrets-layout) gives it, the queue
   grant its role needs. The kill switch's function permissions are scoped to stack-prefixed
@@ -125,9 +137,19 @@ under Node 24 and assert `handler` is a function):
   UUID, so `lambda:UpdateEventSourceMapping` takes `event-source-mapping:*` narrowed by the
   `lambda:FunctionArn` condition to the worker's ARN
   ([Lambda → Resources and conditions](https://docs.aws.amazon.com/lambda/latest/dg/lambda-api-permissions-ref.html)).
-  An HTTP API's ARN carries its generated id, so the throttle update takes `/apis/*/stages/*` (and
-  `/routes/*` if the kill switch updates routes) in the stack's region: a wider grant the stack
-  comments. That ARN shape is `[Unverified]` ([AWS-U11](../../../../.ai/aws.md#unverified)).
+  An HTTP API's ARN carries its generated id, so the throttle update takes `/apis/*/stages/*` in
+  the stack's region: a wider grant the stack comments. Per the Service Authorization Reference
+  (read 2026-10-17, [AWS-U11](../../../../.ai/aws.md#unverified)), `GetApis` is `apigateway:GET` on
+  `arn:<partition>:apigateway:<region>::/apis`, `GetStage` is `GET` and `UpdateStage` (route
+  throttles included) is `PATCH` on `…::/apis/<id>/stages/<name>`; API Gateway ARNs carry no
+  account (`formatArn` with `account: ''`). The kill switch updates no route, so it has no
+  `/routes/*` grant. AWS-U11 stays `[Unverified]` until the trip drill's update succeeds under it.
+- **Physical names** (D27): `<stack>-<fn>` for functions (`LedgerApp-ingest`, `LedgerApp-worker`,
+  `LedgerApp-api`, `LedgerGuardrails-kill-switch`), `LedgerApp-http` for the HTTP API,
+  `LedgerApp-hourly` for the schedule, `LedgerApp-usage-trip` and
+  `LedgerGuardrails-kill-switch-errors` for the alarms, `LedgerGuardrails-trip` and
+  `LedgerGuardrails-alert` for the topics, `LedgerGuardrails-monthly` (and `-drill`) for the budgets,
+  `/ledger/<function name>` for log groups. Queues and secrets take none.
 - **The worker's event source mapping** carries ADR-008's settings; `maxReceiveCount` is AWS-09's.
 - **The reconciler's async invoke config sets `retryAttempts: 0`** (`MaximumRetryAttempts: 0`,
   slice 4). Async invoke is at-least-once ([AWS-53](../../../../.ai/aws.md#lambda)), so a run's
@@ -139,7 +161,15 @@ under Node 24 and assert `handler` is a function):
 
 The budget (`CfnBudget`), its topics, the kill-switch function and its `Errors` alarm, as
 [Budget alarms](../../../../.ai/aws.md#budget-alarms) designs them; thresholds are aws.md's and
-slice 2's. It deploys first and imports nothing from the app stack (item 1). Where the kill
-switch's code lives is not yet in the [Projects](../../../../AGENTS.md#projects) table: the slice 2
-pre-proposal settles it. Wherever it lands, its AWS calls go through `packages/aws` and it is
-bundled like every other function. Where the usage-trip alarm lives (item 7) is slice 2's too.
+slice 2's. It deploys first and imports nothing from the app stack (item 1).
+
+- **The kill switch's home** is `apps/kill-switch` ([Projects](../../../../AGENTS.md#projects)):
+  `create-kill-switch-handler.ts` turns any SNS event into one `tripKillSwitch` call from
+  `packages/aws` and refuses a non-SNS payload with a constant (the drill's forced failure);
+  `kill-switch.handler.ts` binds it to what `main.ts` built. It is bundled through `LedgerFunction`
+  like every other function, always deployed; the trip topic's Lambda subscription exists only with
+  `ledger:killSwitch=on`, which the `KillSwitchArmed` output reports (CBL-16).
+- **The usage-trip alarm lives in the app stack** (item 7, C3), beside the default-route throttle,
+  because it needs the HTTP API's id. Its action is the trip topic's ARN built with `formatArn` from
+  the topic's fixed name, never a cross-stack reference; the guardrails topics' policies let
+  `cloudwatch.amazonaws.com` publish.

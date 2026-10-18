@@ -202,6 +202,12 @@ below was ratified by the owner on 2026-10-15.
 3. **Notifications (4 of the ≤ 5 allowed, AWS-33).** ACTUAL 50 %, ACTUAL 80 % and FORECASTED 100 %
    go to email. The address is supplied at deploy time and never committed. ACTUAL 100 % goes to
    email **and** the trip topic. FORECASTED never trips, because a new account has no forecast.
+   **Mechanism (slice 2):** a notification takes one SNS subscriber (AWS-33), so every
+   notification's subscriber is a topic: the three alerts publish to `LedgerGuardrails-alert`,
+   ACTUAL 100 % to `LedgerGuardrails-trip`, and the address subscribes to both topics (two
+   confirmations, [CBL-03](check-before-launch.md#deploy-configuration)). Each topic is unencrypted and its policy lets
+   `budgets.amazonaws.com` and `cloudwatch.amazonaws.com` publish from this account (AWS-35).
+   Evidence: [guardrails.stack.test.ts](../infra/src/guardrails.stack.test.ts).
 4. **Kill switch: an SNS-triggered Lambda.** It is the only design that stops compute: Budget Actions
    cannot (AWS-36). On a trip it:
    - first disables the worker's ESM (AWS-18), so queued events wait in SQS for up to 13 days
@@ -242,8 +248,27 @@ below was ratified by the owner on 2026-10-15.
    derived from the cap, publishes to the trip topic, and returns to OK after a re-arm, so it can
    trip again (one of the ≤ 10 free alarms, AWS-28). The threshold MUST admit one burst
    (≈ 12k requests). The budget trip stays as the backstop. Slice 2 sets the throttle and the
-   threshold, and states them here with the computed worst-case overshoot.
-8. **Evidence.** A CDK assertion test proves the budget (with `IncludeCredit: false`), the notifications and the kill-switch wiring exist.
+   threshold, and states them here with the computed worst-case overshoot:
+   - **Throttle:** the `$default` stage's default route at rate **100** rps, burst **200**; the
+     kill switch's stop values are `0` / `0` (AWS-U02 decides whether `0` holds).
+   - **Usage trip** `LedgerApp-usage-trip`: `Count` `Sum` over 900 s, threshold **15,000**, one
+     evaluation period, missing data not breaching. It admits one burst with headroom, and lives in
+     the app stack because it needs the API's id; its action is the trip topic's ARN built from the
+     topic's fixed name, not an import (item 1).
+   - **Cost per accepted request** c ≈ USD 3 × 10⁻⁶: API Gateway 1.0 × 10⁻⁶ (AWS-15); ingest's
+     invocation and 256 MB × 0.1 s ≈ 0.53 × 10⁻⁶ (AWS-20); SQS send plus batched receive and
+     delete ≈ 0.48 × 10⁻⁶ (AWS-24); a tenth of a 512 MB worker invocation at 50 ms per event
+     ≈ 0.36 × 10⁻⁶; ≈ 1 KB of log ingest ≈ 0.5 × 10⁻⁶ (AWS-29).
+   - **Above the threshold**, a flood at the throttle cap trips within one alarm period plus
+     evaluation (≤ 20 min): ≤ 120k requests ≈ USD 0.36.
+   - **Just under the threshold**, a sustained flood spends ≤ 60k requests/h ≈ USD 0.18/h until the
+     budget trip, which lags by up to a day of billing data plus 12 h (AWS-34): ≤ 36 h ≈
+     **USD 6.5 above the cap**, the worst-case overshoot.
+   Evidence for the throttle, the threshold and the constructed ARN:
+   [app.stack.test.ts](../infra/src/app.stack.test.ts).
+8. **Evidence.** A CDK assertion test proves the budget (with `IncludeCredit: false`), the notifications and the kill-switch wiring exist
+   ([guardrails.stack.test.ts](../infra/src/guardrails.stack.test.ts), the usage trip in
+   [app.stack.test.ts](../infra/src/app.stack.test.ts)).
    A recorded **trip drill** (publish to the trip topic, observe each throttle, force one
    kill-switch failure and observe its alarm, re-arm, reconcile) proves they work ([features.md → Operations](features.md#operations)). Re-checked after every owner
    deploy ([CBL-16](check-before-launch.md#deploy-configuration)).

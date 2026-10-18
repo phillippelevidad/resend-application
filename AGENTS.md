@@ -145,8 +145,7 @@ This table is the canonical layout (adapted from the frozen
 `package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
-scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools and `infra`'s two empty
-stacks.
+scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools.
 
 | Project | Role | Logic lands |
 | --- | --- | --- |
@@ -166,6 +165,7 @@ stacks.
 | **apps/ingest** | Lambda entry point over `packages/ingest`: event adaptation and composition root (ADR-013) | 2 |
 | **apps/worker** | Lambda entry point over `packages/worker`: SQS batch and resume-event adaptation, composition root (ADR-008, ADR-013) | 2 |
 | **apps/api** | Lambda entry point behind the HTTP API: `packages/api` through `@hono/aws-lambda` (ADR-010, ADR-019) | 2 |
+| **apps/kill-switch** | Lambda entry point in the guardrails stack: an SNS message on the trip topic runs `packages/aws`'s trip steps; composition root ([aws.md → Budget alarms](.ai/aws.md#budget-alarms), ADR-010, ADR-013) | 2 |
 | **apps/reconciler** | Lambda entry point over `packages/reconciler` (ADR-013) | 4 |
 | **apps/mcp** | MCP server, built on the SDK (ADR-019) | 5 |
 | **apps/dispatcher** | Lambda entry point over `packages/dispatcher` (ADR-013) | 6 |

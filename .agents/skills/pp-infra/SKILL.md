@@ -61,8 +61,8 @@ pp-general; where it is silent, pp-general applies.
   queued ([teardown](references/scripts.md#teardown), lens clause 7).
 - Deploying, creating AWS resources and running a script against AWS are Ask-first
   ([Permissions](../../../AGENTS.md#permissions)). `cdk synth` and the `Template` tests need no
-  credentials (synth with no credentials succeeded in CI on the empty stacks; every slice 2
-  construct stays `[Unverified]` until slice 2's first synth, [names](references/env-and-inputs.md#names-account-and-region));
+  credentials (every slice 2 construct synthesizes with none reachable, checked 2026-10-17,
+  [names](references/env-and-inputs.md#names-account-and-region));
   nothing else runs unapproved. With AWS credentials present, the CDK CLI makes one read-only STS
   `GetCallerIdentity` call during synth; it runs without per-run approval (owner, 2026-10-16).
 
@@ -86,7 +86,7 @@ is unproven. Shapes, and the wiring assertions slices owe: [cost-brake-assertion
 | The guardrails template holds no `Fn::ImportValue` | [Budget alarms](../../../.ai/aws.md#budget-alarms) item 1 |
 | Every Postgres-touching schedule on the one hourly cron, window `OFF`, explicit retry policy | AWS-10, [Cadence](../../../.ai/integrations.md#cadence-and-the-database) |
 | Standard alarms within the free count, no composite alarm | AWS-28 |
-| The guardrails stack holds the budget (`IncludeCredit: false`), its notifications, the trip topic with the kill switch subscribed and its `Errors` alarm, and the default-route throttle | ADR-010, [Budget alarms](../../../.ai/aws.md#budget-alarms) items 2–4, 7, 8, AWS-52 |
+| The guardrails stack holds the budget (`IncludeCredit: false`), its notifications, the trip topic with the kill switch subscribed when armed, and its `Errors` alarm; the app stack holds the default-route throttle and the usage trip, because both need the HTTP API (C3) | ADR-010, [Budget alarms](../../../.ai/aws.md#budget-alarms) items 2–4, 7, 8, AWS-52 |
 
 ## Case-by-case
 

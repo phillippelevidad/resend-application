@@ -57,8 +57,10 @@ of them against AWS or a live Resend account is Ask-first ([Permissions](../../.
   DEP0190", and with a shell "any input containing shell metacharacters may be used to trigger
   arbitrary command execution" ([Node child_process](https://nodejs.org/docs/latest-v24.x/api/child_process.html),
   read 2026-10-16). The owner works on Windows, so this is the portable form.
-- **[Unverified]:** how to resolve `cdkEntry` from the installed `aws-cdk` (its `package.json`
-  `bin` field). Slice 2 settles it against the installed version.
+- **The entry:** the installed `aws-cdk` 2.1145.0's `package.json` `exports` maps `./bin/cdk` (read
+  2026-10-17), so `cdkEntry` is `createRequire(import.meta.url).resolve('aws-cdk/bin/cdk')` from a
+  file under `infra/`, whose `package.json` declares `aws-cdk` (D33). The deploy command's spawn is
+  what proves it runs (slice 2's scripts).
 - Deploy inputs go as `-c key=value` arguments ([env-and-inputs.md → Deploy inputs](env-and-inputs.md#deploy-inputs)).
 
 ## Deploy
