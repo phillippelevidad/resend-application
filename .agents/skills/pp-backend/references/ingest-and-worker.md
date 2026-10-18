@@ -11,14 +11,28 @@ it is not an operation, has no OpenAPI entry, and the error registry does not ap
 
 ## Ingest, in order
 
-`apps/ingest`'s handler decodes the body to its exact bytes (`isBase64Encoded`, AWS-01) and passes
-the bytes and the three `svix-*` headers to the function `packages/ingest` built. That function:
+`apps/ingest`'s handler decodes the body to its exact bytes (`isBase64Encoded`, AWS-01), logs
+`ingest.request_decoded` with `body_base64_count` and no other request data, and passes the bytes
+and the three `svix-*` headers to the function `packages/ingest` built. Anything thrown is caught
+at the edge, logged by `error_name`, and rethrown as a constant `internal_error` with no `cause`.
+Every Lambda root parses its config and builds its clients at module scope, but reads its secrets
+on the first invocation through one memoized promise per container, reused by every warm
+invocation, so importing the bundle needs no AWS access (slice 2 D32's bundle smoke check).
+Ingest's root builds `createIngest` at module scope and makes no AWS call there; its memoized read
+is step 1's cache, filled on the first request. That function:
 
-1. **Gets the secret set**, cached per container for at most 5 minutes against the clock port
-   (ADR-009), so an added or retired secret takes effect without a redeploy. A failed or empty
-   read throws, so the answer is a `5xx` Resend retries (RS-10), never a `401` and never
-   `ingest.rejected`: `401`s on an infra fault can auto-disable the webhook (RS-11). A failed
-   refresh never serves a set past its 5 minutes.
+1. **Gets the secret set** through `SecretReaderPort` by the id its root passes
+   (`SIGNING_SECRETS_ARN` on AWS; locally a `StaticSecretReaderAdapter` over the parsed
+   `LEDGER_WEBHOOK_SECRETS`), parsed with Zod as a JSON array of `whsec_` strings
+   (`signing-secrets.schema.ts`). The result is cached per container for
+   `SECRET_SET_TTL_MS` (5 minutes) against the clock port (ADR-009), so an added or retired secret
+   takes effect without a redeploy; concurrent requests share one pending read. A failed read, a
+   value that fails the parse, or a set with no secret at all (no Resend secret and no simulator
+   secret) answers `503` with the fixed body `unavailable`, logs `ingest.secrets_unavailable` with
+   `error_name` only, enqueues nothing and emits no metric. Resend retries a `503` (RS-10); a `401`
+   on an infra fault would read as a wrong secret and can auto-disable the webhook (RS-11), and the
+   `503` is what proves RS-U07 safe either way. A failed refresh clears the cache and never serves
+   a set past its 5 minutes ([create-ingest.test.ts](../../../../packages/ingest/src/create-ingest.test.ts)).
 2. **Verifies with `webhooks.verify`, one call per secret, first match wins** (RS-02). Resend
    secrets first, then the simulator secret when one is configured; the match sets `source` to
    `live` or `simulated` (ADR-016). Only ingest sets `source`. Never a hand-rolled HMAC compare

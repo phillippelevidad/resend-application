@@ -82,8 +82,8 @@ command or mapper per file.
 | `packages/api` | `auth.middleware.ts` (`authMiddleware`, `requireScope`); `get-health.route.ts`, `get-health.reader.ts`, `health-response.mapper.ts`, `health-response.schema.ts`; `resume-event-source.route.ts`, `resume-event-source.command.ts`, `event-source-response.schema.ts`; `get-current-token.route.ts`, `list-tokens.route.ts`, `create-token.route.ts`, `revoke-token.route.ts` with their reader or command, `token-response.mapper.ts`, `token-response.schema.ts`; `create-api.ts` (deps, middleware, `onError` per route); `testing.ts` (`readApiContract`) |
 | `packages/sdk` | `create-ledger-client.ts` (six methods, five types), `testing.ts` (`FakeLedgerClient` grows them); regenerated `openapi.json`, `src/openapi-types.ts` |
 | `packages/aws` | The eleven modules of D26 |
-| `apps/ingest`, `apps/worker`, `apps/api` | `main.ts` (composition root), `<fn>.handler.ts` (CDK entry), `<fn>.config.ts` (internal variables, Zod) |
-| `apps/kill-switch` (new, `@ledger/app-kill-switch`) | `main.ts`, `kill-switch.handler.ts`, `kill-switch.config.ts` |
+| `apps/ingest`, `apps/worker`, `apps/api` | `main.ts` (composition root), `<fn>.handler.ts` (CDK entry: binds `handler` to what `main.ts` built), `create-<fn>-handler.ts` (ingest and worker: the event adapter, tested without loading `main.ts`), `<fn>.config.ts` (internal variables, Zod) |
+| `apps/kill-switch` (new, `@ledger/app-kill-switch`) | `main.ts`, `kill-switch.handler.ts`, `create-kill-switch-handler.ts`, `kill-switch.config.ts` |
 | `apps/local` | `local.config.ts`, `main.ts`, `setup/main.ts`, `setup/merge-local-env.ts` (changed) |
 | `apps/cli` | `commands/health-get.cli.ts`, `worker-resume-event-source.cli.ts`, `token-create.cli.ts`, `token-list.cli.ts`, `token-revoke.cli.ts`, `token-get-current.cli.ts`; `create-program.ts` (the `worker` and `token` groups) |
 | `infra` | `src/ledger-function.construct.ts`, `src/function-env.ts`, `src/app.stack.ts`, `src/guardrails.stack.ts`, `src/main.ts`; `scripts/deploy.ts` + `run-deploy.ts`, `teardown.ts` + `run-teardown.ts`, `rearm.ts`, `trip-drill.ts`, `db-check.ts` |
@@ -265,7 +265,9 @@ retried (RS-10), and it is what makes RS-U07 safe either way (D43).
 
 #### D14 — `apps/ingest`
 
-`ingest.handler.ts` exports `createIngestHandler(ingest)` and `handler`. Per API Gateway payload 2.0
+`create-ingest-handler.ts` exports `createIngestHandler(deps)`; `ingest.handler.ts` exports only
+`handler`, that adapter bound to what `main.ts` built (one primary export per file, and the
+adapter's test never loads `main.ts`). Per API Gateway payload 2.0
 event (AWS-01):
 
 1. Body: `isBase64Encoded` true → `Buffer.from(body, 'base64').toString('utf8')`; otherwise `body`, or
@@ -330,7 +332,8 @@ a variable: that reference would be a CloudFormation cycle (C5).
 
 #### D17 — `apps/worker`
 
-`worker.handler.ts` exports `createWorkerHandler(worker)` and `handler`, branching on the event:
+`create-worker-handler.ts` exports `createWorkerHandler(deps)`; `worker.handler.ts` exports only
+`handler`, bound to what `main.ts` built (the layout of D14). The adapter branches on the event:
 
 - **SQS batch** (`Records` whose entries carry `eventSource: 'aws:sqs'`): each record →
   `{ messageId, body }`, `processBatch`, return `{ batchItemFailures }` exactly as built.
@@ -545,7 +548,8 @@ Alarms across both stacks: two, inside AWS-28's ten free.
 
 #### D29 — The kill switch's home and steps
 
-`apps/kill-switch` (`@ledger/app-kill-switch`, a new Projects row): `kill-switch.handler.ts` accepts an
+`apps/kill-switch` (`@ledger/app-kill-switch`, a new Projects row): `create-kill-switch-handler.ts`
+(bound by `kill-switch.handler.ts`, D14's layout) accepts an
 SNS event (any message on the trip topic trips; a non-SNS payload throws a constant, which the drill
 uses) and calls `tripKillSwitch` from `packages/aws`. In order, each step reading the current state
 first so a re-run is safe:
@@ -815,9 +819,9 @@ teardown listing), which the walk records, nor Neon's pooler (PG-U02, PG-U06) or
 | Ships 1, R20: cost brake, mapping, queues, environments | `infra/src/app.stack.test.ts`, `guardrails.stack.test.ts` (unit): one `Template` assertion per cost-brake property, each paired with a count; the throttle on the app template (C3); the mapping; retention and `maxReceiveCount`; the derived visibility timeout; secrets least privilege; per-function key sets equal to `function-env.ts`; outputs incl. `DeployedCommit`; the kill-switch flag both ways | Any cost-brake property; a variable on the wrong function |
 | Ships 7: budget wiring | `guardrails.stack.test.ts`: `IncludeCredit: false`, four notifications; both topics unencrypted with both principals; the kill switch and its `Errors` alarm; no `Fn::ImportValue`; the drill budget only with its flag | Budget-alarm wiring |
 | D32: bundles | `esbuild-installation.test.ts`, `bundle-smoke.test.ts` (unit) | A Docker fallback; an unloadable bundle |
-| Ships 2, R1–R4 | `apps/ingest/src/ingest.handler.test.ts` (unit): signed plain and base64 → `200`; forged both ways → `401`; rejecting queue → `503`; fixed bodies and content type; `body_base64_count`. `packages/ingest/src/create-ingest.test.ts` (unit, `FakeClock`): unreadable and empty set → `503`, nothing enqueued; cache within 5 min, refresh after; a failed refresh never serves the expired set | The decode; the `503` on infra faults |
+| Ships 2, R1–R4 | `apps/ingest/src/create-ingest-handler.test.ts` (unit): signed plain and base64 → `200`; forged both ways → `401`; rejecting queue → `503`; fixed bodies and content type; `body_base64_count`. `packages/ingest/src/create-ingest.test.ts` (unit, `FakeClock`): unreadable and empty set → `503`, nothing enqueued; cache within 5 min, refresh after; a failed refresh never serves the expired set | The decode; the `503` on infra faults |
 | R4 on SQS | `packages/aws/src/sqs-queue.adapter.test.ts` (unit, stubbed client): `SendMessage` input; a rejection propagates | — |
-| Ships 3, R5 | `apps/worker/src/worker.handler.test.ts` (unit, fake worker): three records, one failure → exactly that id; a throw → rethrown constant; resume event → `ResumeResult`; unknown event → constant throw | An empty or assumed response |
+| Ships 3, R5 | `apps/worker/src/create-worker-handler.test.ts` (unit, fake worker): three records, one failure → exactly that id; a throw → rethrown constant; resume event → `ResumeResult`; unknown event → constant throw | An empty or assumed response |
 | Ships 4, R6 (classification) | `packages/db/src/classify-database-error.test.ts` (unit, extended): `Query read timeout`, `53100` | The classification |
 | Ships 4, R6, R7 | `packages/worker/src/database-outage.int.test.ts` (int, own container): batch with Postgres stopped → every id listed, `FakeEventSourceControl` reads `paused` after one batch, nothing dead-lettered; a non-connection failure lists only its message and leaves the source enabled. `packages/db/src/run-transaction.int.test.ts` (int): a first attempt ending in `Query read timeout` (the owner holds the row's lock, the test pool's `query_timeout` below the role's `lock_timeout`) is retried on a different backend (`pg_backend_pid()`), and the failed backend is gone from `pg_stat_activity` | The pause; the single retry; the fresh connection |
 | Ships 4, R8 | `packages/worker/src/resume.int.test.ts` (int): enabled → `already_enabled` over a pool on a closed port; paused, database up → `resumed`; storage limit 1 byte → `probe_failed`, still `paused` | The probe; the storage check |

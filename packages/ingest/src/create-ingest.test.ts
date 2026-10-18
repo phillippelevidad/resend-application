@@ -1,15 +1,17 @@
 // Ships 1 (slice 1), the Mandatory verify-before-enqueue tier: a forged, stale, unsigned or
 // non-JSON request never reaches the queue port; `200` follows only a resolved enqueue; every
-// configured secret verifies during a rotation (ADR-001, ADR-009, RS-04). Time for `receivedAt`
-// moves through `FakeClock`; `svix-timestamp` is wall-clock seconds, because `webhooks.verify`
-// checks its 5-minute window against the wall clock (RS-02).
+// configured secret verifies during a rotation (ADR-001, ADR-009, RS-04). Slice 2, Ships 2 and
+// RS-U07 (D13, D43): the secret set is read through the port, cached 5 minutes, and an unreadable,
+// unparseable or empty set answers `503`, never `401`. Time for `receivedAt` and the cache moves
+// through `FakeClock`; `svix-timestamp` is wall-clock seconds, because `webhooks.verify` checks its
+// 5-minute window against the wall clock (RS-02).
 import { Buffer } from 'node:buffer';
 import { type IngestEnvelope, ingestEnvelopeSchema } from '@ledger/core';
 import { type SvixHeaders, signWebhook } from '@ledger/core/testing';
 import { createLogger, InProcessQueueAdapter, type QueuePort } from '@ledger/shared';
-import { FakeClock, RecordingMetrics } from '@ledger/shared/testing';
+import { FakeClock, FakeSecretReader, RecordingMetrics } from '@ledger/shared/testing';
 import { describe, expect, it } from 'vitest';
-import { createIngest, type IngestSecrets } from './create-ingest.ts';
+import { createIngest, SECRET_SET_TTL_MS } from './create-ingest.ts';
 import {
   INGEST_BODY_OK,
   INGEST_BODY_UNAUTHORIZED,
@@ -25,7 +27,12 @@ const newSecret = testSecret('new');
 const simulatorSecret = testSecret('simulator');
 const unconfiguredSecret = testSecret('forger');
 
-const rotation: IngestSecrets = { resend: [oldSecret, newSecret], simulator: undefined };
+// What the stored set holds (`resend`, written to the fake store as the JSON array Secrets Manager
+// holds, D13) and the simulator secret ingest takes as config.
+type TestSecrets = { readonly resend: readonly string[]; readonly simulator: string | undefined };
+
+const rotation: TestSecrets = { resend: [oldSecret, newSecret], simulator: undefined };
+const signingSecretsId = 'ledger/webhook-signing-secrets';
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -58,8 +65,11 @@ const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolv
 // The real slice 1 queue (pp-testing → fakes: the queue port's double is the in-process queue),
 // drained by a consumer that keeps each body as SQS would hold it; or, for the `503` path, a queue
 // whose `enqueue` rejects.
-const harness = (secrets: IngestSecrets, queueOverride?: QueuePort) => {
+const harness = (secrets: TestSecrets, queueOverride?: QueuePort) => {
   const clock = new FakeClock('2026-10-17T12:00:05.000Z');
+  const secretReader = new FakeSecretReader({
+    [signingSecretsId]: JSON.stringify(secrets.resend),
+  });
   const lines: string[] = [];
   const logger = createLogger({
     functionName: 'ingest',
@@ -76,13 +86,21 @@ const harness = (secrets: IngestSecrets, queueOverride?: QueuePort) => {
     bodies.push(...messages.map((message) => message.body));
     return { batchItemFailures: [] };
   });
-  const ingest = createIngest({ secrets, queue: queueOverride ?? queue, clock, logger, metrics });
+  const ingest = createIngest({
+    secretReader,
+    signingSecretsId,
+    simulatorSecret: secrets.simulator,
+    queue: queueOverride ?? queue,
+    clock,
+    logger,
+    metrics,
+  });
   const queued = async (): Promise<Record<string, unknown>[]> => {
     await settle();
     return bodies.map((body) => JSON.parse(body) as Record<string, unknown>);
   };
   const logged = () => lines.map((line) => JSON.parse(line) as Record<string, unknown>);
-  return { clock, ingest, logged, metrics, queued };
+  return { clock, ingest, logged, metrics, queued, secretReader };
 };
 
 const rejectingQueue: QueuePort = {
@@ -332,6 +350,119 @@ describe('createIngest', () => {
           fields: { svix_id: request.headers['svix-id'] },
         },
       ]);
+    });
+  });
+
+  describe('the secret set: 503, never 401, when it cannot be read or holds no secret (D13, D43)', () => {
+    it.each([
+      [
+        'the secret read rejects',
+        rotation,
+        (reader: FakeSecretReader) => {
+          reader.failing = true;
+        },
+        'FakeFailure',
+      ],
+      [
+        'the stored value is not JSON',
+        rotation,
+        (reader: FakeSecretReader) => {
+          reader.secrets.set(signingSecretsId, 'not json [');
+        },
+        'ZodError',
+      ],
+      [
+        'a stored entry lacks the whsec_ prefix',
+        rotation,
+        (reader: FakeSecretReader) => {
+          reader.secrets.set(signingSecretsId, JSON.stringify([oldSecret.slice('whsec_'.length)]));
+        },
+        'ZodError',
+      ],
+      [
+        'the stored list is empty and no simulator secret is configured',
+        { resend: [], simulator: undefined },
+        () => undefined,
+        'LedgerError',
+      ],
+    ] as const)(
+      'answers 503 unavailable when %s, enqueues nothing and logs the error name only',
+      async (_, secrets, breakStore, errorName) => {
+        const { ingest, logged, metrics, queued, secretReader } = harness(secrets);
+        breakStore(secretReader);
+
+        const response = await ingest(signed(oldSecret));
+
+        expect(response).toEqual({ status: 503, body: INGEST_BODY_UNAVAILABLE });
+        expect(await queued()).toEqual([]);
+        expect(logged()).toEqual([
+          {
+            level: 'error',
+            timestamp: expect.any(String),
+            function_name: 'ingest',
+            message: 'ingest.secrets_unavailable',
+            error_name: errorName,
+          },
+        ]);
+        expect(metrics.recorded).toEqual([]);
+      },
+    );
+
+    it('accepts a simulator-signed delivery when the stored list is empty but the simulator secret is set', async () => {
+      const { ingest, queued } = harness({ resend: [], simulator: simulatorSecret });
+
+      const response = await ingest(signed(simulatorSecret));
+
+      expect(response).toEqual({ status: 200, body: INGEST_BODY_OK });
+      expect(await queued()).toHaveLength(1);
+    });
+  });
+
+  describe('the secret set is cached for 5 minutes, then read again (ADR-009, D13)', () => {
+    const minutes = (count: number) => count * 60_000;
+
+    it('reads the set once for two requests 4 minutes apart', async () => {
+      const { clock, ingest, secretReader } = harness(rotation);
+
+      const first = await ingest(signed(oldSecret));
+      clock.advance(minutes(4));
+      const second = await ingest(signed(newSecret));
+
+      expect([first.status, second.status]).toEqual([200, 200]);
+      expect(secretReader.reads).toBe(1);
+    });
+
+    it('reads the set again 5 minutes after the last read, so a secret added in between verifies', async () => {
+      const { clock, ingest, secretReader } = harness(rotation);
+      const addedSecret = testSecret('added');
+
+      await ingest(signed(oldSecret));
+      secretReader.secrets.set(signingSecretsId, JSON.stringify([oldSecret, addedSecret]));
+      clock.advance(minutes(4));
+      const withinWindow = await ingest(signed(addedSecret));
+      clock.advance(SECRET_SET_TTL_MS - minutes(4));
+      const afterWindow = await ingest(signed(addedSecret));
+
+      expect(withinWindow).toEqual({ status: 401, body: INGEST_BODY_UNAUTHORIZED });
+      expect(afterWindow).toEqual({ status: 200, body: INGEST_BODY_OK });
+      expect(secretReader.reads).toBe(2);
+    });
+
+    it('answers 503 when the expired set fails to refresh, even for a request the old set verifies', async () => {
+      const { clock, ingest, queued, secretReader } = harness(rotation);
+
+      const before = await ingest(signed(oldSecret));
+      clock.advance(SECRET_SET_TTL_MS);
+      secretReader.failing = true;
+      const request = signed(oldSecret);
+      const after = await ingest(request);
+
+      expect(before).toEqual({ status: 200, body: INGEST_BODY_OK });
+      expect(after).toEqual({ status: 503, body: INGEST_BODY_UNAVAILABLE });
+      expect((await queued()).map((envelope) => envelope.svixId)).not.toContain(
+        request.headers['svix-id'],
+      );
+      expect(secretReader.reads).toBe(2);
     });
   });
 
