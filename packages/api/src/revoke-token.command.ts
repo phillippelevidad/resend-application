@@ -7,7 +7,7 @@ export type RevokeTokenInput = { tokenId: number };
 
 // `token.revoke` (api-contract.md, D21): one transaction that locks every active `operate` row in
 // `id` order before the target, so two concurrent revokes of the last two `operate` tokens
-// serialize and the second sees one left (`api-tokens.repository.int.test.ts`). Revoking a revoked
+// serialize and the second sees one left (`revoke-token.command.int.test.ts`). Revoking a revoked
 // token returns it unchanged. A token may revoke itself unless it is the last `operate` one.
 export class RevokeTokenCommand {
   readonly #db: Executor;

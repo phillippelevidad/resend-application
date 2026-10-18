@@ -8,7 +8,7 @@ import type { TokenResponse } from './token-response.schema.ts';
 
 // Ships 5, R12 (D21), as the runtime role: `token.revoke` sets `revoked_at` once, takes effect on the
 // revoked token's next request, and never revokes the last active `operate` token. The concurrent
-// form of that guard is `api-tokens.repository.int.test.ts`, over the same lock order.
+// form of that guard, through the same command, is `revoke-token.command.int.test.ts`.
 
 const runbook = 'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md';
 
