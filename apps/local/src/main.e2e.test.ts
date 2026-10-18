@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { signWebhook } from '@ledger/core/testing';
 import { mintApiToken } from '@ledger/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -163,6 +164,43 @@ describe('apps/local main.ts', () => {
     expect(unsigned.status).toBe(401);
     expect(unsigned.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     expect(await unsigned.text()).toBe('unauthorized');
+  });
+
+  // D13: locally the Resend secret set reaches ingest through `StaticSecretReaderAdapter` over the
+  // parsed `LEDGER_WEBHOOK_SECRETS`. A wrong id or value shape there answers every signed delivery
+  // `503`; the unsigned case above never reads the set. Ingest answers after the in-process
+  // enqueue, before the worker touches the (unreachable) database.
+  it('accepts a delivery signed with a LEDGER_WEBHOOK_SECRETS secret: 200 ok', {
+    timeout: startupTimeoutMs + 5_000,
+  }, async () => {
+    const webhookSecret = `whsec_${Buffer.from('ledger-local-e2e-resend').toString('base64')}`;
+    const port = await freePort();
+    const proc = startLocal(['--port', String(port)], {
+      ...placeholderEnv,
+      LEDGER_WEBHOOK_SECRETS: webhookSecret,
+    });
+    await waitForListening(proc);
+
+    const body = JSON.stringify({
+      type: 'email.sent',
+      created_at: '2026-10-17T12:00:00.000Z',
+      data: { email_id: 'e2e-signed', to: ['delivered@resend.dev'] },
+    });
+    const signed = await fetch(`http://127.0.0.1:${port}/webhooks/resend`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...signWebhook({
+          secret: webhookSecret,
+          svixId: 'msg_e2e_signed',
+          timestamp: Math.floor(Date.now() / 1000),
+          body,
+        }),
+      },
+      body,
+    });
+    expect(signed.status).toBe(200);
+    expect(await signed.text()).toBe('ok');
   });
 
   it('exits 1 and serves nothing when --host is not loopback', {
