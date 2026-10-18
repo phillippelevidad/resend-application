@@ -151,8 +151,8 @@ secret.
 ## 15. Gate
 
 - [x] 15.1 Run `pnpm exec openspec validate slice-2-durable-ingest-on-aws --type change --strict`. Verify: it reports the change is valid.
-- [ ] 15.2 After the final push, run `gh run list --branch worktree-slice-2 --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `migrations` stage passing. Report an in-progress run as in progress.
-- [ ] 15.3 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
+- [x] 15.2 After the final push, run `gh run list --branch worktree-slice-2 --limit 1`. Verify: conclusion `success` on the pushed `HEAD`, and `gh run view <id> --log` shows the `migrations` stage passing. Report an in-progress run as in progress.
+- [x] 15.3 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
 
 ## Workflow follow-up
 
