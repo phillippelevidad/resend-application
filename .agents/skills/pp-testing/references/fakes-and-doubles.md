@@ -109,12 +109,14 @@ through every receive. Its evidence:
    second sample still sees every message; a `RUNNING` task from `ListMessageMoveTasks` answers
    `redrive_in_progress` ([Error codes](../../../../.ai/api-contract.md#error-codes)) with no start
    sent, while `COMPLETED`, `CANCELLED`, `FAILED` and `CANCELLING` do not refuse; depth 0 answers
-   `empty` with no start; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no
+   `empty` with no start; a depth above 0 whose confirming receive (`MaxNumberOfMessages: 1`,
+   visibility 0, `WaitTimeSeconds: 1`) returns nothing answers `empty` with no start, the lag
+   measured on the deployed stack; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no
    `DestinationArn`, and no `TaskHandle` in the result (AWS-61); a scripted start error (each name
    the API Reference lists) propagates unchanged with no second start, because "one active task per
    queue" (AWS-21) has no named error (AWS-U14). The status and error names are cited from the API
-   Reference in the file's header. Removing `VisibilityTimeout: 0`, the `RUNNING` check or the empty
-   check fails a case.
+   Reference in the file's header. Removing `VisibilityTimeout: 0`, the `RUNNING` check, the empty
+   check or the confirming receive fails a case.
 2. **The simulator invariant** (slice 3): the poison run passes invariant 4, and a redrive after the
    fix returns the DLQ depth to 0 ([slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws)).
 3. **What does run through Postgres:** a redriven message gets a new `messageId` but keeps its

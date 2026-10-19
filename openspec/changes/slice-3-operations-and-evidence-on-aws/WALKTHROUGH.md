@@ -511,7 +511,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
    If the task already finished, it instead prints
    `{ "object": "dlq_redrive", "status": "empty", "depth": 0 }` (as an indented document), `exit=0`.
-   Either is correct; record which. SQS never runs a second task (AWS-21).
+   Either is correct; record which. SQS never runs two tasks at once (AWS-21).
 
 6. **Watch the DLQ depth return to 0.**
 

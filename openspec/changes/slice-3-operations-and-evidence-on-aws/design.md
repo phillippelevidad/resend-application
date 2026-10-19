@@ -160,7 +160,12 @@ each queue's ARN once with `GetQueueAttributes` (`QueueArn`) and caches it per i
   nothing from a small queue (AWS-59, AWS-50).
 - `startRedrive()`: `ListMessageMoveTasks` (`SourceArn`: the DLQ ARN, `MaxResults: 1`). A `RUNNING`
   result → `throw new LedgerError('redrive_in_progress')`, no start sent (AWS-60). Otherwise read the
-  depth; at `0` → `empty`, no start; otherwise `StartMessageMoveTask` with the DLQ ARN as `SourceArn`
+  depth; at `0` → `empty`, no start. Above `0`, confirm it with one `ReceiveMessage`
+  (`MaxNumberOfMessages: 1`, `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, as `sample` receives,
+  AWS-59; it adds to the receive count, AWS-50): no message → `empty`, no start. The approximate
+  attributes lag a just-completed move: measured on the deployed stack (2026-10-19), a second
+  redrive 1.5 s after the first found its task `COMPLETED` while the depth still read 1, and started
+  a second task that moved nothing. Otherwise `StartMessageMoveTask` with the DLQ ARN as `SourceArn`
   and no `DestinationArn`, which redrives to each message's original source queue → `started` with
   the depth. The `TaskHandle` is dropped: it embeds the source queue ARN and the account id (AWS-61).
   Any SDK error propagates unchanged, so a racing second start's error (AWS-U14) surfaces as

@@ -120,7 +120,10 @@ implements it, and its unit test pins every bullet below.
 - **Redrive** is `StartMessageMoveTask` through the DLQ port (AWS-21), and **`ListMessageMoveTasks`
   (`MaxResults: 1`) runs before any start**: a `RUNNING` task answers `redrive_in_progress` with no
   start sent, because SQS allows one active task per queue and names no "task already running"
-  error (AWS-60, AWS-U14). An empty DLQ answers `200` and starts nothing. The start names no
+  error (AWS-60, AWS-U14). An empty DLQ answers `200` and starts nothing. A depth above 0 is
+  confirmed by one receive (`MaxNumberOfMessages: 1`, visibility 0, the 1-second long poll, AWS-59)
+  before the start, because the approximate attributes lag a just-completed move; a receive that
+  returns nothing answers `empty` too (slice 3 D4). The start names no
   `DestinationArn`, so each message returns to its original source queue. Its own error propagates
   unchanged (`internal_error`), never mapped to `redrive_in_progress`.
 - **The `TaskHandle` is dropped**: it embeds the DLQ's ARN and account id (AWS-61), so no output

@@ -227,6 +227,59 @@ describe('SqsDlqAdapter.startRedrive', () => {
     ]);
   });
 
+  // Measured on the deployed stack (2026-10-19): a second redrive 1.5 s after the first found its task
+  // COMPLETED, yet the approximate depth still read 1, and a second task started that moved nothing.
+  it('a depth that lags a just-completed move is confirmed by a receive: nothing received answers empty and sends no start', async () => {
+    const state = emptyDlq();
+    state.tasks.push({ Status: 'COMPLETED' });
+    const answer = attributesOf(state);
+    const sqs = sqsHolding(state).answer('GetQueueAttributes', (input) =>
+      asksForArn(input)
+        ? answer(input)
+        : {
+            Attributes: {
+              ApproximateNumberOfMessages: '1',
+              ApproximateNumberOfMessagesNotVisible: '0',
+            },
+            ...metadata,
+          },
+    );
+
+    expect(await adapter(sqs).startRedrive()).toEqual({ status: 'empty', depth: 0 });
+    expect(sqs.names()).toEqual([
+      'GetQueueAttributes',
+      'ListMessageMoveTasks',
+      'GetQueueAttributes',
+      'ReceiveMessage',
+    ]);
+    expect(sqs.names()).not.toContain('StartMessageMoveTask');
+  });
+
+  it('a depth above 0 confirmed by a receive at visibility 0 and a 1 s long poll starts once and answers started with the depth', async () => {
+    const state = holding('a', 'b');
+    const sqs = sqsHolding(state);
+
+    expect(await adapter(sqs).startRedrive()).toEqual({ status: 'started', depth: 2 });
+    expect(sqs.names()).toEqual([
+      'GetQueueAttributes',
+      'ListMessageMoveTasks',
+      'GetQueueAttributes',
+      'ReceiveMessage',
+      'StartMessageMoveTask',
+    ]);
+    expect(sqs.inputs('ReceiveMessage')).toEqual([
+      {
+        QueueUrl: dlqUrl,
+        MaxNumberOfMessages: 1,
+        VisibilityTimeout: 0,
+        WaitTimeSeconds: 1,
+        MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+      },
+    ]);
+    expect(sqs.names()).not.toContain('DeleteMessage');
+    expect(state.visible).toEqual([]);
+  });
+
   it('starts with the DLQ as SourceArn and no DestinationArn, and answers started with the depth, no TaskHandle', async () => {
     const state = holding('a', 'b');
     state.hidden.push({ body: 'c', receiveCount: 6 });
