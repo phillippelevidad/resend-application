@@ -6,6 +6,7 @@
 import {
   type LambdaClient,
   ResourceInUseException,
+  ResourceNotFoundException,
   TooManyRequestsException,
 } from '@aws-sdk/client-lambda';
 import { LedgerError } from '@ledger/shared';
@@ -105,6 +106,35 @@ describe('LambdaEventSourceControlAdapter', () => {
       'ListEventSourceMappings',
       'ListEventSourceMappings',
       'GetEventSourceMapping',
+    ]);
+  });
+
+  it('drops a cached UUID the mapping no longer answers to and runs the call once more on a fresh lookup', async () => {
+    const replaced = '0f0f0f0f-1b2c-4d5e-8f90-123456789abc';
+    let listed = uuid;
+    const stub = lambdaWith([uuid])
+      .answer('ListEventSourceMappings', () => ({
+        EventSourceMappings: [{ UUID: listed, State: 'Enabled' }],
+        ...metadata,
+      }))
+      .answer('GetEventSourceMapping', (input) => {
+        if (input.UUID !== listed) {
+          throw new ResourceNotFoundException({ message: 'gone', ...metadata });
+        }
+        return { UUID: listed, State: 'Enabled', ...metadata };
+      });
+    const adapter = control(stub);
+
+    expect(await adapter.getState()).toBe('enabled');
+    listed = replaced;
+    expect(await adapter.getState()).toBe('enabled');
+
+    expect(stub.sent).toEqual([
+      { name: 'ListEventSourceMappings', input: { FunctionName: functionName } },
+      { name: 'GetEventSourceMapping', input: { UUID: uuid } },
+      { name: 'GetEventSourceMapping', input: { UUID: uuid } },
+      { name: 'ListEventSourceMappings', input: { FunctionName: functionName } },
+      { name: 'GetEventSourceMapping', input: { UUID: replaced } },
     ]);
   });
 
