@@ -93,7 +93,12 @@ used only by that package's own tests (no `./testing` export):
 
 ## DLQ redrive
 
-Redrive runs through SQS, not Postgres (`StartMessageMoveTask`, AWS-21). Its evidence:
+Redrive runs through SQS, not Postgres (`StartMessageMoveTask`, AWS-21). `DlqPort` has two
+implementations, `SqsDlqAdapter` and the in-process queue's dead list, and both run
+`dlqPortContract` ([Shared contract suites](vitest-layout.md#shared-contract-suites); slice 3, D3):
+the SQS side from `sqs-dlq.adapter.test.ts`, its `deadLetter` seeding the stubbed DLQ; the
+in-process side from `in-process-queue.adapter.test.ts`, its `deadLetter` failing the message
+through every receive. Its evidence:
 
 1. **The adapter against the port contract** (slice 3): the DLQ adapter's unit test, as above,
    sending `StartMessageMoveTask` for the DLQ and mapping "one active task per queue" (AWS-21) to

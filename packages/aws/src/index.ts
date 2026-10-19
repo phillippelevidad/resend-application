@@ -1,6 +1,6 @@
 // @ledger/aws: the only @aws-sdk importer (ADR-013). Client factories, the five port adapters, the
-// kill switch's trip and restore steps, and the script-only modules (D26). The package's one public
-// surface; its stubbed client stays in its own tests.
+// kill switch's trip and restore steps, the script-only modules (D26) and the stack names (slice 3,
+// D2). The package's one public surface; its stubbed client stays in its own tests.
 export { type AlarmState, alarmControl } from './alarm-control.ts';
 export {
   createApiGatewayV2Client,
@@ -34,6 +34,18 @@ export {
   LambdaFunctionInvokeAdapter,
   type LambdaFunctionInvokeAdapterDeps,
 } from './lambda-function-invoke.adapter.ts';
+export {
+  API_5XX_ALARM_NAME,
+  API_FUNCTION_NAME,
+  APP_STACK_NAME,
+  appOutputKeys,
+  DLQ_DEPTH_ALARM_NAME,
+  GUARDRAILS_STACK_NAME,
+  guardrailsOutputKeys,
+  KILL_SWITCH_ERRORS_ALARM_NAME,
+  QUEUE_AGE_ALARM_NAME,
+  USAGE_TRIP_ALARM_NAME,
+} from './ledger-stacks.ts';
 export {
   type Leftover,
   listPostDestroyLeftovers,

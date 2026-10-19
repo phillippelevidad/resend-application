@@ -8,6 +8,12 @@ export const ingestEnv = {
   QUEUE_URL: 'QUEUE_URL',
 } as const;
 
+// D12: set on ingest only when the stack is synthesized with `ledger:simulator=true` (ADR-016), so
+// ingest's config parses it as optional; absent, a simulator-signed request answers `401` (D13).
+export const ingestSimulatorEnv = {
+  SIMULATOR_SECRET_ARN: 'SIMULATOR_SECRET_ARN',
+} as const;
+
 // The worker finds its own event source mapping by the reserved `AWS_LAMBDA_FUNCTION_NAME` (AWS-56).
 export const workerEnv = {
   DATABASE_SECRET_ARN: 'DATABASE_SECRET_ARN',

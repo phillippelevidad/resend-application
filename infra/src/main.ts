@@ -1,3 +1,4 @@
+import { APP_STACK_NAME, GUARDRAILS_STACK_NAME } from '@ledger/aws';
 import { loadConfig } from '@ledger/shared';
 import { App, Tags } from 'aws-cdk-lib';
 import { AppStack } from './app.stack.ts';
@@ -17,11 +18,9 @@ for (const key of Object.values(infraContextKeys)) {
 }
 const config = loadConfig(infraConfigSchema, context);
 
-// The stack names are fixed: functions, the HTTP API and the topics derive their physical names
-// from them, which is how each stack finds the other's resources without a reference
-// (aws.md → Budget alarms item 1).
-const APP_STACK_NAME = 'LedgerApp';
-const GUARDRAILS_STACK_NAME = 'LedgerGuardrails';
+// The stack names are fixed, in `@ledger/aws` so the scripts and `sim` read the same ones (slice 3,
+// D2): functions, the HTTP API and the topics derive their physical names from them, which is how
+// each stack finds the other's resources without a reference (aws.md → Budget alarms item 1).
 
 new GuardrailsStack(app, GUARDRAILS_STACK_NAME, {
   appStackName: APP_STACK_NAME,

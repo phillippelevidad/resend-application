@@ -117,8 +117,20 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
   | `queueAttributesPortContract` | `() => { port, holdWaiting(count, oldestAgeSeconds) }` | Empty reads all zeros and `oldestAgeSeconds: null`; waiting messages read `visible` with their age |
   | `functionInvokePortContract` | `(fn) => port` | `invoke` resolves with `fn`'s result for the payload; rejects when `fn` fails |
 
-  The local side runs each in its own test in `packages/shared` (the in-process queue runs two); the
-  `packages/aws` side, over its stubbed client ([AWS adapters](fakes-and-doubles.md#aws-adapters)).
+  **Slice 3's sixth** (D3), in the same place:
+
+  | Suite | `make` | Shared cases |
+  | --- | --- | --- |
+  | `dlqPortContract` | `() => { port, deadLetter(body) }` | Sampling never removes a message (a second sample returns the same bodies and depth); `depth` counts every dead-lettered message whatever `limit` returns; an empty redrive answers `empty` with depth `0`; a redrive answers `started` with the depth and empties the dead store |
+
+  `deadLetter(body)` seeds the dead store the implementation's own way: the in-process queue fails
+  the message through every receive, the SQS adapter's stubbed DLQ holds it. Its two
+  implementations are `InProcessQueueAdapter` (`in-process-queue.adapter.test.ts`, which adds that a
+  redriven message is delivered again from receive count 1 and `read()` reports `dlqVisible` `0`)
+  and `SqsDlqAdapter` over its stubbed client ([DLQ redrive](fakes-and-doubles.md#dlq-redrive)).
+
+  The local side runs each in its own test in `packages/shared` (the in-process queue runs three);
+  the `packages/aws` side, over its stubbed client ([AWS adapters](fakes-and-doubles.md#aws-adapters)).
 - Each implementation's own test file calls it, plus that implementation's specifics.
 - The queue suite asserts at-least-once delivery, never exactly-once (AWS-06): exactly-once effects
   are the worker's job, on `svix_id` ([ADR-004](../../../../.ai/architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)).

@@ -1,8 +1,6 @@
 import {
   type ApiGatewayV2Client,
   DeleteRouteSettingsCommand,
-  GetApisCommand,
-  GetStageCommand,
   type RouteSettings,
   UpdateStageCommand,
 } from '@aws-sdk/client-apigatewayv2';
@@ -15,11 +13,13 @@ import {
 } from '@aws-sdk/client-lambda';
 import { PublishCommand, type SNSClient } from '@aws-sdk/client-sns';
 import type { EventSourceState } from '@ledger/core';
-import { LedgerError } from '@ledger/shared';
+import { type DeclaredThrottle, readStage, STAGE_NAME, withThrottle } from './http-api-stage.ts';
 import {
   type EventSourceSettle,
   LambdaEventSourceControlAdapter,
 } from './lambda-event-source-control.adapter.ts';
+
+export type { DeclaredThrottle } from './http-api-stage.ts';
 
 export type KillSwitchClients = {
   lambda: LambdaClient;
@@ -31,10 +31,6 @@ export type KillSwitchClients = {
 // stack imports nothing from it (aws.md → Budget alarms item 1). `alertTopicArn` is where the trip's
 // report goes; the report itself never carries it.
 export type KillSwitchNames = { appStackName: string; alertTopicArn: string };
-
-// D35: the `$default` throttle the app stack declares, from its `ThrottleRateLimit` and
-// `ThrottleBurstLimit` outputs.
-export type DeclaredThrottle = { rateLimit: number; burstLimit: number };
 
 // D30: the stop values. AWS-U02 is open: if the trip drill finds `UpdateStage` rejects `0`, the lowest
 // accepted value replaces it here, recorded with its worst-case spend.
@@ -62,10 +58,9 @@ export type KillSwitchReport = {
   readonly state: KillSwitchState;
 };
 
-// D27: the HTTP API's stage and the physical names derived from the app stack's name.
-const STAGE_NAME = '$default';
+// D27: the physical names derived from the app stack's name; the stage's are in `http-api-stage.ts`
+// (slice 3, D33).
 const workerName = (appStackName: string): string => `${appStackName}-worker`;
-const httpApiName = (appStackName: string): string => `${appStackName}-http`;
 // The trailing dash keeps `LedgerApp2-…` out; the kill switch's own `LedgerGuardrails-kill-switch`
 // never matches, so it is exempt by construction (aws.md → Budget alarms item 4).
 const functionPrefix = (appStackName: string): string => `${appStackName}-`;
@@ -290,39 +285,6 @@ async function reservedConcurrency(
   return output.ReservedConcurrentExecutions ?? null;
 }
 
-type Stage = {
-  apiId: string;
-  defaultSettings: RouteSettings | undefined;
-  routeSettings: Record<string, RouteSettings>;
-};
-
-// The app stack's HTTP API by its physical name, across every `GetApis` page, then its `$default`
-// stage. The API's generated id never leaves this module.
-async function readStage(apiGateway: ApiGatewayV2Client, appStackName: string): Promise<Stage> {
-  const wanted = httpApiName(appStackName);
-  const ids: string[] = [];
-  let nextToken: string | undefined;
-  do {
-    const page = await apiGateway.send(
-      new GetApisCommand(nextToken === undefined ? {} : { NextToken: nextToken }),
-    );
-    for (const api of page.Items ?? []) {
-      if (api.Name === wanted && api.ApiId !== undefined) ids.push(api.ApiId);
-    }
-    nextToken = page.NextToken;
-  } while (nextToken !== undefined);
-  const apiId = ids.length === 1 ? ids[0] : undefined;
-  if (apiId === undefined) {
-    throw new LedgerError('internal_error', 'The app stack does not have exactly one HTTP API.');
-  }
-  const stage = await apiGateway.send(new GetStageCommand({ ApiId: apiId, StageName: STAGE_NAME }));
-  return {
-    apiId,
-    defaultSettings: stage.DefaultRouteSettings,
-    routeSettings: stage.RouteSettings ?? {},
-  };
-}
-
 const throttleOf = (settings: RouteSettings | undefined): Throttle => ({
   rateLimit: settings?.ThrottlingRateLimit ?? null,
   burstLimit: settings?.ThrottlingBurstLimit ?? null,
@@ -331,16 +293,3 @@ const throttleOf = (settings: RouteSettings | undefined): Throttle => ({
 const hasThrottle = (settings: RouteSettings | undefined, throttle: DeclaredThrottle): boolean =>
   settings?.ThrottlingRateLimit === throttle.rateLimit &&
   settings?.ThrottlingBurstLimit === throttle.burstLimit;
-
-// The throttle replaced, the one other HTTP API route setting (detailed metrics) carried over; the
-// logging and data-trace settings apply to WebSocket APIs only.
-const withThrottle = (
-  settings: RouteSettings | undefined,
-  throttle: DeclaredThrottle,
-): RouteSettings => ({
-  ...(settings?.DetailedMetricsEnabled === undefined
-    ? {}
-    : { DetailedMetricsEnabled: settings.DetailedMetricsEnabled }),
-  ThrottlingRateLimit: throttle.rateLimit,
-  ThrottlingBurstLimit: throttle.burstLimit,
-});
