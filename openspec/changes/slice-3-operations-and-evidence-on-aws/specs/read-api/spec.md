@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: dlq.listMessages returns a sample and the depth
-`dlq.listMessages` (scope `read`) SHALL answer `200` with `object: "list"`, `depth` (dead messages visible plus in flight), `has_more` (`depth` greater than the items returned) and up to `limit` items (1–10, default 10), each `object: "dlq_message"` with `svix_id`, `type`, `email_id`, `event_created_at`, `enqueued_at` and `receive_count`. It SHALL return no cursor, because it is a sample (AWS-50).
+`dlq.listMessages` (scope `read`) SHALL answer `200` with `object: "list"`, `depth` (dead messages visible plus in flight, never fewer than the items returned, because the approximate count can under-read, AWS-62), `has_more` (`depth` greater than the items returned) and up to `limit` items (1–10, default 10), each `object: "dlq_message"` with `svix_id`, `type`, `email_id`, `event_created_at`, `enqueued_at` and `receive_count`. It SHALL return no cursor, because it is a sample (AWS-50).
 
 #### Scenario: One dead message
 - **WHEN** the DLQ holds one message for an `email.delivered` event and `dlq.listMessages` is called
@@ -16,6 +16,10 @@
 #### Scenario: Empty DLQ
 - **WHEN** the DLQ holds nothing
 - **THEN** it answers `200` with `depth: 0`, `has_more: false` and no items
+
+#### Scenario: A depth that under-reads the sample
+- **WHEN** the approximate depth reads 0 while the receive returns two dead messages
+- **THEN** it answers `depth: 2`, `has_more: false` and the two items
 
 ### Requirement: Inspecting never removes or hides a dead message
 `dlq.listMessages` SHALL never delete a dead message and SHALL leave every sampled message visible at once, so the depth is unchanged by any number of calls and a redrive started right after moves every message. Items repeating one `svix_id` within a response SHALL collapse to one.

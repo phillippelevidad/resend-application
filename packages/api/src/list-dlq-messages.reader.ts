@@ -72,6 +72,10 @@ export class ListDlqMessagesReader {
       }
       messages.push(read);
     }
-    return { depth: sample.depth, hasMore: sample.depth > messages.length, messages };
+    // The approximate depth can under-read a message the receive already returned (AWS-62), so the
+    // depth is never below what this sample shows: an answer of depth 0 beside an item would read
+    // `empty` over the item it lists.
+    const depth = Math.max(sample.depth, messages.length);
+    return { depth, hasMore: depth > messages.length, messages };
   }
 }

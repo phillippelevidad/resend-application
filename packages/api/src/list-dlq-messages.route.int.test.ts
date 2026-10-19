@@ -255,6 +255,25 @@ describe('dlq.listMessages', () => {
     expect(body.has_more).toBe(true);
   });
 
+  // AWS-62: the approximate depth can read 0 while the receive returns the message. The depth then
+  // counts the sample, so the CLI never prints `empty` above an item it lists.
+  it('a depth that under-reads the sample answers the sample count as the depth, has_more false', async () => {
+    const dlq = new StubDlq(
+      [
+        { body: deadBody('msg_dlq_lag_a', delivered('em_dlq_lag_a')), receiveCount: 6 },
+        { body: deadBody('msg_dlq_lag_b', delivered('em_dlq_lag_b')), receiveCount: 6 },
+      ],
+      0,
+    );
+
+    const { status, body } = await list(dlq);
+
+    expect(status).toBe(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.depth).toBe(2);
+    expect(body.has_more).toBe(false);
+  });
+
   it.each([
     ['1', 1],
     ['10', 10],

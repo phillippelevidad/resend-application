@@ -201,7 +201,9 @@ Wire (`200`):
 ```
 
 `has_more` is `depth > data.length`. `depth` sits beside Resend's list envelope, with no cursor
-(a sample). An adapter error → `500 internal_error` with the error as `cause`, as
+(a sample). It is `max(sample depth, items)`: the approximate attributes can read 0 while the receive
+returns the message (AWS-62), and a depth below the items would make the CLI print `empty` above
+them (found in `wf-after-apply-check`). An adapter error → `500 internal_error` with the error as `cause`, as
 `GetHealthReader` does (`packages/api/src/get-health.reader.ts:44-49`). The reader and the adapter
 log nothing new; `internal_error` logs the error's name only.
 
