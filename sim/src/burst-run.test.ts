@@ -264,6 +264,58 @@ describe('the burst run (D25)', () => {
     ]);
   });
 
+  it('restores a raise that took effect before its call failed, then propagates the error', async () => {
+    const stageRef: { current?: DeclaredThrottle } = {};
+    const h = harness({
+      raiseThrottle: async () => {
+        // The update applied, then the call timed out.
+        if (stageRef.current !== undefined) {
+          stageRef.current.rateLimit = 1200;
+          stageRef.current.burstLimit = 2400;
+        }
+        throw new Error('socket timeout');
+      },
+    });
+    stageRef.current = h.stage;
+
+    await expect(burstRun(input, h.deps)).rejects.toThrow('socket timeout');
+
+    expect(h.stage).toEqual({ rateLimit: 100, burstLimit: 200 });
+    expect(h.outLines).toContain('throttle restored rate=100 burst=200');
+    expect(h.steps).not.toContain('send');
+  });
+
+  it('a raise that failed before taking effect sends no update and says nothing about the throttle', async () => {
+    const h = harness({
+      raiseThrottle: async () => {
+        throw new Error('access denied');
+      },
+    });
+
+    await expect(burstRun(input, h.deps)).rejects.toThrow('access denied');
+
+    expect(h.stage).toEqual({ rateLimit: 100, burstLimit: 200 });
+    expect(h.outLines.filter((line) => line.startsWith('throttle'))).toEqual([]);
+    expect(h.errLines).toEqual([]);
+  });
+
+  it('names the re-arm when the restore after a failed raise fails too', async () => {
+    const h = harness({
+      raiseThrottle: async () => {
+        throw new Error('socket timeout');
+      },
+      restoreThrottle: async () => {
+        throw new Error('throttled');
+      },
+    });
+
+    await expect(burstRun(input, h.deps)).rejects.toThrow('socket timeout');
+
+    expect(h.errLines).toEqual([
+      'sim: the throttle was not restored; run pnpm aws:rearm, which restores it',
+    ]);
+  });
+
   it('a request not accepted fails the run after reporting, settling over the accepted ones', async () => {
     const h = harness({ rejectSvixIds: new Set(['burst-test-svix-burst-0-0']) });
 

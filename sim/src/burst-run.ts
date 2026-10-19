@@ -2,6 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import {
   APP_STACK_NAME,
   appOutputKeys,
+  BURST_THROTTLE,
   type createCloudWatchClient,
   type DeclaredThrottle,
   type RequestCount,
@@ -79,12 +80,14 @@ function declaredThrottleOf(target: AwsRunTarget): DeclaredThrottle | undefined 
     : undefined;
 }
 
-// D25 steps 4 and 8: the `finally`. It never throws, so it never hides the error a failed send is
-// propagating; `false` when the throttle may still be raised.
+// D25 steps 4 and 8: the `finally`. It never throws, so it never hides the error a failed send or
+// raise is propagating; `false` when the throttle may still be raised. After a failed raise, a stage
+// that does not read the raised value means the raise never took effect, so nothing is said.
 async function restoreThrottle(
   deps: BurstRunDeps,
   raised: DeclaredThrottle,
   declared: DeclaredThrottle,
+  raiseFailed = false,
 ): Promise<boolean> {
   try {
     const restore = await deps.restoreThrottle(raised, declared);
@@ -92,7 +95,7 @@ async function restoreThrottle(
       deps.out(
         `throttle restored rate=${restore.throttle.rateLimit} burst=${restore.throttle.burstLimit}`,
       );
-    } else {
+    } else if (!raiseFailed) {
       deps.out(
         `throttle left at ${restore.throttle.rateLimit ?? 'none'}/${restore.throttle.burstLimit ?? 'none'}: changed during the burst (a trip?)`,
       );
@@ -166,8 +169,16 @@ export async function burstRun(input: BurstRunInput, deps: BurstRunDeps): Promis
     `preflight concurrency=${quota} recent_requests=${usage.recent} usage_trip_threshold=${usage.threshold}`,
   );
 
-  // 4. Raise the throttle; 8. `finally` restores it only if it still reads the raised value.
-  const raised = await deps.raiseThrottle();
+  // 4. Raise the throttle; 8. `finally` restores it only if it still reads the raised value. A raise
+  // whose call failed may still have taken effect (an update applied, then a timeout), so that path
+  // restores too, against the value the raise sets, before the error propagates.
+  let raised: DeclaredThrottle;
+  try {
+    raised = await deps.raiseThrottle();
+  } catch (error) {
+    await restoreThrottle(deps, BURST_THROTTLE, declared, true);
+    throw error;
+  }
   out(`throttle raised rate=${raised.rateLimit} burst=${raised.burstLimit}`);
   let before: number;
   let sent: PacedSendResult;
