@@ -145,10 +145,7 @@ This table is the canonical layout (adapted from the frozen
 `package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
-scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools and `infra`'s two empty
-stacks. `apps/api`'s handler is an `export {}` stub until slice 2: `createApi(deps)` needs a
-database, a logger and the address-hash key, which only slice 2's composition root supplies, so
-until then `apps/local` alone serves the read API (`@hono/node-server`, loopback-only).
+scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools.
 
 | Project | Role | Logic lands |
 | --- | --- | --- |
@@ -159,7 +156,7 @@ until then `apps/local` alone serves the read API (`@hono/node-server`, loopback
 | **packages/worker** | Worker logic: ledger transaction, projections, outbox (ADR-004, ADR-015) | 1 |
 | **packages/api** | Hono app factory: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)); source of the OpenAPI document (ADR-011, ADR-019) | 1 |
 | **packages/sdk** | Public TS client for the read API: generated types plus a thin client (ADR-011, ADR-019) | 1 |
-| **packages/aws** | The only `@aws-sdk/*` importer: SQS queue adapter, Secrets Manager, ESM control, SQS attributes, DLQ receive and redrive, Lambda invoke (ADR-013) | 2 |
+| **packages/aws** | The only `@aws-sdk/*` importer: one factory per SDK client; the port adapters for the SQS queue, SQS attributes, Secrets Manager, ESM control and Lambda invoke; the kill switch's trip and restore steps; the AWS reads and writes the `aws:*` scripts make. DLQ receive and redrive land in slice 3 (ADR-013) | 2 |
 | **packages/reconciler** | Reconciler logic: gap detection + replay (ADR-007) | 4 |
 | **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) | 4 |
 | **packages/dispatcher** | Dispatcher logic: outbox delivery (ADR-006, ADR-017) | 6 |
@@ -168,6 +165,7 @@ until then `apps/local` alone serves the read API (`@hono/node-server`, loopback
 | **apps/ingest** | Lambda entry point over `packages/ingest`: event adaptation and composition root (ADR-013) | 2 |
 | **apps/worker** | Lambda entry point over `packages/worker`: SQS batch and resume-event adaptation, composition root (ADR-008, ADR-013) | 2 |
 | **apps/api** | Lambda entry point behind the HTTP API: `packages/api` through `@hono/aws-lambda` (ADR-010, ADR-019) | 2 |
+| **apps/kill-switch** | Lambda entry point in the guardrails stack: an SNS message on the trip topic runs `packages/aws`'s trip steps; composition root ([aws.md → Budget alarms](.ai/aws.md#budget-alarms), ADR-010, ADR-013) | 2 |
 | **apps/reconciler** | Lambda entry point over `packages/reconciler` (ADR-013) | 4 |
 | **apps/mcp** | MCP server, built on the SDK (ADR-019) | 5 |
 | **apps/dispatcher** | Lambda entry point over `packages/dispatcher` (ADR-013) | 6 |
@@ -226,11 +224,14 @@ pnpm test:int      # Vitest project int (real Postgres: one Testcontainers conta
 pnpm test:e2e      # Vitest project e2e (boots a real local process, no Docker)
 
 # Full gate: mirrors CI by construction (CI runs exactly this)
-pnpm verify        # install, docker, secrets, lint, links, typecheck, drift, unit, int, synth, e2e;
-                   # exit 0 = VERIFY PASSED
+pnpm verify        # install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int,
+                   # synth, e2e; exit 0 = VERIFY PASSED
 pnpm verify --from <stage>   # resume after a fix; ends VERIFY PARTIAL, never VERIFY PASSED
 node scripts/secret-scan.mjs # the secrets stage: a canary of each custom .gitleaks.toml rule, then
                              # gitleaks (pinned image, needs Docker) over every commit on every ref
+node scripts/migration-lint.mjs   # the migrations stage: a canary first, then every
+                                  # packages/db/drizzle/*.sql; DROP, RENAME, ALTER … TYPE or SET NOT
+                                  # NULL fails unless line 1 is a `-- contract-step:` marker (ADR-018)
 node scripts/check-links.mjs [file …]   # the links stage: relative links and anchors in README.md,
                                         # or in the named files; a canary first; no network
 node scripts/openapi-drift.mjs   # the drift stage: regenerates the OpenAPI document and SDK types
@@ -250,14 +251,42 @@ pnpm dev:stop      # compose stop; stops the dev server only if it belongs to th
 pnpm dev           # apps/local under node --watch, loading .env.local if present
 pnpm db:up         # compose Postgres (postgres:18.6-alpine) on 127.0.0.1:55432 (pnpm db:down stops it)
 pnpm db:setup      # (pnpm --filter @ledger/app-local run setup; `setup` alone is a pnpm built-in)
-                   # writes each of DATABASE_URL, LEDGER_ADDRESS_HASH_KEY, LEDGER_SIMULATOR_SECRET,
-                   # LEDGER_URL, LEDGER_TOKEN to .env.local only when unset or empty, printing
-                   # names, never values; ensures the runtime role, applies pending migrations;
+                   # writes each of DATABASE_URL, LEDGER_ADDRESS_HASH_KEY, LEDGER_TOKEN_TAG_KEY,
+                   # LEDGER_SIMULATOR_SECRET, LEDGER_URL to .env.local only when unset or empty,
+                   # before touching the database, printing names, never values; ensures the runtime
+                   # role and its timeouts, applies pending migrations; then mints an `operate`
+                   # LEDGER_TOKEN (the bootstrap token, else one named local-setup) only when the
+                   # current one is empty, `local-loopback-no-auth`, tag-invalid or not active;
                    # ends `db:setup: ready` or `db:setup: failed: <reason>` (exit 1). Rerun-safe
 pnpm db:generate --name <what-it-does>   # drizzle-kit generate in packages/db, flags passed
                    # through (--custom for a grant); writes packages/db/drizzle/, read the SQL
 pnpm deps          # pnpm install only when the lockfile or a package.json changed
 pnpm synth         # cdk synth --quiet in infra (needs no AWS credentials)
+
+# AWS (infra/scripts; every run against AWS is Ask-first; loads .env.local; each line is prefixed
+# `aws:<name>: ` and the last is `done`, `refused: <reason>` or `failed: <reason>` (exit 1); no line
+# holds a secret, key, database URL or account id; CDK's own output goes to a temp file named on failure)
+pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
+                   # needs LEDGER_DEPLOY_DATABASE_URL, LEDGER_DEPLOY_DATABASE_POOLED_URL,
+                   # LEDGER_ALERT_EMAIL, LEDGER_ADDRESS_HASH_KEY and LEDGER_TOKEN_TAG_KEY (refuses
+                   # naming the first missing one, before contacting AWS; pnpm db:setup writes both
+                   # keys before it touches a database, so it writes them even with no local Postgres,
+                   # then ends `db:setup: failed: Postgres is unreachable …`); optional
+                   # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD.
+                   # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
+                   # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
+                   # an address-hash key_id mismatch; migrates, deploys
+                   # LedgerGuardrails then LedgerApp, writes the secrets, prints the bootstrap token
+                   # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed
+pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag
+                   # discards them); destroys LedgerApp, then LedgerGuardrails only if that succeeded;
+                   # lists billable leftovers (exit 1 on any); prints the two steps outside AWS
+pnpm aws:rearm     # restores a tripped stack, warns when the month's spend is at the budget
+pnpm aws:trip-drill   # forces the usage trip, records five ingest status codes, forces a
+                   # kill-switch failure until its Errors alarm fires, restores; refuses a disarmed
+                   # or tripped stack. It trips the whole stack while it runs
+pnpm aws:db-check --email-id <id> [--idle-minutes <n ≥ 6>]   # read-only, through the runtime role's
+                   # pooled URL: PG-U06's role timeouts, PG-U02's lock serialization, PG-U04's idle pool
 
 # Simulator (every flag optional; no `--` before them)
 pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shuffle
@@ -271,6 +300,13 @@ pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shu
 pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
 pnpm -s ledger email <email_id> [--json]
 pnpm -s ledger recipient <address> [--json]   # the address goes in the request body; output shows its mask
+pnpm -s ledger health [--json]           # queue and DLQ depth, the worker event source, the database
+pnpm -s ledger worker resume [--json]    # operate: probe the database, re-enable a paused event source
+pnpm -s ledger token create --name <name> --scope <read|operate> [--json]   # operate; the plaintext
+                   # goes to stdout this once (human mode adds a stderr notice)
+pnpm -s ledger token list [--json]       # operate; the newest 100, a stderr notice when more exist
+pnpm -s ledger token revoke <token_id> [--json]   # operate; never the last active operate token
+pnpm -s ledger token current [--json]    # the token LEDGER_TOKEN holds: id, name, scope
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
                    # without -s (pnpm's banner then precedes the output)
@@ -278,14 +314,15 @@ pnpm -s ledger recipient <address> [--json]   # the address goes in the request 
 # Per app (no `--` before app flags: pnpm 10.11 forwards it literally)
 pnpm --filter @ledger/app-local start   # ingest (POST /webhooks/resend), worker and read API in one
                                         # process on 127.0.0.1:3200; --port, --host (loopback only);
-                                        # needs DATABASE_URL, LEDGER_ADDRESS_HASH_KEY and at least one
-                                        # of LEDGER_WEBHOOK_SECRETS, LEDGER_SIMULATOR_SECRET
+                                        # needs DATABASE_URL, LEDGER_ADDRESS_HASH_KEY,
+                                        # LEDGER_TOKEN_TAG_KEY and at least one of
+                                        # LEDGER_WEBHOOK_SECRETS, LEDGER_SIMULATOR_SECRET; every
+                                        # route but ingest needs a bearer token (LEDGER_TOKEN)
 pnpm --filter @ledger/app-cli start --help
 pnpm --filter @ledger/app-mcp start     # MCP server over stdio
 ```
 
-`pnpm verify` needs Docker. Its planned stage, one entry in `scripts/verify.mjs`: migration lint
-(slice 2).
+`pnpm verify` needs Docker.
 Document every command here when it lands.
 
 ## Module boundaries

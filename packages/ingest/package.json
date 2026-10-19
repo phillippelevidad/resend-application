@@ -13,6 +13,7 @@
   "dependencies": {
     "@ledger/core": "workspace:*",
     "@ledger/shared": "workspace:*",
-    "resend": "6.33.0"
+    "resend": "6.33.0",
+    "zod": "4.6.7"
   }
 }

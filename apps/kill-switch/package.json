@@ -1,0 +1,16 @@
+{
+  "name": "@ledger/app-kill-switch",
+  "private": true,
+  "type": "module",
+  "description": "Lambda entry point for the kill switch: trips the app stack on the budget or usage alarm, composition root",
+  "license": "MIT",
+  "dependencies": {
+    "@ledger/aws": "workspace:*",
+    "@ledger/core": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

@@ -29,9 +29,14 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
    `lock_timeout` (timeouts from slice 2, C13 of the slice 1 change; slice 1's `prepareDatabase`
    only creates the role)
    ([pp-database → Grants](../../pp-database/references/migrations-and-grants.md#grants)); the
-   harness passes short test values (seconds, the idle one below `lock_timeout`, both above the
-   longest lock wait a [concurrency test](#faults-and-concurrency) polls for). Without them the
-   idle-holder test passes for the wrong reason. Roles are cluster-wide, so every clone sees it.
+   harness passes `HARNESS_ROLE_TIMEOUTS` (`packages/db/src/testing/postgres-container.ts`):
+   `idle_in_transaction_session_timeout` 2 s and `lock_timeout` 5 s, the idle one below the lock
+   one, both above the longest lock wait a [concurrency test](#faults-and-concurrency) polls for.
+   A test that needs a client-side timeout below them builds its own pool with a shorter
+   `query_timeout` (`run-transaction.int.test.ts`). Without them the idle-holder test passes for
+   the wrong reason. Roles and their settings are cluster-wide, so every clone sees them; a test
+   that re-runs `prepareDatabase` with other values does it on its own container
+   ([outage tests](#outage-tests)), never the shared one.
 3. **Migrate the template** as the owner, through the one migrate entry point the deploy command
    and the local setup command also call
    ([pp-database → Running migrations](../../pp-database/references/migrations-and-grants.md#running-migrations)).
@@ -48,9 +53,10 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
    ([Vitest → globalSetup](https://vitest.dev/config/globalsetup)).
 6. **Teardown** stops the container.
 
-Steps 2 and 3 are one call: `prepareDatabase({ ownerUrl, runtimePassword })` in
-`packages/db/src/prepare-database.ts` (slice 1), which the harness, `pnpm db:setup` and slice 2's
-deploy command all call.
+Steps 2 and 3 are one call: `prepareDatabase({ ownerUrl, runtimePassword, roleTimeouts,
+resetPassword })` in `packages/db/src/prepare-database.ts`, which the harness, `pnpm db:setup` and
+the deploy command all call. Steps 1–3 live in `packages/db/src/testing/postgres-container.ts`
+(`startPostgresContainer`, `preparePostgres`), shared by the global setup and the outage helper.
 
 **Why not `snapshot()` / `restoreSnapshot()`.** The module's restore drops the container's database
 and recreates it from the snapshot, in place
@@ -136,8 +142,24 @@ surrogate with U+FFFD, and leaves a valid surrogate pair intact.
 ADR-015's "database stopped, ESM pause requested, no message reaches the DLQ" and slice 2's health
 test "with Postgres stopped" stop the server, which would break every other file on the shared
 container. **A test that stops or breaks the server starts its own container** through the same
-setup function as the global setup (steps 1–4), stops it mid-test, and asserts the consequence.
-It is the one exception to one container per run ([Case-by-case](../SKILL.md#case-by-case)).
+setup function as the global setup (steps 1–3; no template, since nothing clones it), stops it
+mid-test, and asserts the consequence. It is the one exception to one container per run
+([Case-by-case](../SKILL.md#case-by-case)).
+
+The helper is `startOutageDatabase()` from `@ledger/db/testing`, called once per file in
+`beforeAll` (a container start costs seconds: give the hook its own timeout) and closed in
+`afterAll`. It answers:
+
+- `runtimeUrl`, the runtime role on the container's database, for the pools the test composes;
+  `ownerUrl`, the owner, for fault injection and re-running `prepareDatabase` only.
+- `stop()`: `pg_ctl stop -m fast` inside the container. Every open session ends with `57P01`;
+  every new connection then fails. The container's PID 1 is a shell, so it outlives the server.
+- `start()`: `pg_ctl start -w`. Same port, same data, same role, so `runtimeUrl` and a pool built
+  before the stop work again.
+- `close()`: removes the container.
+
+What a stop actually raises is classified `database_unavailable`
+([classify-database-error.int.test.ts](../../../../packages/db/src/classify-database-error.int.test.ts)).
 
 ## The image
 

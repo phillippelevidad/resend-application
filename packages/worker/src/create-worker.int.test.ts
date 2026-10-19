@@ -2,10 +2,10 @@
 // lists exactly the messages that failed, built from each message's own result, because an empty
 // one deletes the whole batch. The others commit.
 import type { IngestEnvelope } from '@ledger/core';
-import { emailStateRepository, webhookEventsRepository } from '@ledger/db';
+import { emailStateRepository, STORAGE_LIMIT_BYTES, webhookEventsRepository } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
 import { createLogger } from '@ledger/shared';
-import { FakeClock, RecordingMetrics } from '@ledger/shared/testing';
+import { FakeClock, FakeEventSourceControl, RecordingMetrics } from '@ledger/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorker } from './create-worker.ts';
 
@@ -40,7 +40,9 @@ describe('createWorker.processBatch (ADR-008)', () => {
   it('a batch of three with one invalid envelope lists exactly that messageId; the other two commit', async () => {
     const lines: string[] = [];
     const worker = createWorker({
-      db: t.db,
+      database: t.database,
+      eventSource: new FakeEventSourceControl(),
+      storageLimitBytes: STORAGE_LIMIT_BYTES,
       clock: new FakeClock('2026-10-17T12:01:00.000Z'),
       logger: createLogger({
         functionName: 'worker',

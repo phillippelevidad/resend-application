@@ -21,6 +21,14 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
   over that sink, with the same format and allow-list, so a test captures and parses the real lines
   (slice 1, D15). Winston's Stream transport accepts only a real Node stream, so the logger wraps the
   sink in a `Writable`. Runtime code never passes one.
+- **Per-invocation fields come from `context`.** `createLogger({ functionName, stream?, context? })`
+  takes an optional `context: () => LogFields`, read on every line and merged under the caller's
+  fields through the same allow-list: a context key outside it is dropped, and a caller's defined
+  value wins (slice 2, D6). Each Lambda handler points it at a per-container holder it refreshes at
+  the start of each invocation, `{ request_id: context.awsRequestId, cold_start }`; one invocation
+  runs per container at a time, so lines never interleave. `apps/local` passes none. The test is
+  [create-logger.test.ts](../../../../packages/shared/src/create-logger.test.ts) (`createLogger
+  context (D6)`).
 - **Write `level`, `timestamp` and `request_id` yourself.** Winston's Console transport writes to
   `console._stdout` unless `forceConsole` is set
   ([source](https://raw.githubusercontent.com/winstonjs/winston/master/lib/winston/transports/console.js)),
@@ -56,6 +64,11 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
 - **EMF JSON lines written by a small helper in `packages/shared`, no library.** `packages/shared`
   imports no AWS package, and EMF is a log format
   ([EMF spec](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html)).
+  The helper is `EmfMetricsAdapter({ sink, clock })`, implementing `MetricsPort` (slice 2, D5): one
+  line per call through the injected sink, namespace `Ledger`, one empty dimension set, unit `Count`
+  or `Milliseconds`, the value under the metric's name, and the caller's fields through the log
+  allow-list. Lambda roots use it; `apps/local` keeps `LogMetricsAdapter`. The test is
+  [emf-metrics.adapter.test.ts](../../../../packages/shared/src/emf-metrics.adapter.test.ts).
 - **On Lambda, write the line with `process.stdout.write`**, not `console.log`: under the JSON log
   format CloudWatch does not parse EMF that `console.log` wrapped
   ([AWS → Node.js logging](https://docs.aws.amazon.com/lambda/latest/dg/nodejs-logging.html)).
@@ -65,8 +78,8 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
 - **Ids are never dimensions** (AWS-12). The only dimension in the set is `ingest.rejected`'s
   `reason`. An EMF line carries the metric values, their dimensions and nothing that the log
   allow-list would drop.
-- **Locally**, the same helper writes through the logger: the metric name is the constant message,
-  its value a count or duration field.
+- **Locally**, `LogMetricsAdapter` writes through the logger instead: the metric name is the
+  constant message, its value a count or duration field.
 
 ## PII in code
 

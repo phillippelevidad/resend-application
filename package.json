@@ -22,6 +22,11 @@
     "db:setup": "pnpm --filter @ledger/app-local run setup",
     "db:generate": "pnpm --filter @ledger/db exec drizzle-kit generate",
     "synth": "pnpm --filter @ledger/infra synth",
+    "aws:deploy": "node --env-file-if-exists=.env.local infra/scripts/deploy.ts",
+    "aws:teardown": "node --env-file-if-exists=.env.local infra/scripts/teardown.ts",
+    "aws:rearm": "node --env-file-if-exists=.env.local infra/scripts/rearm.ts",
+    "aws:trip-drill": "node --env-file-if-exists=.env.local infra/scripts/trip-drill.ts",
+    "aws:db-check": "node --env-file-if-exists=.env.local infra/scripts/db-check.ts",
     "openapi:export": "node packages/api/scripts/export-openapi.ts && pnpm --filter @ledger/sdk exec openapi-typescript openapi.json -o src/openapi-types.ts",
     "sim": "node --env-file-if-exists=.env.local sim/src/main.ts",
     "ledger": "node --env-file-if-exists=.env.local apps/cli/src/main.ts"
@@ -38,6 +43,7 @@
     "@biomejs/biome": "2.5.15",
     "@fission-ai/openspec": "1.14.2",
     "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2",
     "vitest": "catalog:"
   }

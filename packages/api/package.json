@@ -5,7 +5,8 @@
   "description": "Hono app factory: read routes plus operate-scoped routes; source of the OpenAPI document",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "1.6.3",
@@ -16,6 +17,8 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@ledger/sdk": "workspace:*",
+    "@ledger/worker": "workspace:*",
     "vitest": "catalog:"
   }
 }

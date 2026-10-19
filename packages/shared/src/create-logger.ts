@@ -58,7 +58,14 @@ export type Logger = {
 // sink is wrapped in a `Writable`.
 export type LogSink = { write(chunk: string): unknown };
 
-export type CreateLoggerOptions = { functionName: string; stream?: LogSink };
+// D6: `context` is read on every line and merged under the caller's fields, through the same
+// allow-list: a Lambda handler points it at a per-container holder it refreshes at the start of each
+// invocation (`request_id`, `cold_start`). `apps/local` passes none.
+export type CreateLoggerOptions = {
+  functionName: string;
+  stream?: LogSink;
+  context?: () => LogFields;
+};
 
 const isScalar = (value: unknown): value is string | number | boolean =>
   typeof value === 'string' ||
@@ -67,8 +74,10 @@ const isScalar = (value: unknown): value is string | number | boolean =>
 
 // D15: an allow-list, never a deny-list. Under an allowed key only a scalar survives: pg's
 // `DatabaseError` carries `detail` ("Failing row contains …") as an own property, so an error object
-// under `error_name` would serialize the row.
-const allowListed = (fields: LogFields | undefined): Record<string, string | number | boolean> => {
+// under `error_name` would serialize the row. The EMF writer applies the same list (D5).
+export const allowListed = (
+  fields: LogFields | undefined,
+): Record<string, string | number | boolean> => {
   const kept: Record<string, string | number | boolean> = {};
   if (fields === undefined) return kept;
   for (const [key, value] of Object.entries(fields)) {
@@ -105,7 +114,7 @@ const toStream = (sink: LogSink): Writable =>
 // D15: without `stream`, a Console transport to stdout (production, `apps/local`); with one, a
 // Stream transport over it (tests). One format and one allow-list for both. Messages are constants,
 // never interpolated.
-export const createLogger = ({ functionName, stream }: CreateLoggerOptions): Logger => {
+export const createLogger = ({ functionName, stream, context }: CreateLoggerOptions): Logger => {
   const transport =
     stream === undefined
       ? new winston.transports.Console()
@@ -118,7 +127,9 @@ export const createLogger = ({ functionName, stream }: CreateLoggerOptions): Log
   const write =
     (level: 'info' | 'warn' | 'error') =>
     (message: string, fields?: LogFields): void => {
-      winstonLogger.log({ level, message, fields: allowListed(fields) });
+      // Each side allow-listed first, so a caller's `undefined` never blanks a context field.
+      const kept = { ...allowListed(context?.()), ...allowListed(fields) };
+      winstonLogger.log({ level, message, fields: kept });
     };
   return { info: write('info'), warn: write('warn'), error: write('error') };
 };

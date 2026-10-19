@@ -147,6 +147,57 @@ describe('createLogger', () => {
   });
 });
 
+describe('createLogger context (D6)', () => {
+  it('merges the context fields into every line, read afresh on each line', () => {
+    const lines: string[] = [];
+    let holder: LogFields = { request_id: 'req-1', cold_start: true };
+    const logger = createLogger({
+      functionName: 'worker',
+      stream: { write: (chunk: string) => lines.push(chunk) },
+      context: () => holder,
+    });
+
+    logger.info('worker.batch_received', { svix_id: 'msg_1' });
+    holder = { request_id: 'req-2', cold_start: false };
+    logger.warn('worker.message_failed');
+
+    const parsed = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(parsed[0]).toMatchObject({ request_id: 'req-1', cold_start: true, svix_id: 'msg_1' });
+    expect(parsed[1]).toMatchObject({ request_id: 'req-2', cold_start: false });
+  });
+
+  it('drops a context key outside the allow-list and lets a defined caller field win', () => {
+    const lines: string[] = [];
+    const context: Record<string, unknown> = {
+      request_id: 'req-ctx',
+      cold_start: false,
+      to: address,
+      payload: { subject },
+      function_name: 'forged',
+      timestamp: subject,
+    };
+    const logger = createLogger({
+      functionName: 'api',
+      stream: { write: (chunk: string) => lines.push(chunk) },
+      context: () => context as LogFields,
+    });
+
+    logger.info('api.request', { request_id: 'req-caller', cold_start: undefined });
+
+    const [line] = lines.map((entry) => JSON.parse(entry) as Record<string, unknown>);
+    expect(Object.keys(line ?? {}).sort()).toEqual(
+      ['cold_start', 'function_name', 'level', 'message', 'request_id', 'timestamp'].sort(),
+    );
+    expect(line).toMatchObject({
+      function_name: 'api',
+      request_id: 'req-caller',
+      cold_start: false,
+    });
+    expect(lines[0]).not.toContain(address);
+    expect(lines[0]).not.toContain(subject);
+  });
+});
+
 describe('errorFields', () => {
   it('keeps the name, the first SQLSTATE and the first registry code, nothing else', () => {
     expect(errorFields(workerFailure())).toEqual({ error_name: 'Error', pg_code: '23514' });

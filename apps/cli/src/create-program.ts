@@ -1,7 +1,13 @@
 import { Command } from '@commander-js/extra-typings';
 import type { LedgerClient } from '@ledger/sdk';
 import { emailGetCli } from './commands/email-get.cli.ts';
+import { healthGetCli } from './commands/health-get.cli.ts';
 import { recipientGetCli } from './commands/recipient-get.cli.ts';
+import { tokenCreateCli } from './commands/token-create.cli.ts';
+import { tokenGetCurrentCli } from './commands/token-get-current.cli.ts';
+import { tokenListCli } from './commands/token-list.cli.ts';
+import { tokenRevokeCli } from './commands/token-revoke.cli.ts';
+import { workerResumeEventSourceCli } from './commands/worker-resume-event-source.cli.ts';
 import type { Output } from './create-output.ts';
 
 export type CliDeps = {
@@ -24,5 +30,14 @@ export function createProgram(deps: CliDeps) {
   // One apps/cli/src/commands/<noun>-<verb>.cli.ts per operation.
   emailGetCli(program, deps);
   recipientGetCli(program, deps);
+  healthGetCli(program, deps);
+  // A group is a plain .command() with no action, so it inherits the root settings too (D25).
+  const worker = program.command('worker').description('operate the worker');
+  workerResumeEventSourceCli(worker, deps);
+  const token = program.command('token').description('manage API tokens');
+  tokenCreateCli(token, deps);
+  tokenListCli(token, deps);
+  tokenRevokeCli(token, deps);
+  tokenGetCurrentCli(token, deps);
   return program;
 }

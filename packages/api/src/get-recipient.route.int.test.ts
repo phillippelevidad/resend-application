@@ -1,11 +1,11 @@
 import { hashAddress, maskAddress } from '@ledger/core';
 import { recipientStateRepository } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
-import { createLogger } from '@ledger/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
 import type { ErrorResponse } from './error-response.schema.ts';
 import type { RecipientResponse } from './recipient-response.schema.ts';
+import { bearer, issueTestToken, testApiDeps } from './testing.ts';
 
 // Mandatory redaction (pp-workflow → Test tiers): the address goes in the body, is hashed
 // server-side, and comes back only as its mask. Rows are seeded through the repository, as the
@@ -13,17 +13,15 @@ import type { RecipientResponse } from './recipient-response.schema.ts';
 
 let t: TestDatabase;
 let api: ReturnType<typeof createApi>;
+// A `read` token, the scope `recipient.get` needs (D18).
+let token: string;
 
 const addressHashKey = new Uint8Array(32).fill(9);
 
 beforeAll(async () => {
   t = await createTestDatabase();
-  api = createApi({
-    db: t.db,
-    logger: createLogger({ functionName: 'api', stream: { write: () => {} } }),
-    addressHashKey,
-    requestId: () => 'req-recipient-get',
-  });
+  api = createApi(testApiDeps(t.db, { addressHashKey, requestId: () => 'req-recipient-get' }));
+  ({ token } = await issueTestToken(t.db, { scope: 'read' }));
 });
 
 afterAll(async () => {
@@ -46,7 +44,11 @@ async function seedHardBounced(address: string, causeEmailId: string): Promise<v
 type Answer = { status: number; text: string; body: RecipientResponse & ErrorResponse };
 
 async function lookup(init: RequestInit): Promise<Answer> {
-  const response = await api.request('/recipients/lookup', { method: 'POST', ...init });
+  const response = await api.request('/recipients/lookup', {
+    method: 'POST',
+    ...init,
+    headers: { ...bearer(token), ...(init.headers as Record<string, string> | undefined) },
+  });
   const text = await response.text();
   return { status: response.status, text, body: JSON.parse(text) };
 }

@@ -5,6 +5,7 @@
     "packages/api/scripts",
     "apps/*/src",
     "infra/src",
+    "infra/scripts",
     "sim/src",
     "vitest.config.ts",
     "packages/db/drizzle.config.ts"

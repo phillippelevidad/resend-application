@@ -15,6 +15,11 @@ description = "Resend webhook signing secret (whsec_ prefix)"
 regex = '''\bwhsec_[A-Za-z0-9+/]{20,}={0,2}'''
 
 [[rules]]
+id = "ledger-api-token"
+description = "Ledger API token (ldg_ prefix, random part and tag)"
+regex = '''ldg_[0-9a-f]{64}_[0-9a-f]{64}'''
+
+[[rules]]
 id = "postgres-url"
 description = "Postgres connection URL that carries a password"
 regex = '''postgres(?:ql)?://[^\s:/@]+:[^\s@/]+@[^\s/:?#'"`)>]+'''
@@ -43,4 +48,20 @@ paths = [
   '''^sim/src/main\.e2e\.test\.ts$''',
   '''^sim/src/sim\.config\.test\.ts$''',
   '''^apps/local/src/main\.e2e\.test\.ts$''',
+]
+
+# The same slip in two pushed slice 2 branch commits: in 1a42b28 a credentialed Postgres URL to
+# db.example in an error-message test; in 4aea5c0 a fake whsec_ value (base64 of
+# "fakeWebhookSecret5" and of "fake") and owner URLs to *.db.invalid hosts in the deploy and
+# template-scan tests. Owner-approved 2026-10-18. Exactly these two commits, three files and three
+# rules are excused; 50c94da builds the values at run time.
+[[allowlists]]
+description = "Fake test fixtures committed as literals in two slice 2 branch commits"
+condition = "AND"
+targetRules = ["postgres-url", "resend-webhook-secret", "generic-api-key"]
+commits = ["1a42b283647aea9b2424615d64534e43ff65e166", "4aea5c029fcebaa7cfa002d9deb56adc56a0ba94"]
+paths = [
+  '''^apps/api/src/create-api-handler\.test\.ts$''',
+  '''^infra/scripts/run-deploy\.test\.ts$''',
+  '''^infra/scripts/template-secrets\.test\.ts$''',
 ]

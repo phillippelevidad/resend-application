@@ -1,12 +1,16 @@
 // D8: the local queue is at-least-once, batches at most 10, redelivers a failed message after 1 s and
 // dead-lists it after its 5th receive with one `queue.dead_lettered` line. Time moves only through
-// `FakeClock`, so every step is deterministic.
+// `FakeClock`, so every step is deterministic. As `QueueAttributesPort`, it counts its own lists (D40).
+// Both shared port contracts run over it here (D1).
 import type { IngestEnvelope } from '@ledger/core';
 import { describe, expect, it } from 'vitest';
+import type { ClockPort } from './clock.port.ts';
 import { createLogger } from './create-logger.ts';
 import { InProcessQueueAdapter } from './in-process-queue.adapter.ts';
 import type { BatchResponse, QueueMessage } from './queue.port.ts';
 import { FakeClock } from './testing/fake-clock.ts';
+import { queueAttributesPortContract } from './testing/queue-attributes-port-contract.ts';
+import { queuePortContract } from './testing/queue-port-contract.ts';
 
 const envelope = (svixId: string): IngestEnvelope => ({
   svixId,
@@ -163,6 +167,88 @@ describe('InProcessQueueAdapter', () => {
     expect(deadLettered().map((line) => line.svix_id)).toEqual(['msg_a', 'msg_b']);
   });
 
+  it('reads an empty queue as all zeros with no age', async () => {
+    const { queue } = harness();
+
+    expect(await queue.read()).toEqual({
+      visible: 0,
+      inFlight: 0,
+      oldestAgeSeconds: null,
+      dlqVisible: 0,
+      dlqInFlight: 0,
+    });
+  });
+
+  it('counts a waiting message visible, aged from its enqueue on the clock (D40)', async () => {
+    const { clock, queue } = harness();
+    await queue.enqueue(envelope('msg_old'));
+    clock.advance(30_000);
+    await queue.enqueue(envelope('msg_new'));
+    clock.advance(1_500);
+
+    expect(await queue.read()).toEqual({
+      visible: 2,
+      inFlight: 0,
+      oldestAgeSeconds: 31,
+      dlqVisible: 0,
+      dlqInFlight: 0,
+    });
+  });
+
+  it('counts a batch the consumer holds in flight until it settles (D40)', async () => {
+    const { clock, queue } = harness();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await queue.enqueue(envelope('msg_a'));
+    await queue.enqueue(envelope('msg_b'));
+    queue.start(async () => {
+      await held;
+      return { batchItemFailures: [] };
+    });
+    await settle();
+    clock.advance(4_000);
+
+    expect(await queue.read()).toEqual({
+      visible: 0,
+      inFlight: 2,
+      oldestAgeSeconds: 4,
+      dlqVisible: 0,
+      dlqInFlight: 0,
+    });
+
+    release();
+    await settle();
+    expect(await queue.read()).toEqual({
+      visible: 0,
+      inFlight: 0,
+      oldestAgeSeconds: null,
+      dlqVisible: 0,
+      dlqInFlight: 0,
+    });
+  });
+
+  it('counts a dead-listed message in dlqVisible and no longer ages it (D40)', async () => {
+    const { clock, consumer, queue } = harness((svixId) => svixId === 'msg_poison');
+    queue.start(consumer);
+    await queue.enqueue(envelope('msg_poison'));
+    await settle();
+    for (let step = 0; step < 10; step += 1) {
+      clock.advance(1_000);
+      await settle();
+    }
+
+    expect(queue.deadList()).toHaveLength(1);
+    expect(await queue.read()).toEqual({
+      visible: 0,
+      inFlight: 0,
+      oldestAgeSeconds: null,
+      dlqVisible: 1,
+      dlqInFlight: 0,
+    });
+  });
+
   it('delivers a message enqueued while a redelivery waits without waiting for it', async () => {
     const { committed, consumer, queue } = harness((svixId) => svixId === 'msg_waits');
     queue.start(consumer);
@@ -174,4 +260,54 @@ describe('InProcessQueueAdapter', () => {
 
     expect(committed).toEqual(['msg_new']);
   });
+});
+
+const silentLogger = () => createLogger({ functionName: 'worker', stream: { write: () => true } });
+
+queuePortContract('InProcessQueueAdapter', () => {
+  const fakeClock = new FakeClock();
+  let failing = false;
+  // The in-process queue has no network send: its one fallible step before a message is stored is
+  // the clock read, so a clock that throws stands in for a failed send.
+  const clock: ClockPort = {
+    now: () => {
+      if (failing) throw new RangeError('clock unavailable');
+      return fakeClock.now();
+    },
+  };
+  const queue = new InProcessQueueAdapter({
+    clock,
+    logger: silentLogger(),
+    sleep: fakeClock.sleep,
+  });
+  const bodies: string[] = [];
+  queue.start(async (messages) => {
+    bodies.push(...messages.map((message) => message.body));
+    return { batchItemFailures: [] };
+  });
+  return {
+    port: queue,
+    failSends: () => {
+      failing = true;
+    },
+    accepted: async () => {
+      await settle();
+      return [...bodies];
+    },
+  };
+});
+
+queueAttributesPortContract('InProcessQueueAdapter', () => {
+  const clock = new FakeClock();
+  const queue = new InProcessQueueAdapter({ clock, logger: silentLogger(), sleep: clock.sleep });
+  return {
+    port: queue,
+    // No consumer is started, so every message enqueued stays waiting.
+    holdWaiting: async (count, oldestAgeSeconds) => {
+      for (let index = 0; index < count; index += 1) {
+        await queue.enqueue(envelope(`msg_waiting_${index}`));
+      }
+      clock.advance(oldestAgeSeconds * 1_000);
+    },
+  };
 });

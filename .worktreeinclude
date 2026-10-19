@@ -10,3 +10,8 @@ AGENTS.local.md
 # Not regenerable: the address-hash key is generated once and must match the
 # compose Postgres every checkout shares.
 .env.local
+
+# The kept deployed stack's LEDGER_URL and bootstrap LEDGER_TOKEN, for deployed
+# walks. Nothing loads it automatically; the token is printed once, at the first
+# deploy, so it is not regenerable without minting a new one.
+.env.deployed.local

@@ -9,7 +9,32 @@ describe('ledger program', () => {
     expect(result.stdout).toContain('Usage: ledger');
     expect(result.stdout).toMatch(/^ {2}email \[options\] <email_id>/m);
     expect(result.stdout).toMatch(/^ {2}recipient \[options\] <address>/m);
+    expect(result.stdout).toMatch(/^ {2}health \[options\]/m);
+    expect(result.stdout).toMatch(/^ {2}worker /m);
+    expect(result.stdout).toMatch(/^ {2}token /m);
     expect(result.stderr).toBe('');
+  });
+
+  it('lists the token group commands for token --help and the worker one for worker --help', async () => {
+    const token = await runCli(['token', '--help'], new FakeLedgerClient());
+    const worker = await runCli(['worker', '--help'], new FakeLedgerClient());
+
+    expect(token.exitCode).toBe(0);
+    for (const command of ['create', 'list', 'revoke', 'current']) {
+      expect(token.stdout).toMatch(new RegExp(`^ {2}${command} `, 'm'));
+    }
+    expect(worker.exitCode).toBe(0);
+    expect(worker.stdout).toMatch(/^ {2}resume /m);
+  });
+
+  it('a group without a command is a usage error, exit 2, with no call', async () => {
+    const client = new FakeLedgerClient();
+
+    const result = await runCli(['token'], client);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(client.calls).toEqual([]);
   });
 
   it('exits 2 with commander message on stderr for an unknown option', async () => {

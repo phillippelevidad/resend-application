@@ -215,10 +215,15 @@ Vendor pages read 2026-10-15. `[Unverified]` cells are tracked in [\[Unverified\
   retention job lands (slice 7), column-level `UPDATE` on the columns it rewrites; never `DELETE`.
   **Order (MUST)**, through the direct URL:
   1. The deploy command ensures the role exists (idempotent: created only if absent), and sets
-     `ALTER ROLE <runtime role> SET idle_in_transaction_session_timeout = …` and
-     `SET lock_timeout = …`, both below the worker timeout (values fixed by slice 2). They bound,
-     server-side, the locks of a Lambda killed or frozen mid-transaction: both default to 0, and a
-     client timeout dies with its client. Whether the pooler applies role settings is PG-U06.
+     `ALTER ROLE <runtime role> SET idle_in_transaction_session_timeout = '5000ms'` and
+     `SET lock_timeout = '10000ms'` (`RUNTIME_ROLE_TIMEOUTS` in `packages/db`), on every run.
+     Both sit below the worker's 60 s timeout, and the idle bound below the lock bound, so an idle
+     holder is ended before a waiter's lock wait expires. They bound, server-side, the locks of a
+     Lambda killed or frozen mid-transaction: both default to 0, and a client timeout dies with
+     its client. Whether the pooler applies role settings is PG-U06. Evidence: the role's
+     `rolconfig` holds both after `prepareDatabase`
+     ([runtime-role.int.test.ts](../packages/db/src/runtime-role.int.test.ts)), and every call
+     re-sets them ([prepare-database.int.test.ts](../packages/db/src/prepare-database.int.test.ts)).
   2. It runs the migrations. Each change that creates a table grants that table's DML to the
      role, in a custom migration right after the generated one; pending migrations apply in one
      transaction, so the table never exists ungranted.
@@ -278,7 +283,7 @@ Ids are stable: never renumber, never reuse.
 
 | Id | Claim | Why unsettled | What would settle it | Owed by |
 | --- | --- | --- | --- | --- |
-| PG-U01 | Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box. Whether it covers AWS regions, and what counts as activity, is unstated. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
+| ~~PG-U01~~ | ~~Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly~~ | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box ([regions](https://neon.com/docs/introduction/regions)). Whether it covered AWS regions, and what counts as activity, was unstated there. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | **Settled 2026-10-17** by Neon's docs (read 2026-10-17): the [Azure regions deprecation](https://neon.com/docs/import/azure-regions-deprecation) page scopes the rule ("Projects in Free organizations that have been inactive for 90 days or more are subject to deletion") with "Only projects in these Azure regions are affected" (`azure-eastus2`, `azure-westus3`, `azure-gwc`) and "Projects in AWS regions are not affected." No other page read states an inactivity deletion: [plans](https://neon.com/docs/introduction/plans) says of the Free limits "None of these limits delete your data", and neither it, the [Free plan FAQ](https://neon.com/faqs/free-plan-limits-and-quotas) nor [projects](https://neon.com/docs/manage/projects) mentions one. Idle in `aws-us-east-2` means compute suspend after 5 min ([plans](https://neon.com/docs/introduction/plans)), and [branch archiving](https://neon.com/docs/guides/branch-archiving) of branches "Older than **14 days**" not accessed for "the past **24 hours**", unarchived on first access; neither deletes data. What counts as activity for the Azure rule is still undefined, moot for AWS. A change to Neon's terms is the [fallback trigger](#decision--neon) |
 | PG-U02 | `SELECT … FOR UPDATE` locks hold for the whole transaction through Neon's transaction-mode pooler | Inferred from PgBouncer's definition. Neon's page doesn't name it | A deployed concurrency test: two transactions on one `email_id` through the pooled URL serialize | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
 | PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month), and storage inside the [storage budget](#cadence-and-the-database) (1 GB) | An estimate from the 5-min suspend window; bytes per event are unmeasured until the slice 3 burst | Neon's usage page after 30 idle days (CU-hours and public network transfer), recorded beside [aws.md → Cost shape](aws.md#cost-shape); storage used (`health.get`) against the bursts-left figure | [slice 4](build-checklist.md#4--recovery) (moved from slice 2: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute or a full store pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage), PG-U07) |
 | PG-U04 | A module-scope connection survives the compute suspending under it | Neon doesn't say what happens to open client connections at suspend | A worker or tick test after > 5 min idle | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (a connection error is retryable; reconnect on error) |

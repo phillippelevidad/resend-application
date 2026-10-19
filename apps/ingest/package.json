@@ -4,6 +4,13 @@
   "type": "module",
   "description": "Lambda entry point over @ledger/ingest: event adaptation and composition root",
   "license": "MIT",
+  "dependencies": {
+    "@ledger/aws": "workspace:*",
+    "@ledger/core": "workspace:*",
+    "@ledger/ingest": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "zod": "4.6.7"
+  },
   "devDependencies": {
     "vitest": "catalog:"
   }

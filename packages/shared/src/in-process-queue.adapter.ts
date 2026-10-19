@@ -3,6 +3,7 @@ import type { IngestEnvelope } from '@ledger/core';
 import type { ClockPort } from './clock.port.ts';
 import type { Logger } from './create-logger.ts';
 import type { QueueConsumer, QueueMessage, QueuePort } from './queue.port.ts';
+import type { QueueAttributesPort, QueueSnapshot } from './queue-attributes.port.ts';
 
 // ADR-008: the event source mapping's batch size.
 const maxBatchSize = 10;
@@ -17,6 +18,8 @@ type Stored = {
   // D8: recorded at enqueue, because `messageId` is not an allow-listed log key and a body that
   // fails to parse has no readable id.
   readonly svixId: string;
+  // D40: the age `read()` reports, kept across redeliveries.
+  readonly enqueuedAt: number;
   receiveCount: number;
   visibleAt: number;
 };
@@ -44,12 +47,14 @@ const realSleep = (ms: number, signal: AbortSignal): Promise<void> =>
 // SQS standard is (ADR-002): a message is acknowledged only when the consumer leaves it out of
 // `batchItemFailures`, redelivered after 1 s otherwise, and moved to the dead list after its 5th
 // receive, so none is dropped without reaching a dead store. Slice 2B's Postgres queue makes it
-// durable.
-export class InProcessQueueAdapter implements QueuePort {
+// durable. It is local mode's `QueueAttributesPort` too (D40).
+export class InProcessQueueAdapter implements QueuePort, QueueAttributesPort {
   readonly #clock: ClockPort;
   readonly #logger: Logger;
   readonly #sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   #waiting: Stored[] = [];
+  // The batch the consumer holds right now: taken off `#waiting`, not yet settled.
+  #delivering: readonly Stored[] = [];
   readonly #deadList: DeadListEntry[] = [];
   #consumer: QueueConsumer | undefined;
   #pumping = false;
@@ -63,15 +68,33 @@ export class InProcessQueueAdapter implements QueuePort {
   }
 
   async enqueue(envelope: IngestEnvelope): Promise<void> {
+    const now = this.#clock.now().getTime();
     this.#lastId += 1;
     this.#waiting.push({
       messageId: String(this.#lastId),
       body: JSON.stringify(envelope),
       svixId: envelope.svixId,
+      enqueuedAt: now,
       receiveCount: 0,
-      visibleAt: this.#clock.now().getTime(),
+      visibleAt: now,
     });
     this.#kick();
+  }
+
+  // D40: `visible` is every waiting message (a redelivery's 1 s delay included), `inFlight` the batch
+  // the consumer holds, `dlqVisible` the dead list; nothing is ever in flight on the dead list. The
+  // age is the oldest live message's, in whole seconds, as SQS reports it.
+  async read(): Promise<QueueSnapshot> {
+    const live = [...this.#waiting, ...this.#delivering];
+    const oldest = live.length === 0 ? null : Math.min(...live.map((stored) => stored.enqueuedAt));
+    return {
+      visible: this.#waiting.length,
+      inFlight: this.#delivering.length,
+      oldestAgeSeconds:
+        oldest === null ? null : Math.floor((this.#clock.now().getTime() - oldest) / 1_000),
+      dlqVisible: this.#deadList.length,
+      dlqInFlight: 0,
+    };
   }
 
   // Starts delivering to the consumer: every waiting message, then each one enqueued later.
@@ -133,6 +156,7 @@ export class InProcessQueueAdapter implements QueuePort {
     for (const stored of batch) stored.receiveCount += 1;
     const messages: QueueMessage[] = batch.map(({ messageId, body }) => ({ messageId, body }));
     let failed: ReadonlySet<string>;
+    this.#delivering = batch;
     try {
       const response = await consumer(messages);
       failed = new Set(response.batchItemFailures.map((failure) => failure.itemIdentifier));
@@ -140,6 +164,8 @@ export class InProcessQueueAdapter implements QueuePort {
       // As on Lambda, a consumer that throws fails the whole batch: every message is redelivered,
       // then dead-listed with its line, so the failure is never swallowed.
       failed = new Set(batch.map((stored) => stored.messageId));
+    } finally {
+      this.#delivering = [];
     }
     const now = this.#clock.now().getTime();
     for (const stored of batch) {

@@ -20,7 +20,12 @@ import { fileURLToPath } from 'node:url';
 
 const IMAGE =
   'ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f';
-const CUSTOM_RULES = ['resend-api-key', 'resend-webhook-secret', 'postgres-url'];
+const CUSTOM_RULES = [
+  'resend-api-key',
+  'resend-webhook-secret',
+  'ledger-api-token',
+  'postgres-url',
+];
 const say = (message) => console.log(`secrets: ${message}`);
 const fail = (message) => console.error(`secrets: ${message}`);
 
@@ -95,10 +100,11 @@ function gitleaks(repoDir, configPath) {
 function writeCanary(dir) {
   const fakeKey = ['re', '_'].join('') + 'LedgerCanary'.repeat(2);
   const fakeSecret = ['whsec', '_'].join('') + 'TGVkZ2VyQ2FuYXJ5'.repeat(2);
+  const fakeToken = `${['ldg', '_'].join('')}${'c0ffee'.repeat(11).slice(0, 64)}_${'5a'.repeat(32)}`;
   const fakeUrl = `${['postgres', '://'].join('')}canary:${'not-a-secret'}@${'db.example.invalid'}`;
   writeFileSync(
     join(dir, 'canary.env'),
-    `RESEND_KEY=${fakeKey}\nWEBHOOK_SECRET=${fakeSecret}\nDATABASE_URL=${fakeUrl}/ledger\n`,
+    `RESEND_KEY=${fakeKey}\nWEBHOOK_SECRET=${fakeSecret}\nLEDGER_TOKEN=${fakeToken}\nDATABASE_URL=${fakeUrl}/ledger\n`,
   );
   const identity = ['-c', 'user.name=canary', '-c', 'user.email=canary@example.invalid'];
   git(['init', '-q', '-b', 'main'], dir);

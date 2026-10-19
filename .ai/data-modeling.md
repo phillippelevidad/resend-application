@@ -27,7 +27,7 @@ the entry it links.
 | [`email_state`](#email_state--current-state-per-email) | Current state per email | Projection | Recomputed | 1 — Local ledger and read path | [x] |
 | [`email_recipients`](#email_recipients--outcome-per-email-and-recipient) | Outcome per email and recipient | Projection | Recomputed | 1 — Local ledger and read path | [x] |
 | [`recipient_state`](#recipient_state--deliverability-per-address) | Deliverability per address | Projection | Recomputed | 1 — Local ledger and read path | [x] |
-| [`api_tokens`](#api_tokens--read-api-bearer-tokens) | Read API bearer tokens, hashed | Credential record | Insert, then revoke once | 2 — Durable ingest on AWS | [ ] |
+| [`api_tokens`](#api_tokens--read-api-bearer-tokens) | Read API bearer tokens, hashed | Credential record | Insert, then revoke once | 2 — Durable ingest on AWS | [x] |
 | [`reconcile_runs`](#reconcile_runs--one-row-per-recovery-run) | One row per recovery run | Ops record | Insert, claim once, finish once | 4 — Recovery | [ ] |
 | [`local_queue_messages`](#local_queue_messages--the-local-mode-queue) | SQS stand-in for local mode | Queue | Claimed, deleted or dead | 2B — Local-mode queue and docker compose | [ ] |
 | [`outbox`](#outbox--reactions-awaiting-delivery) | Reactions awaiting delivery | Outbox | Status transitions only | 6 — Reactions | [ ] |
@@ -92,7 +92,10 @@ _Evidence:_ `svix_id`: a sequential duplicate, two concurrent copies and a copy 
 `messageId` each leave one row, and the projection keys' insert-then-lock order lets two emails
 sharing recipients in opposite `data.to` order commit without deadlock, as the runtime role, in
 [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts)
-(slice 1). `outbox.dedupe_key` (slice 6) and `api_tokens.bootstrap` (slice 2) are pending.
+(slice 1). `api_tokens.bootstrap`: a second bootstrap insert inserts no row and returns none, as
+the runtime role, in
+[api-tokens.repository.int.test.ts](../packages/db/src/api-tokens.repository.int.test.ts)
+(slice 2). `outbox.dedupe_key` (slice 6) is pending.
 
 ### Timestamps & ordering
 
@@ -236,7 +239,9 @@ redaction replace a raw value with its mask without changing any projection.
   with a `from` and a subject, no text column of any projection row holds either normalized
   address, the raw `from` or the raw subject, in
   [projection-pii.int.test.ts](../packages/worker/src/projection-pii.int.test.ts).
-- Slice 2: a deploy-command test that refuses a mismatched `key_id`.
+- Slice 2: a deploy-command test that refuses a mismatched `key_id`, after migrating and before any
+  stack deploy or secret write, and passes on a database that holds no hash, in
+  [run-deploy.test.ts](../infra/scripts/run-deploy.test.ts).
 - Slice 7: a rebuild after redaction yields identical projections.
 
 #### Log fields
@@ -415,6 +420,7 @@ _Evidence: the slice 0 item and the slice 1 schema and concurrency items hold; t
 | `bootstrap` | `boolean` not null, default `false`, partial UNIQUE `WHERE bootstrap` | Marks the deploy command's first `operate` token, so a re-run inserts none ([Idempotency keys](#idempotency-keys)) |
 | `scope` | `text` `CHECK (read, operate)` | The [ADR-011](architecture.md#adr-011--one-contract-many-surfaces) scopes |
 | `revoked_at` | `timestamptz` null | Set once. A revoked token is rejected on the next request while the database is reachable, with no redeploy. During an outage only `health.get` answers, on the token's tag alone ([api-contract.md → Conventions](api-contract.md#conventions)) |
+| `created_at`, `updated_at` | `timestamptz` not null, default `now()` | Base fields. `markRevoked` sets `updated_at` together with `revoked_at`, in the same `UPDATE`; a repeated revoke changes neither |
 
 - **Issuance:** the deploy command inserts the first `operate` token, with `bootstrap = true` and
   `ON CONFLICT DO NOTHING`, through the direct URL it already holds (ADR-018), and prints it once,
@@ -427,11 +433,20 @@ _Evidence: the slice 0 item and the slice 1 schema and concurrency items hold; t
 - **Operations:** `token.create`, `token.list`, `token.revoke` (`operate`) and `token.getCurrent`
   (`read`), with no MCP surface ([api-contract.md](api-contract.md#tokencreate)).
 
-_Schema: `packages/db/src/schema/api-tokens.ts` (once it exists)._
-_Evidence: pending (slice 2)._
-- A revoked token gets `401`.
-- A `read` token gets `403` on an `operate` route.
-- A re-run deploy command inserts no second first-token, and `--issue-operate-token` mints exactly one new one.
+_Schema: [`packages/db/src/schema/api-tokens.ts`](../packages/db/src/schema/api-tokens.ts)._
+_Evidence (slice 2):_
+- Schema: the identity insert as the runtime role with no sequence grant, the `scope` `CHECK`
+  against `tokenScopes` (`23514` outside it), the bootstrap key (a second bootstrap insert inserts
+  no row), `markRevoked` setting `revoked_at` and `updated_at` once, and two concurrent revokes of
+  the last two `operate` tokens serialized by `lockActiveOperate` (exactly one succeeds), in
+  [api-tokens.repository.int.test.ts](../packages/db/src/api-tokens.repository.int.test.ts).
+- A revoked token gets `401` on its next request, its row kept, in
+  [auth.middleware.int.test.ts](../packages/api/src/auth.middleware.int.test.ts) and
+  [revoke-token.route.int.test.ts](../packages/api/src/revoke-token.route.int.test.ts).
+- A `read` token gets `403` on each of the four `operate` routes, and none of them acts, in
+  [auth.middleware.int.test.ts](../packages/api/src/auth.middleware.int.test.ts).
+- A re-run deploy command inserts no second first-token, and `--issue-operate-token` mints exactly
+  one new one, in [run-deploy.test.ts](../infra/scripts/run-deploy.test.ts) (unit, fake steps).
 
 - **Slices:** 2 — Durable ingest on AWS
 

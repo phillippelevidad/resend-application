@@ -21,14 +21,27 @@ const inErrorShape = (description: string) => ({
   description,
 });
 
-// The four failure statuses both slice 1 operations declare, each in the error shape (D21). `404`
-// is the operation's own not-found code; an unmatched path's `route_not_found` belongs to no
-// operation (D23).
-export function errorResponses(notFound: string) {
-  return {
-    400: inErrorShape('`validation_failed`: the field the message names is malformed.'),
-    404: inErrorShape(notFound),
-    500: inErrorShape('`internal_error`: an unexpected failure, logged by request id.'),
-    503: inErrorShape('`database_unavailable`: the database is unreachable.'),
-  };
+type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 500 | 503;
+
+// The descriptions most operations share; an operation's own codes (`404`, `409`) are written at
+// the route.
+export const errorDescriptions = {
+  400: '`validation_failed`: the field the message names is malformed.',
+  401: '`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.',
+  403: '`forbidden`: the token lacks the `operate` scope.',
+  500: '`internal_error`: an unexpected failure, logged by request id.',
+  503: '`database_unavailable`: the database is unreachable.',
+} as const;
+
+// Every failure status an operation declares, each in the error shape (D21), so the document lists
+// exactly the entry's errors. `401` is on every operation (D18). An unmatched path's
+// `route_not_found` belongs to no operation (D23).
+export function errorResponses<S extends ErrorStatus>(
+  descriptions: Record<S, string>,
+): Record<S, ReturnType<typeof inErrorShape>> {
+  const responses = {} as Record<S, ReturnType<typeof inErrorShape>>;
+  for (const status of Object.keys(descriptions).map(Number) as S[]) {
+    responses[status] = inErrorShape(descriptions[status]);
+  }
+  return responses;
 }

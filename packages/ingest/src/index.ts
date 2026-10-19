@@ -5,7 +5,6 @@ export {
   type IngestDeps,
   type IngestRequest,
   type IngestResponse,
-  type IngestSecrets,
 } from './create-ingest.ts';
 export {
   INGEST_BODY_OK,

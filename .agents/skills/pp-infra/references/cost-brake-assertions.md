@@ -36,7 +36,13 @@ test('every function runs arm64 on nodejs24.x (AWS-20, AWS-54)', () => {
   first.
 - **Synthesis bundles every function for real**, so a broken entry or bundling option fails the
   same stage. One more test resolves `esbuild` from the repo root, because a missing one makes CDK
-  fall back to Docker silently ([cdk-app.md → Bundling](cdk-app.md#bundling)).
+  fall back to Docker silently, and the bundle smoke check loads every bundle
+  ([cdk-app.md → Bundling](cdk-app.md#bundling)).
+- **A test builds a grep-listed literal at run time** (`['resolve', 'secretsmanager'].join(':')`,
+  the custom-resource type name from its parts), so the [review greps](#review-greps) keep checking
+  the stacks' code and never hit their own assertion.
+- **`infra/src/` tests set no environment through `process.env`** (review grep 11): the bundle smoke
+  check uses `vi.stubEnv` and lets the spawned Node inherit it.
 - **Numbers come from the stack's own named constants**, each commented with the `AWS-NN` that
   fixes it, imported by the test. A literal in the test restates aws.md.
 
@@ -57,7 +63,7 @@ Run against both stacks unless the row says otherwise.
 | Guardrails import nothing | guardrails only: `expect(JSON.stringify(template.toJSON())).not.toContain('Fn::ImportValue')` | [Budget alarms](../../../../.ai/aws.md#budget-alarms) item 1 |
 | One hourly cron, window off, explicit retries | `allResourcesProperties('AWS::Scheduler::Schedule', { ScheduleExpression: HOURLY_CRON, FlexibleTimeWindow: { Mode: 'OFF' }, Target: Match.objectLike({ RetryPolicy: Match.anyValue() }) })` for every Postgres-touching schedule | AWS-10, [Cadence](../../../../.ai/integrations.md#cadence-and-the-database) |
 | Alarms within the free count | standard alarms across both stacks ≤ the AWS-28 constant; `resourceCountIs('AWS::CloudWatch::CompositeAlarm', 0)` | AWS-28 |
-| Budget and kill switch wired | guardrails only: one `AWS::Budgets::Budget` with `CostTypes.IncludeCredit: false` and item 3's notifications, within AWS-33's limit; the trip topic without `KmsMasterKeyId`, with a policy letting `budgets.amazonaws.com` `SNS:Publish`; the kill switch subscribed to it; an alarm on the kill switch's `Errors` (item 4); the HTTP API stage's default-route throttle set (item 7; the value is slice 2's) | [Budget alarms](../../../../.ai/aws.md#budget-alarms) items 2–4, 7, 8, AWS-52, AWS-33, AWS-35, AWS-53 |
+| Budget and kill switch wired | guardrails: one `AWS::Budgets::Budget` with `CostTypes.IncludeCredit: false` and item 3's notifications, within AWS-33's limit; both topics without `KmsMasterKeyId`, each with a policy letting `budgets.amazonaws.com` and `cloudwatch.amazonaws.com` `SNS:Publish`; the kill switch subscribed to the trip topic when armed, none otherwise; an alarm on the kill switch's `Errors` (item 4). App (C3), because the HTTP API lives there: the `$default` stage's default-route throttle at the stack's constants (item 7), and the usage-trip alarm whose action is the trip topic's constructed ARN | [Budget alarms](../../../../.ai/aws.md#budget-alarms) items 2–4, 7, 8, AWS-52, AWS-33, AWS-35, AWS-53 |
 | No secret value reaches a function | `JSON.stringify(template.toJSON())` contains no `resolve:secretsmanager`; every `Environment.Variables` value is a `Ref`, `Fn::GetAtt`, `Fn::Join` of those, or a plain non-secret string | CBL-01 |
 
 ## Wiring the slices owe

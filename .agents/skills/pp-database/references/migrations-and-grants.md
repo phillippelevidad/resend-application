@@ -131,26 +131,38 @@ command and the Testcontainers harness follow the same order
 - **Never** `ALL`, DDL, `TRUNCATE`, a grant on the migrations table, or `ALTER DEFAULT PRIVILEGES`:
   per-table grants keep each table's privileges visible in the migration that created it.
 - **The role's server-side timeouts.** The role-ensure step also runs `ALTER ROLE <runtime role>
-  SET idle_in_transaction_session_timeout = …` and `SET lock_timeout = …`, both below the worker
-  timeout (values: the slice 2 pre-proposal's), and re-runs them on every deploy. They bound a
+  SET idle_in_transaction_session_timeout = …` and `SET lock_timeout = …` from the
+  `roleTimeouts` option, on every call. The deploy command and `pnpm db:setup` pass
+  `RUNTIME_ROLE_TIMEOUTS` (`5_000` / `10_000` ms), both below the worker's 60 s timeout and the idle
+  bound below the lock bound, so an idle holder is ended before a waiter's lock wait expires; the
+  harness passes `2_000` / `5_000` ([pp-testing → harness](../../pp-testing/references/postgres-harness.md#lifecycle-one-run)).
+  Values are written as `'<n>ms'`, quoted with `pg`'s `escapeLiteral`. They bound a
   Lambda frozen or killed mid-transaction, whose row and advisory locks would otherwise hold
   server-side and dead-letter the workers queued behind them; the client timeouts cannot
   ([connection](schema-and-repositories.md#connection)). Role-level settings, not session `SET`.
   Whether Neon's pooler applies them is PG-U06, MUST be settled in slice 2
   ([integrations.md → \[Unverified\]](../../../../.ai/integrations.md#unverified)). Evidence: an
   integration test where an idle transaction holds a lock and the worker still commits (slice 2).
-- An identity column's sequence needs no separate grant for `INSERT` (`[Unverified]`, unlike
-  `serial`); the harness inserting as the runtime role proves it in slice 2, whose `api_tokens` is
-  the first identity column.
-- Evidence: the integration test where the runtime role gets `permission denied` on
-  `DELETE FROM webhook_events` and on `CREATE TABLE` (slice 2,
-  [build-checklist](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws)).
+- **The role's password.** `prepareDatabase` sets `runtimePassword` when it creates the role, and
+  on an existing role only when `resetPassword` is `true` (`ALTER ROLE … PASSWORD`, quoted with
+  `escapeLiteral`). The deploy command passes `true` only when no usable password is stored;
+  `pnpm db:setup` passes `false` (locally the functions connect as the owner). Evidence:
+  [prepare-database.int.test.ts](../../../../packages/db/src/prepare-database.int.test.ts).
+- An identity column's sequence needs no separate grant for `INSERT`, unlike `serial`: the runtime
+  role inserts into `api_tokens`, the first identity column, holding only `SELECT, INSERT, UPDATE`
+  on the table, so `0003_grant-api-tokens.sql` grants no sequence
+  ([api-tokens.repository.int.test.ts](../../../../packages/db/src/api-tokens.repository.int.test.ts),
+  slice 2).
+- Evidence: the runtime role gets `42501` on `DELETE FROM webhook_events` and on `CREATE TABLE`,
+  and its `rolconfig` holds both timeouts
+  ([runtime-role.int.test.ts](../../../../packages/db/src/runtime-role.int.test.ts)).
 
 ## Running migrations
 
 - **One code path** for the deploy command, the local setup command and the harness, so the tested
-  path is the deployed path: `prepareDatabase({ ownerUrl, runtimePassword })` in
-  `packages/db/src/prepare-database.ts`. It creates the runtime role only when absent, then runs
+  path is the deployed path: `prepareDatabase({ ownerUrl, runtimePassword, roleTimeouts,
+  resetPassword })` in `packages/db/src/prepare-database.ts`. It creates the runtime role only when
+  absent, sets its timeouts ([grants](#grants)), then runs
   the programmatic `migrate()` from `drizzle-orm/node-postgres/migrator`
   ([migrations](https://orm.drizzle.team/docs/migrations)), which keeps drizzle-kit out of every
   runtime (slice 1, D20).

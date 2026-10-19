@@ -29,9 +29,16 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
     secrets, comma-separated `whsec_` values, one per `resend webhooks listen` session),
     `LEDGER_ADDRESS_HASH_KEY` (the address-hash key, 64 hex characters, written once by
     `pnpm db:setup` and never changed; [data-modeling.md → PII & retention](data-modeling.md#pii--retention)),
-    `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`, `AWS_PROFILE`, and any such variable added later.
-  - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's event source
-    mapping UUID, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
+    `LEDGER_TOKEN_TAG_KEY` (the token-tag key, 64 lowercase hex, read by `apps/local` and the deploy
+    command, written once by `pnpm db:setup`), `RESEND_API_KEY`, `DATABASE_URL`, `AWS_REGION`,
+    `AWS_PROFILE`; the deploy command's `LEDGER_DEPLOY_DATABASE_URL` (Neon direct URL, owner
+    credentials), `LEDGER_DEPLOY_DATABASE_POOLED_URL` (Neon pooled URL, owner credentials),
+    `LEDGER_DEPLOY_WEBHOOK_SECRETS` (optional, comma-separated `whsec_` values),
+    `LEDGER_ALERT_EMAIL` (required; the budget and kill-switch alert address, never committed),
+    `LEDGER_KILL_SWITCH` (`on` | `off`, default `off`) and `LEDGER_BUDGET_USD` (a positive number,
+    default `50`); and any such variable added later.
+  - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's function
+    name, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
     `as const` object per function, imported by `infra/src/function-env.ts`, which sets each value
     only on its reader, and by each `apps/*` `.config.ts` for its schema keys; one `Template`
     assertion per function checks it carries exactly its keys
@@ -215,9 +222,9 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 - **Surfaces:** SDK `ledger.health.get` · CLI `ledger health` · MCP none
 - **Kind:** read `[view-shaped]`. It reports queue depth and oldest-message age, DLQ depth (AWS-22), whether the worker's event source is enabled or paused (AWS-18, [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)), database reachability and, when reachable, storage used (`pg_database_size`, against the budget in [integrations.md → Cadence](integrations.md#cadence-and-the-database)), the last reconcile run once one exists, and, from slice 6, the outbox's pending and dead counts and its oldest pending age. In local mode the counts come from [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
-- **In / Out:** none → health summary. It has no table of its own: the queue and event-source fields come from SQS and Lambda, and only the storage, last-run and outbox fields read Postgres ([reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run), [outbox](data-modeling.md#outbox--reactions-awaiting-delivery))
+- **In / Out:** none → health summary. It has no table of its own: the queue counts come from SQS, the oldest-message age from CloudWatch `GetMetricStatistics` (AWS-57), the event-source field from Lambda, and only the storage, last-run and outbox fields read Postgres ([reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run), [outbox](data-modeling.md#outbox--reactions-awaiting-delivery))
 - **Errors:** none of its own. It MUST answer during a database outage, reporting the database as unreachable rather than failing, because an outage is when the operator needs it. Auth then rests on the token's tag alone ([Conventions → Auth](#conventions))
-- **Idempotency / rate limit:** idempotent. No Resend call. One SQS attribute read and one Lambda read per call, inside the free tier (AWS-24)
+- **Idempotency / rate limit:** idempotent. No Resend call. Per call: two SQS attribute reads (the source queue and the DLQ), one Lambda read (the worker's event source mapping) and one CloudWatch statistic (`GetMetricStatistics` of `ApproximateAgeOfOldestMessage`, since `GetQueueAttributes` returns no age; AWS-22), inside the free tiers (AWS-24, AWS-57)
 - **Slices:** 2 — Durable ingest on AWS; 4 — Recovery; 2B — Local-mode queue and docker compose; 6 — Reactions
 
 #### gaps.list

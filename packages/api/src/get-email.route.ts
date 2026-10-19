@@ -1,8 +1,9 @@
 import { createRoute, type RouteHandler, z } from '@hono/zod-openapi';
+import { bearerSecurity, requireScope } from './auth.middleware.ts';
 import type { ApiEnv } from './create-api.ts';
 import { emailResponseMapper } from './email-response.mapper.ts';
 import { emailResponseSchema } from './email-response.schema.ts';
-import { errorResponses } from './error-response.schema.ts';
+import { errorDescriptions, errorResponses } from './error-response.schema.ts';
 import type { GetEmailReader } from './get-email.reader.ts';
 
 // D25: Resend's UUID ids and the simulator's namespaced ids.
@@ -17,13 +18,21 @@ export const getEmailRoute = createRoute({
   path: '/emails/{email_id}',
   operationId: 'email.get',
   summary: 'The projected state of an email, its recipients and its event timeline',
+  middleware: requireScope('read'),
+  security: bearerSecurity,
   request: { params: z.object({ email_id: emailIdSchema }) },
   responses: {
     200: {
       content: { 'application/json': { schema: emailResponseSchema } },
       description: 'The email, masks only.',
     },
-    ...errorResponses('`email_not_found`: no event has been recorded for this email id.'),
+    ...errorResponses({
+      400: errorDescriptions[400],
+      401: errorDescriptions[401],
+      404: '`email_not_found`: no event has been recorded for this email id.',
+      500: errorDescriptions[500],
+      503: errorDescriptions[503],
+    }),
   },
 });
 

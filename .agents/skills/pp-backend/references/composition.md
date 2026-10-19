@@ -88,17 +88,19 @@ implementation ([adding-things.md](../../pp-general/references/adding-things.md#
 | Queue (`enqueue`, and the receive and settle a local consumer needs) | in-process (slice 1), SQS in `packages/aws` (slice 2), Postgres-backed in `packages/db` (slice 2B) | 1 |
 | Clock (`now()`) | system clock; tests use a fake that implements the port (ADR-009's TTL test) | 1 |
 | Metrics helper's interface (the fixed EMF set, [metrics](../../pp-general/references/logging-and-pii.md#metrics)) | the EMF line writer; locally, through the logger | 1 |
-| Event source control (read state, enable, disable the worker ESM; AWS-18) | `packages/aws`; local mode reports the state as a no-op ([worker.resumeEventSource](../../../../.ai/api-contract.md#workerresumeeventsource)) | 2 |
-| Queue attributes (depth, oldest age; AWS-22) | `packages/aws`; local mode counts `local_queue_messages` | 2 |
-| Function invoke (async: worker → dispatcher, API → reconciler; synchronous, awaiting the result: API → worker resume, whose answer is the resulting state or `database_unavailable`) | `packages/aws`; locally `apps/local` calls the composed factory in process (async: not awaited, a rejection logged; synchronous: awaited) | 2 |
+| Event source control (read state, enable, disable the worker ESM; AWS-18): `EventSourceControlPort`, `getState(): Promise<EventSourceState>`, `enable()`, `disable()` | `LambdaEventSourceControlAdapter` in `packages/aws`, bound to one function name; local mode's `StaticEventSourceControlAdapter` in `packages/shared` reports `enabled`, enable and disable no-ops ([worker.resumeEventSource](../../../../.ai/api-contract.md#workerresumeeventsource)) | 2 |
+| Queue attributes (depth, oldest age; AWS-22): `QueueAttributesPort`, `read(): Promise<QueueSnapshot>`, `QueueSnapshot = { visible, inFlight, oldestAgeSeconds: number \| null, dlqVisible, dlqInFlight }` | `SqsQueueAttributesAdapter` in `packages/aws`; locally `InProcessQueueAdapter` counts its own lists (waiting `visible`, delivering `inFlight`, the dead list `dlqVisible`, age from the oldest `enqueuedAt`; slice 2, D40); slice 2B's Postgres-backed queue counts `local_queue_messages` | 2 |
+| Function invoke (async: worker → dispatcher, API → reconciler; synchronous, awaiting the result: API → worker resume, whose answer is the resulting state or `database_unavailable`). The synchronous one is `FunctionInvokePort`, `invoke(payload: unknown): Promise<unknown>`, bound to one function; the async one is slices 4 and 6's | `LambdaFunctionInvokeAdapter` in `packages/aws` (`RequestResponse`); locally `apps/local` calls the composed factory in process (async: not awaited, a rejection logged; synchronous: awaited, through `InProcessFunctionInvokeAdapter` in `packages/shared`) | 2 |
 | DLQ receive and redrive (AWS-50, AWS-21) | `packages/aws`; local mode reads and clears `dead_at` | 3 |
-| Secret reading (Secrets Manager, by the ARN in an internal variable; [secrets](../../pp-general/references/config-and-env.md#secrets)) | `packages/aws`; locally `apps/local`'s `main.ts` passes a static implementation over the values its config parsed from `.env.local`, so the factory always takes the port | 2 |
+| Secret reading (Secrets Manager, by the ARN in an internal variable; [secrets](../../pp-general/references/config-and-env.md#secrets)): `SecretReaderPort`, `read(secretId: string): Promise<string>` | `SecretsManagerSecretReaderAdapter` in `packages/aws`; locally `apps/local`'s `main.ts` passes `StaticSecretReaderAdapter` (`packages/shared`) over the values its config parsed from `.env.local`, so the factory always takes the port. It answers one value for the one id it was built with and rejects any other | 2 |
 
 ADR-013 lists Secrets Manager among `packages/aws`'s adapters without naming its port; ingest needs
 the secret set on AWS without importing `@aws-sdk/*`, so it reaches it through a port like the
 others. Each port's exact name and methods are settled by the slice that lands it; the table fixes
 which ports exist. A port that is not in this table needs an ADR that names it
-([pp-general → Case-by-case](../../pp-general/SKILL.md#case-by-case)).
+([pp-general → Case-by-case](../../pp-general/SKILL.md#case-by-case)). Every port with two
+implementations has one shared contract suite that both run
+([pp-testing → Shared contract suites](../../pp-testing/references/vitest-layout.md#shared-contract-suites)).
 
 **`resend-client` is not a port.** It is ADR-012's named seam: a package that exports the client
 its consumers type against ([resend-client.md](resend-client.md)). Nothing in `packages/shared`

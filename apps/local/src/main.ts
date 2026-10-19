@@ -2,16 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { serve } from '@hono/node-server';
 import { createApi } from '@ledger/api';
-import { createDatabase } from '@ledger/db';
+import { createDatabase, STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { createIngest } from '@ledger/ingest';
 import {
   type ClockPort,
   ConfigError,
   createLogger,
+  InProcessFunctionInvokeAdapter,
   InProcessQueueAdapter,
   type Logger,
   LogMetricsAdapter,
   loadConfig,
+  StaticEventSourceControlAdapter,
+  StaticSecretReaderAdapter,
 } from '@ledger/shared';
 import { createWorker } from '@ledger/worker';
 import { ingestFetch } from './ingest-fetch.ts';
@@ -56,12 +59,9 @@ function readFlags(): Flags | undefined {
   if (!/^\d{1,5}$/.test(values.port) || Number(values.port) > 65535) {
     return refuse(processLogger, 'refusing to start: --port must be an integer from 0 to 65535');
   }
-  // Auth is skipped in slice 1, so only a loopback bind is allowed (api-contract.md → Conventions).
+  // D40: local mode binds loopback only; slice 2B decides the bind for `docker compose`.
   if (!isLoopbackHost(values.host)) {
-    return refuse(
-      processLogger,
-      'refusing to start: --host must be 127.0.0.1, ::1 or localhost because local mode skips auth',
-    );
+    return refuse(processLogger, 'refusing to start: --host must be 127.0.0.1, ::1 or localhost');
   }
   return { port: Number(values.port), host: values.host };
 }
@@ -90,25 +90,46 @@ function start({ port, host }: Flags, config: LocalConfig): void {
   const apiDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: apiLogger });
 
   const queue = new InProcessQueueAdapter({ clock, logger: workerLogger });
+  // D13: ingest reads its signing-secret set through the port in both runtimes; locally the set is
+  // the parsed `LEDGER_WEBHOOK_SECRETS`, held under one local id in the JSON form Secrets Manager
+  // holds on AWS.
+  const signingSecretsId = 'local/webhook-signing-secrets';
   const ingest = createIngest({
-    secrets: config.secrets,
+    secretReader: new StaticSecretReaderAdapter(
+      signingSecretsId,
+      JSON.stringify(config.secrets.resend),
+    ),
+    signingSecretsId,
+    simulatorSecret: config.secrets.simulator,
     queue,
     clock,
     logger: ingestLogger,
     metrics: new LogMetricsAdapter(ingestLogger),
   });
   const worker = createWorker({
-    db: workerDatabase.db,
+    database: workerDatabase,
+    // D40: no event source mapping to pause locally; it reports `enabled`, so `resume` answers
+    // `already_enabled` and opens no connection.
+    eventSource: new StaticEventSourceControlAdapter(),
+    storageLimitBytes: STORAGE_LIMIT_BYTES,
     clock,
     logger: workerLogger,
     metrics: new LogMetricsAdapter(workerLogger),
     addressHashKey: config.addressHashKey,
   });
+  // D40: the same middleware as on AWS, under the local tag key; the in-process queue reports its
+  // own counts, the static event source `enabled`, and the resume runs the local worker in process,
+  // which answers `already_enabled`.
   const api = createApi({
     db: apiDatabase.db,
     logger: apiLogger,
     addressHashKey: config.addressHashKey,
-    requestId: randomUUID,
+    tokenTagKey: config.tokenTagKey,
+    requestId: () => randomUUID(),
+    queueAttributes: queue,
+    eventSource: new StaticEventSourceControlAdapter(),
+    workerInvoke: new InProcessFunctionInvokeAdapter(() => worker.resume()),
+    storageLimitBytes: STORAGE_LIMIT_BYTES,
   });
 
   // D32: the ingest endpoint (api-contract.md → Ingest boundary) goes to ingest, as slice 2's HTTP

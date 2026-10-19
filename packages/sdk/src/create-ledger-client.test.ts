@@ -1,7 +1,7 @@
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { apiUnavailable, createLedgerClient } from './create-ledger-client.ts';
+import { apiUnavailable, createLedgerClient, type LedgerClient } from './create-ledger-client.ts';
 
 // D26: the client's wire behavior and its one error mapping, against a real HTTP server on a
 // loopback port (Ships 8). The SDK ↔ API round trip is apps/local's contract test (D41).
@@ -151,6 +151,115 @@ describe('createLedgerClient', () => {
 
     await expect(email).resolves.toEqual({ data: null, error: apiUnavailable });
     await expect(lookup).resolves.toEqual({ data: null, error: apiUnavailable });
+  });
+
+  describe('health, worker and token methods (D24)', () => {
+    const token = {
+      object: 'token',
+      token_id: 3,
+      name: 'review-2026-10-20',
+      scope: 'read',
+      created_at: '2026-10-20T09:00:00.000Z',
+      revoked_at: null,
+    };
+    const forbidden = {
+      code: 'forbidden',
+      message: 'The token is valid but lacks the scope this operation needs.',
+      hint: 'Use an `operate` token, or ask its owner for one.',
+      docs: 'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md#forbidden',
+    };
+
+    type Case = [string, (ledger: LedgerClient) => Promise<unknown>, string, string, unknown];
+    const cases: Case[] = [
+      ['health.get', (ledger) => ledger.health.get(), 'GET', '/health', ''],
+      [
+        'worker.resumeEventSource',
+        (ledger) => ledger.worker.resumeEventSource(),
+        'POST',
+        '/worker/resume',
+        '',
+      ],
+      ['tokens.getCurrent', (ledger) => ledger.tokens.getCurrent(), 'GET', '/tokens/current', ''],
+      ['tokens.list()', (ledger) => ledger.tokens.list(), 'GET', '/tokens', ''],
+      [
+        'tokens.list({ limit, after })',
+        (ledger) => ledger.tokens.list({ limit: 100, after: 42 }),
+        'GET',
+        '/tokens?limit=100&after=42',
+        '',
+      ],
+      [
+        'tokens.create',
+        (ledger) => ledger.tokens.create({ name: 'review-walk', scope: 'read' }),
+        'POST',
+        '/tokens',
+        { name: 'review-walk', scope: 'read' },
+      ],
+      ['tokens.revoke', (ledger) => ledger.tokens.revoke('7'), 'POST', '/tokens/7/revoke', ''],
+    ];
+
+    it.each(cases)(
+      '%s sends its method, path and body with the bearer header and returns the body as data',
+      async (_name, call, method, url, body) => {
+        const { baseUrl, received } = await serve(json(200, token));
+        const ledger = createLedgerClient({ baseUrl, token: 'ldg_contract' });
+
+        const result = await call(ledger);
+
+        expect(result).toEqual({ data: token, error: null });
+        expect(received).toHaveLength(1);
+        expect(received[0]?.method).toBe(method);
+        expect(received[0]?.url).toBe(url);
+        expect(received[0]?.headers.authorization).toBe('Bearer ldg_contract');
+        if (body === '') expect(received[0]?.body).toBe('');
+        else expect(JSON.parse(received[0]?.body ?? '')).toEqual(body);
+      },
+    );
+
+    it.each(cases)('%s returns a registry error as a value and does not throw', async (...c) => {
+      const { baseUrl } = await serve(json(403, { error: forbidden }));
+      const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+      await expect(c[1](ledger)).resolves.toEqual({ data: null, error: forbidden });
+    });
+
+    it.each(cases)('%s maps a closed port to api_unavailable without throwing', async (...c) => {
+      const ledger = createLedgerClient({ baseUrl: await closedPort(), token: 't' });
+
+      await expect(c[1](ledger)).resolves.toEqual({ data: null, error: apiUnavailable });
+    });
+
+    it('tokens.create sends exactly one request when the response is lost, and retries nothing', async () => {
+      const received: string[] = [];
+      const server = createServer((request) => {
+        received.push(`${request.method} ${request.url}`);
+        // The request arrived; its answer never does.
+        request.socket.destroy();
+      });
+      servers.push(server);
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const { port } = server.address() as AddressInfo;
+      const ledger = createLedgerClient({ baseUrl: `http://127.0.0.1:${port}`, token: 't' });
+
+      const result = await ledger.tokens.create({ name: 'review-walk', scope: 'read' });
+
+      expect(result).toEqual({ data: null, error: apiUnavailable });
+      expect(received).toEqual(['POST /tokens']);
+    });
+
+    it('tokens.create sends exactly one request on a shapeless 503, and retries nothing', async () => {
+      const { baseUrl, received } = await serve({
+        status: 503,
+        contentType: 'text/plain',
+        body: 'Service Unavailable',
+      });
+      const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+      const result = await ledger.tokens.create({ name: 'review-walk', scope: 'operate' });
+
+      expect(result).toEqual({ data: null, error: apiUnavailable });
+      expect(received).toHaveLength(1);
+    });
   });
 
   it('exports api_unavailable with its registry message, hint and docs', () => {
