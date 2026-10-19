@@ -21,7 +21,8 @@ an address or a subject.
   Usually the worker paused its own event source on a database outage. A drain after a long burst
   also fires it once: the 10,000-event burst can take longer than 15 minutes to drain, and the
   burst run's `settled … after <s>s` line measures it, so this email after a burst is expected.
-  Poison messages are not counted here: the DLQ alarm sees them.
+  A message that keeps failing fires it too: it ages the queue while it waits out its five receives
+  (≈ 30 minutes) before SQS moves it to the DLQ, and `LedgerApp-dlq-depth` follows (AWS-22).
 - **First:** `pnpm -s ledger health`.
 - **Then:**
   - `worker paused` and `database unreachable`: restore the database first (its host's status,
@@ -30,7 +31,9 @@ an address or a subject.
   - `worker paused` and `database reachable`: `pnpm -s ledger worker resume`.
   - `worker enabled` and the queue's `oldest` falling: a drain. Wait; the alarm clears itself.
   - `worker enabled` and the queue not falling: read `/ledger/LedgerApp-worker` for
-    `worker.message_failed` and `worker.database_unavailable`, then follow
+    `worker.message_failed` and `worker.database_unavailable`. The same `svix_id` failing again and
+    again is a poison message: it reaches the DLQ after its fifth receive, then follow
+    [LedgerApp-dlq-depth](#ledgerapp-dlq-depth). `worker.database_unavailable`: follow
     [database_unavailable](#database_unavailable).
 - **Related:** [ADR-015](../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage),
   [ADR-008](../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq),

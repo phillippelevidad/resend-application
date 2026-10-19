@@ -320,7 +320,7 @@ Five in total with the usage trip and the kill-switch errors, within AWS-28's te
 
 | Name | Metric | Statistic, period, evaluation | Threshold | Why |
 | --- | --- | --- | --- | --- |
-| `LedgerApp-queue-age` | SQS `ApproximateAgeOfOldestMessage`, source queue | `Maximum`, 300 s, 1 period | `> 900` s | A paused worker fires it (ADR-015). It fires within ≈ 20 min of a pause, inside the card's hour. A 10k drain past 15 min fires it once, which the runbook names as expected after a burst; the burst's `settled … after <s>s` line measures the drain. Poison messages are excluded from the metric (AWS-22) |
+| `LedgerApp-queue-age` | SQS `ApproximateAgeOfOldestMessage`, source queue | `Maximum`, 300 s, 1 period | `> 900` s | A paused worker fires it (ADR-015). It fires within ≈ 20 min of a pause, inside the card's hour. A 10k drain past 15 min fires it once, which the runbook names as expected after a burst; the burst's `settled … after <s>s` line measures the drain. A poison message waiting out its receives fires it too, about 15 min after its send: observed in both deployed poison runs, against the design's earlier reading of AWS-22 (found in `wf-after-apply-check`) |
 | `LedgerApp-dlq-depth` | SQS `ApproximateNumberOfMessagesVisible`, DLQ | `Maximum`, 300 s, 1 period | `> 0` | AWS-22; J4's trigger |
 | `LedgerApp-api-5xx` | HTTP API `5xx` (`metricServerError`) | `Sum`, 300 s, 1 period | `> 0` | A `5xx` to Resend is a failed delivery that Resend retries and that can auto-disable the endpoint (RS-10, RS-11), and it is how a throttled ingest Lambda surfaces. Vended and free (AWS-30). A read-API `503` during an outage fires it too, which the runbook explains |
 

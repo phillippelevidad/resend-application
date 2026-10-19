@@ -421,7 +421,9 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
    Expect: a line holding `<timestamp>`, a tab and `Alarm updated from OK to ALARM`, after E1's move
    to the DLQ. The
    owner records the email whose subject starts `ALARM: "LedgerApp-dlq-depth"` and whose body
-   carries B1's description; only the owner can observe it.
+   carries B1's description; only the owner can observe it. About 15 minutes after E1's send, an
+   `ALARM: "LedgerApp-queue-age"` email arrives first: the poisoned message ages the queue while it
+   waits out its receives (AWS-22). It is this run's, not D's; do not record it for Ships 5.
    **Ask-first:** an AWS read.
 
 3. **Inspect the DLQ, as a human and as JSON.**
