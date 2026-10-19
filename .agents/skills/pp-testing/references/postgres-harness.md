@@ -50,7 +50,12 @@ The `int` project's global setup, `packages/db/src/testing/postgres-global-setup
 5. **Hand the tests what they need** with `project.provide(…)`: the owner URL of the maintenance
    database, the runtime role's credentials and the template name. Tests read them with `inject`
    from `vitest`; type them by augmenting `ProvidedContext`
-   ([Vitest → globalSetup](https://vitest.dev/config/globalsetup)).
+   ([Vitest → globalSetup](https://vitest.dev/config/globalsetup)). `createTestDatabase` loads it
+   with `const { inject } = await import('vitest')`, its only use, so `@ledger/db/testing` imports
+   nothing from `vitest` at load and `sim`, which runs under plain `node`, can import the
+   [poison fault](#the-sims-poison-fault) from it (slice 3, D32). Keep every load-time import in
+   `testing.ts` loadable under `node`: `sim/src/main.e2e.test.ts` spawns `node` on the sim, so a
+   load-time Vitest import there fails every e2e case.
 6. **Teardown** stops the container.
 
 Steps 2 and 3 are one call: `prepareDatabase({ ownerUrl, runtimePassword, roleTimeouts,
@@ -122,6 +127,30 @@ afterAll(async () => { await t.drop(); });
   and asserts both settings are present, which is what proves the role-ensure path sets them.
 - **Never** a mocked client, a stubbed repository or a `vi.mock` of `pg` to fake a failure: the
   failure has to come from Postgres for the test to prove what Postgres does.
+
+## The sim's poison fault
+
+`@ledger/db/testing` exports the fault `pnpm sim --poison` puts on a real database (slice 3, D27),
+from `packages/db/src/testing/poison-fault.ts`:
+
+- `POISON_ID_PREFIX` (`simpoison_`); `addPoisonFault(db)`:
+  `ALTER TABLE webhook_events ADD CONSTRAINT ledger_sim_poison CHECK (NOT starts_with(svix_id, 'simpoison_')) NOT VALID`;
+  `removePoisonFault(db)`: `ALTER TABLE webhook_events DROP CONSTRAINT IF EXISTS ledger_sim_poison`.
+  Each takes an `Executor` connected as the table's owner (`t.owner` in a test); the runtime role
+  gets `42501`.
+- **A test fault, never a migration.** No schema file declares the constraint and no migration
+  creates it; it lives on a database only while a poison run or a test holds it.
+- **Its SQL is constant.** DDL cannot bind a parameter, and `sql.raw` with a runtime value is
+  [pp-database → Never](../../pp-database/SKILL.md#never), so the run marks the ids it poisons with
+  the prefix instead of listing them in the constraint. Only the sim mints a `simpoison_` id.
+- **Remove, then add.** A crashed run's leftover makes a bare second add fail `42710`, so a caller
+  runs `removePoisonFault` before `addPoisonFault`, and again in `finally`.
+- `NOT VALID` leaves existing rows alone; a poisoned insert fails `23514`, not connection-class, so
+  the worker fails that message alone (ADR-008).
+
+Evidence: [poison-fault.int.test.ts](../../../../packages/db/src/testing/poison-fault.int.test.ts)
+(only a prefix match fails `23514`, an id holding the prefix past its start inserts, existing rows
+stay, removal restores inserts, remove-then-add clears a leftover, the runtime role gets `42501`).
 
 ## Payloads Postgres cannot store
 
