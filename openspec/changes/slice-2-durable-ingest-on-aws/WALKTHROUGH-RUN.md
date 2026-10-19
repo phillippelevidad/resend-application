@@ -95,7 +95,7 @@ AWS-U05 quota 50 · AWS-U06 secrets delete at once (rerun's T1, T2 again) · AWS
 
 ## Held for the owner
 
-- Observe the `Ledger kill switch tripped` email from G1 and confirm both SNS subscriptions the rerun's T3 recreated (CBL-03).
+- Observe the `Ledger kill switch tripped` email from G1. Both SNS subscriptions the rerun's T3 recreated: confirmed by the owner, 2026-10-18 (CBL-03).
 - F4's decision, then G4's trip half and G5.
 
 ## Data created
