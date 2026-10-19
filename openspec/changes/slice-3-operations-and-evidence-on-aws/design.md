@@ -422,7 +422,8 @@ any `LEDGER_URL`, deployed included (Ships 7), and prints
 
 `sim/src/invariants/invariant-4.ts` exports `invariant4(dlq: DlqPort, poisoned: ReadonlySet<string>)`.
 It calls `dlq.sample(10)` up to 10 times, collecting distinct `svix_id`s from the parsed envelopes,
-until it has `depth` of them. Pass iff `depth === poisoned.size`, every collected id is in `poisoned`,
+until the collected count equals the latest sample's `depth`; each sample re-reads the depth, which
+is approximate and can under-read a message the receive already returns (AWS-59, AWS-62). Pass iff `depth === poisoned.size`, every collected id is in `poisoned`,
 and every poisoned id was collected. Lines: `invariant 4 pass (dlq holds exactly the <n> poisoned)`,
 or `invariant 4 fail depth=<d> poisoned=<p> collected=<c> stray=<up to 5 svix_ids>` (ids and counts
 only). The sim builds an `SqsDlqAdapter` from the stack's `DlqUrl` and `QueueUrl`.

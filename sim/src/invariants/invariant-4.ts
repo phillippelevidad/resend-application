@@ -52,8 +52,10 @@ export function checkInvariant4(
   };
 }
 
-// D24: up to ten samples of ten, collecting distinct `svix_id`s, until as many are collected as the
-// depth reports. Sampling never removes or hides a message (the port's contract, D1).
+// D24: up to ten samples of ten, collecting distinct `svix_id`s, until the collected count equals the
+// latest depth reading. The depth is approximate (AWS-62) and can under-read a message the long-poll
+// receive already returns (AWS-59), so a count above the depth samples again, re-reading it, rather
+// than checking one stale reading. Sampling never removes or hides a message (the port's contract, D1).
 export async function invariant4(
   dlq: DlqPort,
   poisoned: ReadonlySet<string>,
@@ -67,7 +69,7 @@ export async function invariant4(
       const svixId = svixIdOf(body);
       if (svixId !== undefined) collected.add(svixId);
     }
-    if (collected.size >= depth) break;
+    if (collected.size === depth) break;
   }
   return checkInvariant4(depth, collected, poisoned);
 }

@@ -192,7 +192,8 @@ throttle for its run only ([Budget alarms](../../../../.ai/aws.md#budget-alarms)
 - The process exits non-zero when any checked invariant fails, so a run can gate.
 - **Invariant 4 reads the DLQ through `DlqPort`** ([invariant-4.ts](../../../../sim/src/invariants/invariant-4.ts)):
   up to 10 samples of 10, collecting distinct `svix_id`s from the parsed envelopes (never the
-  payload) until it holds `depth` of them. Pass iff the depth equals the poisoned count, every
+  payload) until the collected count equals the latest depth reading; each sample re-reads the
+  depth, which can under-read a message the receive already returns (AWS-59, AWS-62). Pass iff the depth equals the poisoned count, every
   collected id is poisoned and every poisoned id was collected; a run with nothing poisoned passes
   only on an empty DLQ. The AWS runs build an `SqsDlqAdapter` from the stack's `DlqUrl` and
   `QueueUrl`; a plain live run prints `invariant 4 not checked (AWS runs check it: --burst, --chaos or --poison)`.

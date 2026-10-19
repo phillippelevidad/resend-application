@@ -1,5 +1,5 @@
 import type { IngestEnvelope } from '@ledger/core';
-import { createLogger, InProcessQueueAdapter } from '@ledger/shared';
+import { createLogger, type DlqPort, InProcessQueueAdapter } from '@ledger/shared';
 import { FakeClock } from '@ledger/shared/testing';
 import { describe, expect, it } from 'vitest';
 import { checkInvariant4, invariant4 } from './invariant-4.ts';
@@ -35,6 +35,29 @@ async function deadList(svixIds: readonly string[]): Promise<InProcessQueueAdapt
     await settle();
   }
   return queue;
+}
+
+// A `DlqPort` whose depth readings follow `depths` (the last one repeats) while every receive returns
+// one message per svix id: SQS's approximate depth (AWS-22) disagreeing with what the receive holds,
+// which the in-process dead list never does. Counts its samples.
+function scriptedDlq(
+  depths: readonly number[],
+  svixIds: readonly string[],
+): DlqPort & { samples(): number } {
+  let taken = 0;
+  const messages = svixIds.map((svixId) => ({
+    body: JSON.stringify(envelope(svixId)),
+    receiveCount: 5,
+  }));
+  return {
+    sample: async () => {
+      const depth = depths[Math.min(taken, depths.length - 1)] ?? 0;
+      taken += 1;
+      return { depth, messages };
+    },
+    startRedrive: () => Promise.reject(new Error('invariant 4 never redrives')),
+    samples: () => taken,
+  };
 }
 
 describe('invariant 4: the DLQ holds exactly the poisoned events', () => {
@@ -104,6 +127,29 @@ describe('invariant 4: the DLQ holds exactly the poisoned events', () => {
     expect(result.line).toBe(
       'invariant 4 fail depth=7 poisoned=0 collected=7 stray=walk-svix-0-0,walk-svix-1-0,walk-svix-2-0,walk-svix-3-0,walk-svix-4-0',
     );
+  });
+
+  // Regression, deployed `--poison 1` on 2026-10-19: the first sample's approximate depth read 0
+  // (AWS-62) while its receive returned the poisoned message, and the check failed on that one
+  // stale reading. The next sample's depth reads 1.
+  it('passes when a first depth reading under-reads a message its receive returns', async () => {
+    const dlq = scriptedDlq([0, 1], ['simpoison_walk_0']);
+
+    const result = await invariant4(dlq, new Set(['simpoison_walk_0']));
+
+    expect(result.pass).toBe(true);
+    expect(result.line).toBe('invariant 4 pass (dlq holds exactly the 1 poisoned)');
+    expect(dlq.samples()).toBe(2);
+  });
+
+  it('still fails when every depth reading stays below what the receives return', async () => {
+    const dlq = scriptedDlq([0], ['simpoison_walk_0']);
+
+    const result = await invariant4(dlq, new Set(['simpoison_walk_0']));
+
+    expect(result.pass).toBe(false);
+    expect(result.line).toBe('invariant 4 fail depth=0 poisoned=1 collected=1 stray=');
+    expect(dlq.samples()).toBe(10);
   });
 
   it('never removes a message: the DLQ holds the same depth after the check', async () => {
