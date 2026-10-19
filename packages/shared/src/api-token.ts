@@ -8,6 +8,13 @@ const tokenShape = /^ldg_([0-9a-f]{64})_([0-9a-f]{64})$/;
 const tagOf = (random: string, tagKey: Uint8Array): string =>
   createHmac('sha256', tagKey).update(random).digest('hex');
 
+// D33 step 6: the tag key's id, the first 8 hex characters of HMAC-SHA-256(key, "ledger:key-id"),
+// as `addressHashKeyId` derives the address-hash key's. The deploy compares it with the deployed
+// key's, so a changed key never fails every stored token's tag check; the id is not reversible to
+// the key. Its message cannot collide with a tag's, which is always 64 hex characters.
+export const tokenTagKeyId = (tagKey: Uint8Array): string =>
+  createHmac('sha256', tagKey).update('ledger:key-id').digest('hex').slice(0, 8);
+
 // D3: SHA-256 of the whole token string, the only form a token is stored in. Unkeyed is enough:
 // `random` carries 256 bits.
 export const hashApiToken = (token: string): string =>

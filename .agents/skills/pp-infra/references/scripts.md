@@ -86,6 +86,9 @@ The order is fixed by S-05, [ADR-018](../../../../.ai/architecture.md#adr-018--m
    migrates. With no app stack yet (no `DeployedCommit` output) the check is skipped: no previous
    Lambdas run to break, and refusing would block a fresh deploy of a repo that already holds
    contract steps. This is ADR-018's evidence, with a deploy-command test over a throwaway repo.
+   Then, with an app stack, refuse a token tag key whose id differs from the one the deployed
+   `ledger/database` secret holds, comparing ids only: a new key would fail every stored token's
+   tag check, and no second bootstrap token is issued (D33 step 6, `run-deploy.test.ts`).
 3. Ensure the DML-only runtime role exists and set its server-side timeouts
    (`ALTER ROLE … SET idle_in_transaction_session_timeout`, `lock_timeout`, both below the worker
    timeout, re-run every deploy), through the direct URL

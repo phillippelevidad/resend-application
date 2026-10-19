@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import { addressHashKeyId, tokenNamePattern } from '@ledger/core';
 import type { ApiTokenValues, ContractStep } from '@ledger/db';
 import { RUNTIME_ROLE } from '@ledger/db';
-import { ConfigError, type Env, loadConfig, mintApiToken } from '@ledger/shared';
+import { ConfigError, type Env, loadConfig, mintApiToken, tokenTagKeyId } from '@ledger/shared';
 import { type DeployEnv, deployEnvSchema } from './deploy-env.schema.ts';
 import { APP_STACK_NAME, GUARDRAILS_STACK_NAME } from './ledger-stacks.ts';
 import { createScriptOutput, type ScriptOutput, type ScriptSink } from './script-output.ts';
@@ -11,8 +11,8 @@ import { createScriptOutput, type ScriptOutput, type ScriptSink } from './script
 // `pnpm aws:deploy` (D33, ADR-018): the input assertion, then twelve fail-closed steps over injected
 // step functions, so the order and every refusal are unit-tested with fakes (run-deploy.test.ts) and
 // deploy.ts only composes the real ones. Nothing changes a database, a stack or a secret before
-// every refusal but the `key_id` check has run; that one needs the migrated database and still
-// precedes every stack and secret write.
+// every refusal but the address-hash `key_id` check has run; that one needs the migrated database
+// and still precedes every stack and secret write.
 
 // The deployed app stack, as step 2 reads it. Absent when no app stack exists, or when one exists
 // without its `DeployedCommit` output (a first create that rolled back holds no function).
@@ -156,6 +156,24 @@ export function storedRuntimePassword(secretValue: string): string | undefined {
   return decodeURIComponent(url.password);
 }
 
+const HEX_KEY = /^[0-9a-f]{64}$/;
+
+// D33 step 6: the id of the token tag key the stored `ledger/database` value carries, or `undefined`
+// when the value does not parse or holds no such key (CDK's placeholder before the first write).
+// Only the id leaves this function, never the key.
+export function storedTokenTagKeyId(secretValue: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(secretValue);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('tokenTagKey' in parsed)) return undefined;
+  const { tokenTagKey } = parsed;
+  if (typeof tokenTagKey !== 'string' || !HEX_KEY.test(tokenTagKey)) return undefined;
+  return tokenTagKeyId(hexBytes(tokenTagKey));
+}
+
 // D33 step 9: the owner's pooled URL with the runtime role's credentials swapped in and TLS required.
 export function runtimePooledUrl(ownerPooledUrl: string, runtimePassword: string): string {
   const url = new URL(ownerPooledUrl);
@@ -268,12 +286,23 @@ async function deploy(
 
   // 6. The runtime role, its timeouts and the migrations, over the direct URL. The stored password
   // is reused while the secret parses; otherwise a new one is set, and no running function can hold
-  // a working connection then, because the secret it would read does not parse.
+  // a working connection then, because the secret it would read does not parse. First, a tag key
+  // whose id differs from the deployed one's refuses: written in step 9, it would fail every stored
+  // token's tag check (D3), the bootstrap one included, and step 10 issues no second bootstrap token.
   let runtimePassword: string | undefined;
   if (app !== undefined) {
     const stored = await step('reading the ledger/database secret failed', () =>
       steps.readSecret(app.databaseSecretArn),
     );
+    const deployedTagKeyId = storedTokenTagKeyId(stored);
+    if (
+      deployedTagKeyId !== undefined &&
+      deployedTagKeyId !== tokenTagKeyId(hexBytes(config.tokenTagKey))
+    ) {
+      throw refuse(
+        "LEDGER_TOKEN_TAG_KEY's key id differs from the deployed ledger/database secret's; every stored token would fail its tag check, so restore the deployed LEDGER_TOKEN_TAG_KEY in .env.local",
+      );
+    }
     runtimePassword = storedRuntimePassword(stored);
   }
   const resetPassword = runtimePassword === undefined;

@@ -697,10 +697,16 @@ never generates a key: a key made per deploy would orphan every stored hash. Ste
    excepted (`whsec_|re_[A-Za-z0-9]{8}|postgres(ql)?://|ldg_[0-9a-f]{20}`); a hit refuses. The
    bundles match by themselves (library code) and no deploy input reaches them; rule gate cleared
    2026-10-17 on a measured synth (CBL-01).
-6. `prepareDatabase` through `LEDGER_DEPLOY_DATABASE_URL` with D10's role timeouts. Password: when the
-   database secret exists and parses, its `pooledUrl`'s password is reused (`resetPassword: false`);
-   otherwise a new 24-byte hex password, `resetPassword: true`. No running function can hold a working
-   connection then, because the secret it would read does not parse.
+6. With an app stack, read the database secret, then refuse a token tag key whose id (the first 8 hex
+   characters of `HMAC-SHA-256(key, "ledger:key-id")`, `tokenTagKeyId`) differs from the id of the
+   `tokenTagKey` the secret holds: written in step 9, it would fail every stored token's tag check
+   (D3), the bootstrap one included, and step 10 prints no new one. Only ids are compared and neither
+   key is printed; the reason names restoring the deployed `LEDGER_TOKEN_TAG_KEY` in `.env.local`. A
+   secret that does not parse or holds no 64-hex `tokenTagKey` passes, as does a deploy with no app
+   stack. Then `prepareDatabase` through `LEDGER_DEPLOY_DATABASE_URL` with D10's role timeouts.
+   Password: when the database secret exists and parses, its `pooledUrl`'s password is reused
+   (`resetPassword: false`); otherwise a new 24-byte hex password, `resetPassword: true`. No running
+   function can hold a working connection then, because the secret it would read does not parse.
 7. Refuse an address-hash key whose `key_id` differs from `storedAddressHashKeyId` (D12), before the
    key is written anywhere.
 8. `cdk deploy LedgerGuardrails`, then `cdk deploy LedgerApp`, `--require-approval never` (the run

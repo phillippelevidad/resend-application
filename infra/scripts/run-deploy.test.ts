@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { addressHashKeyId } from '@ledger/core';
 import type { ApiTokenValues, ContractStep } from '@ledger/db';
-import { hashApiToken, hasValidTag } from '@ledger/shared';
+import { hashApiToken, hasValidTag, tokenTagKeyId } from '@ledger/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isAncestor } from './git.ts';
 import {
@@ -16,6 +16,7 @@ import {
   runDeploy,
   runtimePooledUrl,
   storedRuntimePassword,
+  storedTokenTagKeyId,
 } from './run-deploy.ts';
 import type { ScriptSink } from './script-output.ts';
 
@@ -26,6 +27,8 @@ const STORED_RUNTIME_PASSWORD = 'fakestoredruntimepw3';
 const NEW_RUNTIME_PASSWORD = 'fakenewruntimepw4';
 const ADDRESS_HASH_KEY = '1a'.repeat(32);
 const TOKEN_TAG_KEY = '2b'.repeat(32);
+// The tag key a deployed `ledger/database` secret holds when `.env.local` was given a new one.
+const DEPLOYED_OTHER_TAG_KEY = '3c'.repeat(32);
 // The secret-shaped fixtures are built at run time, so no `whsec_` or credentialed Postgres URL
 // literal sits in the source (the gitleaks rules).
 const WEBHOOK_SECRET = `whsec_${Buffer.from('fakeWebhookSecret5').toString('base64')}`;
@@ -41,6 +44,7 @@ const SECRETS = [
   NEW_RUNTIME_PASSWORD,
   ADDRESS_HASH_KEY,
   TOKEN_TAG_KEY,
+  DEPLOYED_OTHER_TAG_KEY,
   WEBHOOK_SECRET,
   ALERT_EMAIL,
 ];
@@ -60,11 +64,20 @@ const baseEnv = {
   LEDGER_KILL_SWITCH: 'on',
 };
 
-const storedDatabaseSecret = JSON.stringify({
-  pooledUrl: runtimePooledUrl(POOLED_URL, STORED_RUNTIME_PASSWORD),
-  addressHashKey: ADDRESS_HASH_KEY,
-  tokenTagKey: TOKEN_TAG_KEY,
-});
+const databaseSecret = (tokenTagKey: string) =>
+  JSON.stringify({
+    pooledUrl: runtimePooledUrl(POOLED_URL, STORED_RUNTIME_PASSWORD),
+    addressHashKey: ADDRESS_HASH_KEY,
+    tokenTagKey,
+  });
+const storedDatabaseSecret = databaseSecret(TOKEN_TAG_KEY);
+
+// A world whose deployed `ledger/database` secret holds another tag key than the one given.
+const withDeployedOtherTagKey = (): World => {
+  const world = newWorld();
+  world.secrets.set(DATABASE_SECRET_ARN, databaseSecret(DEPLOYED_OTHER_TAG_KEY));
+  return world;
+};
 
 // What the fake installation holds: the stacks, the database and the secrets.
 type World = {
@@ -462,6 +475,56 @@ describe('the key_id refusal', () => {
   });
 });
 
+// A new LEDGER_TOKEN_TAG_KEY written into ledger/database would fail every stored token's tag
+// check, the bootstrap one included, and the deploy would print no new one (D33 step 6).
+describe('the token tag key refusal', () => {
+  it('refuses a tag key whose id differs from the deployed one, before migrating and any stack or secret write', async () => {
+    const world = withDeployedOtherTagKey();
+    const run = await deploy(world);
+    expect(run.code).toBe(1);
+    expect(lastLine(run)).toBe(
+      "aws:deploy: refused: LEDGER_TOKEN_TAG_KEY's key id differs from the deployed ledger/database secret's; every stored token would fail its tag check, so restore the deployed LEDGER_TOKEN_TAG_KEY in .env.local\n",
+    );
+    expect(world.calls.at(-1)).toBe('readSecret');
+    expectNoChange(world);
+    expect(world.secrets.get(DATABASE_SECRET_ARN)).toBe(databaseSecret(DEPLOYED_OTHER_TAG_KEY));
+  });
+
+  it('passes the tag key the deployed secret holds', async () => {
+    const world = newWorld();
+    const run = await deploy(world);
+    expect(lastLine(run)).toBe('aws:deploy: done\n');
+    expect(world.calls).toContain('prepareDatabase');
+  });
+
+  it('passes a first deploy, with no app stack and so no deployed tag key', async () => {
+    const world = newWorld({ appDeployed: false, killSwitchArmed: undefined });
+    world.secrets.set(DATABASE_SECRET_ARN, databaseSecret(DEPLOYED_OTHER_TAG_KEY));
+    const run = await deploy(world);
+    expect(world.calls).not.toContain('readSecret');
+    expect(lastLine(run)).toBe('aws:deploy: done\n');
+  });
+
+  it("passes a deployed secret that still holds CDK's placeholder", async () => {
+    const world = newWorld();
+    world.secrets.set(DATABASE_SECRET_ARN, 'cdk-generated-placeholder');
+    const run = await deploy(world);
+    expect(lastLine(run)).toBe('aws:deploy: done\n');
+  });
+
+  it('reads the id of the stored tag key only from a stored value that holds a 64-hex one', () => {
+    const tagKeyId = (hex: string) => tokenTagKeyId(new Uint8Array(Buffer.from(hex, 'hex')));
+    expect(storedTokenTagKeyId(databaseSecret(TOKEN_TAG_KEY))).toBe(tagKeyId(TOKEN_TAG_KEY));
+    expect(storedTokenTagKeyId(databaseSecret(DEPLOYED_OTHER_TAG_KEY))).not.toBe(
+      tagKeyId(TOKEN_TAG_KEY),
+    );
+    expect(storedTokenTagKeyId('cdk-generated-placeholder')).toBeUndefined();
+    expect(storedTokenTagKeyId(JSON.stringify({ pooledUrl: POOLED_URL }))).toBeUndefined();
+    expect(storedTokenTagKeyId(databaseSecret('not-hex'))).toBeUndefined();
+    expect(storedTokenTagKeyId('null')).toBeUndefined();
+  });
+});
+
 describe('the order and what a deploy writes', () => {
   it('runs every step in D33 order, the guardrails stack before the app stack', async () => {
     const world = newWorld();
@@ -607,6 +670,7 @@ describe('the output', () => {
       await deploy(newWorld()),
       await deploy(newWorld({ appDeployed: false, killSwitchArmed: undefined })),
       await deploy(newWorld({ storedKeyId: '0badc0de' })),
+      await deploy(withDeployedOtherTagKey()),
       await deploy(newWorld({ eventSourcePaused: true, failingStack: 'LedgerApp' })),
       await deploy(newWorld(), { argv: ['--issue-operate-token', 'walk-operate'] }),
     ];

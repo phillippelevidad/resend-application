@@ -53,6 +53,17 @@ After migrating and before writing the key anywhere, `pnpm aws:deploy` SHALL ref
 - **WHEN** the database holds no hash
 - **THEN** the check passes
 
+### Requirement: Deploy refuses a changed token tag key
+Before migrating and before any stack change or secret write, `pnpm aws:deploy` SHALL refuse when the deployed `ledger/database` secret holds a token tag key whose id differs from `LEDGER_TOKEN_TAG_KEY`'s, because the new key would fail every stored token's tag check and the deploy issues no second bootstrap token. It SHALL compare key ids only and print neither key.
+
+#### Scenario: New tag key against the deployed secret
+- **WHEN** the deployed secret holds one tag key and the deploy is given another
+- **THEN** it prints `aws:deploy: refused: <reason>` naming `LEDGER_TOKEN_TAG_KEY` and restoring the deployed key in `.env.local`, and nothing is migrated, no stack is deployed and no secret written
+
+#### Scenario: First deploy
+- **WHEN** no app stack is deployed, or the deployed secret holds no tag key yet
+- **THEN** the check passes
+
 ### Requirement: Deploy order
 `pnpm aws:deploy` SHALL migrate through the direct URL with the runtime role's timeouts, then deploy the guardrails stack, then the app stack, then write each secret only when its value changed, then issue the bootstrap token, and SHALL print the API URL, the ingest URL and `KillSwitchArmed`, never a secret value.
 

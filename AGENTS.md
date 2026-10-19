@@ -274,7 +274,8 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # then ends `db:setup: failed: Postgres is unreachable …`); optional
                    # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD.
                    # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
-                   # step, a CBL-01 hit in cdk.out, a key_id mismatch; migrates, deploys
+                   # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
+                   # an address-hash key_id mismatch; migrates, deploys
                    # LedgerGuardrails then LedgerApp, writes the secrets, prints the bootstrap token
                    # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed
 pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag

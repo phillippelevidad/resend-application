@@ -1,7 +1,7 @@
 // D3, api-tokens spec: the token format, the tag check that runs before any database read, and the
 // hash a token is stored as.
 import { describe, expect, it } from 'vitest';
-import { hashApiToken, hasValidTag, mintApiToken } from './api-token.ts';
+import { hashApiToken, hasValidTag, mintApiToken, tokenTagKeyId } from './api-token.ts';
 
 const tagKey = Buffer.from('a'.repeat(64), 'hex');
 const otherKey = Buffer.from('b'.repeat(64), 'hex');
@@ -53,6 +53,16 @@ describe('hasValidTag', () => {
     const changed = `${token.slice(0, -1)}${last === '0' ? '1' : '0'}`;
 
     expect(hasValidTag(changed, tagKey)).toBe(false);
+  });
+});
+
+describe('tokenTagKeyId', () => {
+  it('is 8 lowercase hex, stable for one key and different for another', () => {
+    const id = tokenTagKeyId(tagKey);
+
+    expect(id).toMatch(/^[0-9a-f]{8}$/);
+    expect(tokenTagKeyId(Buffer.from('a'.repeat(64), 'hex'))).toBe(id);
+    expect(tokenTagKeyId(otherKey)).not.toBe(id);
   });
 });
 

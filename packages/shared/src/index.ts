@@ -1,7 +1,7 @@
 // @ledger/shared: kernel (ports and their local implementations, logger, metrics, config, internal
 // variable names, error base, clock, token mint and tag check). No AWS, Postgres or
 // Resend (ADR-013). The package's one public surface; port doubles ship through `./testing`.
-export { hashApiToken, hasValidTag, mintApiToken } from './api-token.ts';
+export { hashApiToken, hasValidTag, mintApiToken, tokenTagKeyId } from './api-token.ts';
 export type { ClockPort } from './clock.port.ts';
 export { ConfigError, type ConfigIssue } from './config.error.ts';
 export {
