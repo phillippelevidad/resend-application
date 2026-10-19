@@ -11,7 +11,6 @@ import {
   QUEUE_AGE_ALARM_NAME,
   recycleFunction,
   SecretsManagerSecretReaderAdapter,
-  SqsQueueAttributesAdapter,
   writeSecretIfChanged,
 } from '@ledger/aws';
 import type { EventSourceState } from '@ledger/core';
@@ -19,7 +18,12 @@ import type { LedgerHistory } from '@ledger/core/testing';
 import type { Executor } from '@ledger/db';
 import { type DlqPort, errorFields } from '@ledger/shared';
 import type { ArrangedEvent } from './arrange-events.ts';
-import { type AwsRunGuardResult, type AwsRunTarget, deployedDlq } from './aws-run-guard.ts';
+import {
+  type AwsRunGuardResult,
+  type AwsRunTarget,
+  deployedDlq,
+  deployedDlqDepth,
+} from './aws-run-guard.ts';
 import { generatedSvixIds, invariant1 } from './invariants/invariant-1.ts';
 import { invariant2 } from './invariants/invariant-2.ts';
 import {
@@ -179,12 +183,10 @@ async function holdOutage(run: DbOutageRunInput): Promise<boolean> {
   run.out(`worker paused after ${wholeSeconds(paused)}s`);
 
   let depth = 0;
-  let alarm: string | null = null;
   const held = await waitUntil(run, QUEUE_AGE_BOUND, async () => {
     depth = await run.dlqDepth();
     if (depth > 0) return true;
-    alarm = await run.queueAgeAlarmState();
-    return alarm === 'ALARM';
+    return (await run.queueAgeAlarmState()) === 'ALARM';
   });
   if (depth > 0) {
     // ADR-015's failure: a message drained to the DLQ during the outage instead of waiting.
@@ -381,15 +383,7 @@ export function composeDbOutageRun(deps: DbOutageRunDeps): DbOutageRunInput {
         events: deps.events,
       }),
     queueAgeAlarmState: () => alarmControl.readState(deps.clients.cloudWatch, QUEUE_AGE_ALARM_NAME),
-    dlqDepth: async () => {
-      const snapshot = await new SqsQueueAttributesAdapter({
-        sqs: deps.clients.sqs,
-        cloudWatch: deps.clients.cloudWatch,
-        queueUrl: target().queueUrl,
-        dlqUrl: target().dlqUrl,
-      }).read();
-      return snapshot.dlqVisible + snapshot.dlqInFlight;
-    },
+    dlqDepth: () => deployedDlqDepth(deps.clients, target()),
     settle: () => settle(deps.db, generated),
     invariant1: () => invariant1(deps.db, deps.history),
     invariant2: () => invariant2(deps.db, deps.history, deps.addressHashKey),

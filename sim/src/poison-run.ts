@@ -1,16 +1,17 @@
 import { setTimeout as sleepFor } from 'node:timers/promises';
-import {
-  type createCloudWatchClient,
-  type createSqsClient,
-  SqsQueueAttributesAdapter,
-} from '@ledger/aws';
+import type { createCloudWatchClient, createSqsClient } from '@ledger/aws';
 import type { LedgerHistory } from '@ledger/core/testing';
 import type { Executor } from '@ledger/db';
 import { addPoisonFault, POISON_ID_PREFIX, removePoisonFault } from '@ledger/db/testing';
 import { type DlqPort, errorFields } from '@ledger/shared';
 import fc from 'fast-check';
 import type { ArrangedEvent } from './arrange-events.ts';
-import { type AwsRunGuardResult, type AwsRunTarget, deployedDlq } from './aws-run-guard.ts';
+import {
+  type AwsRunGuardResult,
+  type AwsRunTarget,
+  deployedDlq,
+  deployedDlqDepth,
+} from './aws-run-guard.ts';
 import type { InvariantOutcome } from './db-outage-run.ts';
 import { deriveSeed } from './derive-seed.ts';
 import { generatedSvixIds } from './invariants/invariant-1.ts';
@@ -255,15 +256,7 @@ export function composePoisonRun(deps: PoisonRunDeps): PoisonRunInput {
         events: deps.events,
       }),
     settle: (ids, generatedEvents) => settle(deps.db, ids, generatedEvents),
-    dlqDepth: async () => {
-      const snapshot = await new SqsQueueAttributesAdapter({
-        sqs: deps.clients.sqs,
-        cloudWatch: deps.clients.cloudWatch,
-        queueUrl: target().queueUrl,
-        dlqUrl: target().dlqUrl,
-      }).read();
-      return snapshot.dlqVisible + snapshot.dlqInFlight;
-    },
+    dlqDepth: () => deployedDlqDepth(deps.clients, target()),
     invariant4: (marked) => deps.invariant4(deployedDlq(deps.clients.sqs, target()), marked),
     out: deps.out,
     err: deps.err,

@@ -3,6 +3,7 @@ import {
   appOutputKeys,
   type createApiGatewayV2Client,
   type createCloudFormationClient,
+  type createCloudWatchClient,
   type createLambdaClient,
   type createSqsClient,
   GUARDRAILS_STACK_NAME,
@@ -11,6 +12,7 @@ import {
   readKillSwitchState,
   readStackOutputs,
   SqsDlqAdapter,
+  SqsQueueAttributesAdapter,
   type StackOutputs,
 } from '@ledger/aws';
 import type { DlqPort } from '@ledger/shared';
@@ -126,6 +128,23 @@ export type AwsRunClients = {
 // D24: the DLQ an AWS run reads, the sim's `SqsDlqAdapter` over the stack's two queue URLs.
 export const deployedDlq = (sqs: AwsRunClients['sqs'], queues: DeployedQueues): DlqPort =>
   new SqsDlqAdapter({ sqs, dlqUrl: queues.dlqUrl, queueUrl: queues.queueUrl });
+
+// The DLQ's depth, visible plus in flight, from the queue attributes: a read that receives nothing,
+// so no dead message's receive count moves (the db-outage and poison runs' polls, D27).
+export async function deployedDlqDepth(
+  clients: Pick<AwsRunClients, 'sqs'> & {
+    readonly cloudWatch: ReturnType<typeof createCloudWatchClient>;
+  },
+  queues: DeployedQueues,
+): Promise<number> {
+  const snapshot = await new SqsQueueAttributesAdapter({
+    sqs: clients.sqs,
+    cloudWatch: clients.cloudWatch,
+    queueUrl: queues.queueUrl,
+    dlqUrl: queues.dlqUrl,
+  }).read();
+  return snapshot.dlqVisible + snapshot.dlqInFlight;
+}
 
 // The guard's real readers. The depth is a one-message sample's: the port's only read, which never
 // removes or hides a message (D1, D4).
