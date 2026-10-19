@@ -1,5 +1,10 @@
 import { setTimeout as sleepFor } from 'node:timers/promises';
-import { type EventSourceState, type ResumeOutcome, resumeOutcomes } from '@ledger/core';
+import {
+  type EventSourceState,
+  ingestEnvelopeSchema,
+  type ResumeOutcome,
+  resumeOutcomes,
+} from '@ledger/core';
 import {
   CONNECTION_TIMEOUT_MS,
   classifyDatabaseError,
@@ -73,6 +78,17 @@ const NO_DEADLINE: ArmedDeadline = { signal: undefined, passed: () => false, dis
 const realSleep = (ms: number, signal: AbortSignal): Promise<void> =>
   sleepFor(ms, undefined, { signal }).catch(() => {});
 
+// The envelope's `svix_id` and nothing else from the body, read on the failure path only. A body
+// that is not an envelope (or not JSON) yields none: its fields are unchecked, so none is logged.
+function svixIdOf(body: string): string | undefined {
+  try {
+    const envelope = ingestEnvelopeSchema.safeParse(JSON.parse(body));
+    return envelope.success ? envelope.data.svixId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // An object because one Lambda serves two event kinds: the SQS batch and the resume event (ADR-015).
 // Messages run one at a time on the function's single size-1 pool (ADR-005).
 export function createWorker({
@@ -131,8 +147,13 @@ export function createWorker({
           return 'database_unavailable';
         }
         if (classifyDatabaseError(error) === undefined) {
-          // Name, registry code and SQLSTATE only: a parse or Postgres error can quote the row.
-          logger.error('worker.message_failed', errorFields(error));
+          // Name, registry code and SQLSTATE only: a parse or Postgres error can quote the row. Plus
+          // the message's `svix_id`, an id and not row content, so an operator finds a dead
+          // message's failure by it (runbook: LedgerApp-dlq-depth).
+          logger.error('worker.message_failed', {
+            svix_id: svixIdOf(message.body),
+            ...errorFields(error),
+          });
           return 'failed';
         }
         if (attempt === 2) {
