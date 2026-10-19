@@ -7,6 +7,7 @@ import {
   LambdaEventSourceControlAdapter,
   LambdaFunctionInvokeAdapter,
   SecretsManagerSecretReaderAdapter,
+  SqsDlqAdapter,
   SqsQueueAttributesAdapter,
 } from '@ledger/aws';
 import { createDatabase, STORAGE_LIMIT_BYTES } from '@ledger/db';
@@ -30,13 +31,16 @@ const secretReader = new SecretsManagerSecretReaderAdapter({
   client: createSecretsManagerClient(),
 });
 const lambda = createLambdaClient();
+const sqs = createSqsClient();
 // D19: both queues' attributes, and the age from CloudWatch (AWS-57).
 const queueAttributes = new SqsQueueAttributesAdapter({
-  sqs: createSqsClient(),
+  sqs,
   cloudWatch: createCloudWatchClient(),
   queueUrl: config.queueUrl,
   dlqUrl: config.dlqUrl,
 });
+// Slice 3, D4, D9: DLQ inspect and redrive; a redrive returns each message to the source queue.
+const dlq = new SqsDlqAdapter({ sqs, dlqUrl: config.dlqUrl, queueUrl: config.queueUrl });
 // D16, C5: the worker's mapping found by the worker's name; the resume sent to the same function.
 const eventSource = new LambdaEventSourceControlAdapter({
   client: lambda,
@@ -63,6 +67,7 @@ async function build(): Promise<Api> {
     queueAttributes,
     eventSource,
     workerInvoke,
+    dlq,
     storageLimitBytes: STORAGE_LIMIT_BYTES,
   });
 }

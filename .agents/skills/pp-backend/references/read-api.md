@@ -23,7 +23,14 @@ One `<operation>.route.ts` per api-contract entry (`get-email.route.ts` → `get
    branch on domain data.
 3. The response's `object` field and, for a list, the `{ object: "list", has_more, data }` envelope
    with `limit` 1–100 (default 20) and `after`, exactly as Conventions → Pagination states. Only
-   `gaps.list` and `token.list` paginate.
+   `gaps.list` and `token.list` paginate. `dlq.listMessages` (`GET /dlq/messages`) is a sample: the
+   envelope plus a top-level `depth`, no cursor, `limit` 1–10 (default 10)
+   ([list-dlq-messages.route.ts](../../../../packages/api/src/list-dlq-messages.route.ts)).
+4. **Two success statuses, one mapper.** A command whose entry names two success statuses declares
+   both, and the handler picks the status from the result's closed-set `status`, each body from the
+   one mapper: `dlq.startRedrive` (`POST /dlq/redrive`) answers `202` when a redrive starts and
+   `200` when the DLQ is empty
+   ([start-dlq-redrive.route.ts](../../../../packages/api/src/start-dlq-redrive.route.ts)).
 
 Addresses travel only in request bodies (`recipient.get` is a `POST` for that reason); a path or
 query parameter never carries one ([PII in code](../../pp-general/references/logging-and-pii.md#pii-in-code)).
@@ -36,7 +43,11 @@ and returns the wire object. **The mapper is where the masks are applied**, by t
 mask functions, so a new column cannot leak by passthrough. Never a row spread into a response,
 never the raw payload, never a token hash ([Redaction](../../../../.ai/api-contract.md#conventions)).
 `email.explainDelivery` returns ids, timestamps, closed-set values and masks only: no free-text
-payload field, even masked.
+payload field, even masked. `dlq.listMessages` reads a queue envelope, so its reader reads the
+envelope's `svixId` and `receivedAt` and exactly three payload paths (`type`, `created_at`,
+`data.email_id`, each `null` unless a string), drops the parse, and hands the mapper no payload.
+Evidence: [list-dlq-messages.route.int.test.ts](../../../../packages/api/src/list-dlq-messages.route.int.test.ts)'s
+redaction case.
 
 ## Middleware, in this order
 
@@ -77,7 +88,9 @@ payload field, even masked.
 
 - **`defaultHook`** on `new OpenAPIHono({ defaultHook })` turns every request-validation failure into
   `400` with `validation_failed`, `message` naming the field and never its value. A route never
-  passes its own hook.
+  passes its own hook. A field whose rule differs on one route gets a route-scoped message, keyed
+  by the matched route's path in `create-api.ts`'s `routeFieldErrors`: `dlq.listMessages` answers
+  `limit must be an integer from 1 to 10.` where every other `limit` names 1 to 100.
 - **`app.onError`** maps a thrown error class to its registry status and the error object; anything
   else becomes `500 internal_error`, logged by `error_name` and `request_id`, its message never sent
   ([one mapping per surface](../../pp-general/references/errors.md#one-mapping-per-surface)).

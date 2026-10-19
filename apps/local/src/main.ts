@@ -122,7 +122,8 @@ function start({ port, host }: Flags, config: LocalConfig): void {
   });
   // D40: the same middleware as on AWS, under the local tag key; the in-process queue reports its
   // own counts, the static event source `enabled`, and the resume runs the local worker in process,
-  // which answers `already_enabled`.
+  // which answers `already_enabled`. Slice 3 D9: the in-process queue's dead list is the DLQ, until
+  // slice 2B's Postgres queue.
   const api = createApi({
     db: apiDatabase.db,
     logger: apiLogger,
@@ -132,6 +133,7 @@ function start({ port, host }: Flags, config: LocalConfig): void {
     queueAttributes: queue,
     eventSource: new StaticEventSourceControlAdapter(),
     workerInvoke: new InProcessFunctionInvokeAdapter(() => worker.resume()),
+    dlq: queue,
     storageLimitBytes: STORAGE_LIMIT_BYTES,
   });
 

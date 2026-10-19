@@ -1,7 +1,8 @@
 import type { TokenScope } from '@ledger/core';
 import { apiTokensRepository, type Executor, STORAGE_LIMIT_BYTES } from '@ledger/db';
-import { type Logger, mintApiToken } from '@ledger/shared';
+import { InProcessQueueAdapter, type Logger, mintApiToken } from '@ledger/shared';
 import {
+  FakeClock,
   FakeEventSourceControl,
   FakeFunctionInvoke,
   FakeQueueAttributes,
@@ -52,6 +53,8 @@ export function testApiDeps(db: Executor, overrides: Partial<ApiDeps> = {}): Api
     queueAttributes: new FakeQueueAttributes(),
     eventSource: new FakeEventSourceControl(),
     workerInvoke: new FakeFunctionInvoke({ outcome: 'already_enabled', state: 'enabled' }),
+    // The real in-process queue, as local mode composes it (slice 3 D9); its dead list starts empty.
+    dlq: new InProcessQueueAdapter({ clock: new FakeClock(), logger: silentLogger }),
     storageLimitBytes: STORAGE_LIMIT_BYTES,
     ...overrides,
   };

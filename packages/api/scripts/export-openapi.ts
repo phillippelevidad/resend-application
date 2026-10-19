@@ -35,15 +35,17 @@ const database = createDatabase({
   logger: silent,
 });
 // The local port implementations, never called: no route runs while the document is generated.
+const queue = new InProcessQueueAdapter({ clock: { now: () => new Date() }, logger: silent });
 const api = createApi({
   db: database.db,
   logger: silent,
   addressHashKey: new Uint8Array(32),
   tokenTagKey: new Uint8Array(32),
   requestId: () => 'export',
-  queueAttributes: new InProcessQueueAdapter({ clock: { now: () => new Date() }, logger: silent }),
+  queueAttributes: queue,
   eventSource: new StaticEventSourceControlAdapter(),
   workerInvoke: new InProcessFunctionInvokeAdapter(async () => undefined),
+  dlq: queue,
   storageLimitBytes: STORAGE_LIMIT_BYTES,
 });
 

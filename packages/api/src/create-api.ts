@@ -2,6 +2,7 @@ import { type Hook, OpenAPIHono } from '@hono/zod-openapi';
 import { type ErrorCode, errorRegistry } from '@ledger/core';
 import { classifyDatabaseError, type Executor } from '@ledger/db';
 import {
+  type DlqPort,
   type EventSourceControlPort,
   errorFields,
   type FunctionInvokePort,
@@ -26,17 +27,21 @@ import { GetHealthReader } from './get-health.reader.ts';
 import { getHealthHandler, getHealthRoute } from './get-health.route.ts';
 import { GetRecipientReader } from './get-recipient.reader.ts';
 import { getRecipientHandler, getRecipientRoute } from './get-recipient.route.ts';
+import { ListDlqMessagesReader } from './list-dlq-messages.reader.ts';
+import { listDlqMessagesHandler, listDlqMessagesRoute } from './list-dlq-messages.route.ts';
 import { ListTokensReader } from './list-tokens.reader.ts';
 import { listTokensHandler, listTokensRoute } from './list-tokens.route.ts';
 import { ResumeEventSourceCommand } from './resume-event-source.command.ts';
 import { resumeEventSourceHandler, resumeEventSourceRoute } from './resume-event-source.route.ts';
 import { RevokeTokenCommand } from './revoke-token.command.ts';
 import { revokeTokenHandler, revokeTokenRoute } from './revoke-token.route.ts';
+import { StartDlqRedriveCommand } from './start-dlq-redrive.command.ts';
+import { startDlqRedriveHandler, startDlqRedriveRoute } from './start-dlq-redrive.route.ts';
 
 // D22. Every dependency is injected by the root, so this package imports no Lambda type and no AWS
 // SDK: `requestId` matches Hono's `generator` (`apps/api` returns the Lambda request id,
-// `apps/local` `crypto.randomUUID()`); the three ports are SQS, Lambda and the worker on AWS, the
-// in-process implementations locally.
+// `apps/local` `crypto.randomUUID()`); the four ports are SQS, Lambda, the worker and the DLQ on
+// AWS, the in-process implementations locally (slice 3 D9: the in-process queue is the `DlqPort`).
 export type ApiDeps = {
   db: Executor;
   logger: Logger;
@@ -46,6 +51,7 @@ export type ApiDeps = {
   queueAttributes: QueueAttributesPort;
   eventSource: EventSourceControlPort;
   workerInvoke: FunctionInvokePort;
+  dlq: DlqPort;
   storageLimitBytes: number;
 };
 
@@ -68,6 +74,15 @@ const fieldErrors = {
   limit: { message: 'limit must be an integer from 1 to 100.' },
   after: { message: 'after must be a token id, a positive integer.' },
 } satisfies Record<string, ErrorOverrides>;
+
+// A query field whose range differs on one route names that route's range, keyed by the matched
+// route's path like `bodyErrors` (slice 3 D6: `dlq.listMessages` samples 1 to 10).
+const routeFieldErrors: Record<
+  string,
+  Partial<Record<keyof typeof fieldErrors, ErrorOverrides>>
+> = {
+  [listDlqMessagesRoute.path]: { limit: { message: 'limit must be an integer from 1 to 10.' } },
+};
 
 // Each JSON-body route's body message and the fields its own message names (D22: keyed by the
 // matched route's path). Hono registers `{param}` as `:param`; both body routes have static paths.
@@ -103,7 +118,8 @@ const validationHook: Hook<unknown, ApiEnv, string, Response | undefined> = (res
   let overrides: ErrorOverrides = {};
   if ((result.target === 'param' || result.target === 'query') && typeof field === 'string') {
     if (paramFields.has(field)) {
-      overrides = fieldErrors[field as keyof typeof fieldErrors];
+      const name = field as keyof typeof fieldErrors;
+      overrides = routeFieldErrors[routePath(c)]?.[name] ?? fieldErrors[name];
     }
   } else if (result.target === 'json') {
     const route = bodyErrors[routePath(c)];
@@ -202,6 +218,8 @@ export function createApi(deps: ApiDeps): OpenAPIHono<ApiEnv> {
     createTokenHandler(new CreateTokenCommand(deps.db, deps.tokenTagKey)),
   );
   app.openapi(revokeTokenRoute, revokeTokenHandler(new RevokeTokenCommand(deps.db)));
+  app.openapi(listDlqMessagesRoute, listDlqMessagesHandler(new ListDlqMessagesReader(deps.dlq)));
+  app.openapi(startDlqRedriveRoute, startDlqRedriveHandler(new StartDlqRedriveCommand(deps.dlq)));
 
   // D23: any method and path no operation serves, never Hono's plain-text default.
   app.notFound((c) => respond(c, 'route_not_found'));
