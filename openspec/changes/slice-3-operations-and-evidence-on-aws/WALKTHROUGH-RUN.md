@@ -9,9 +9,7 @@
 
 | pass | doc-drift | fail | inconclusive | blocked | held | n/a-today | skipped | not-run |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 37 | 0 | 2 | 0 | 0 | 0 | 1 | 0 | 0 |
-
-E2's AWS half passed; its email is the owner's to report (row below). Not in the counts until then.
+| 38 | 0 | 2 | 0 | 0 | 0 | 1 | 0 | 0 |
 
 | Step | Status | Observed | Finding |
 | --- | --- | --- | --- |
@@ -33,7 +31,7 @@ E2's AWS half passed; its email is the owner's to report (row below). Not in the
 | D5 | pass | alarm history `2026-10-19T19:48:34Z Alarm updated from OK to ALARM`, 19 min after D2's send; the owner received the email: `CloudWatch Alarm "LedgerApp-queue-age" in the US East (Ohio) region has entered the ALARM state, because "Threshold Crossed: 1 datapoint [964.0 (19/10/26 19:42:00)] was greater than the threshold (900.0)." at "Monday 19 October, 2026 19:48:34 UTC"` (owner, this conversation) | |
 | D6 | pass | first read (≈19:49:15) `queue 18 visible, 0 in flight, oldest 1094s` with 18/18 already stored, SQS approximate-count lag (AWS-62); next read 19:49:43 the four lines exactly, exit 0 | |
 | E1 | pass | first attempt aborted by K5 (`sim: the poison run failed (TimeoutError)`, exit 1; F2), its event later committed once, queue and DLQ 0. Retry, seed ns `ccc7de44`: `poison count=1 svix_ids=simpoison_ccc7de44_0 email_ids=ccc7de44-observed-bounced`; `sent requests=35 accepted=35` (20:06 UTC); `others stored 34/34 exactly once (1 poisoned wait in the DLQ)`; invariants 1, 2 not checked; `invariant 4 pass (dlq holds exactly the 1 poisoned)`; `poison fixed; …`; exit 0 (20:36 UTC) | F2 |
-| E2 | _owner_ | alarm history `2026-10-19T20:39:12Z Alarm updated from OK to ALARM`, ≈ 3 min after the move to the DLQ (period 300 s, `Maximum`). The retry's own `LedgerApp-queue-age` email reached the owner (ALARM at 20:25:34 UTC, datapoint 993 s), as E2 predicts; not counted for Ships 5. dlq-depth email: _owner to report_ | |
+| E2 | pass | alarm history `2026-10-19T20:39:12Z Alarm updated from OK to ALARM`, ≈ 3 min after the move to the DLQ (period 300 s, `Maximum`); the owner received the email: `CloudWatch Alarm "LedgerApp-dlq-depth" in the US East (Ohio) region has entered the ALARM state, because "Threshold Crossed: 1 datapoint [1.0 (19/10/26 20:33:00)] was greater than the threshold (0.0)." at "Monday 19 October, 2026 20:39:12 UTC"` (owner, this conversation; the body's description is B1's, read from the alarm, not quoted by the owner). The retry's own `LedgerApp-queue-age` email also arrived (ALARM 20:25:34 UTC, datapoint 993 s), as E2 predicts; not counted for Ships 5 | |
 | E3 | pass | human: `dlq         1 message(s), showing 1` + the item line (`email.sent`, `receives 26`), exit 0, stderr exactly the worker-logs notice; JSON with exactly the seven keys, `depth: 1`, exit 0; `grep -c resend.dev` `0`; `--limit 11` → `validation_failed` with the exact message, hint and docs, exit 1. The second inspect showed the same item, `receive_count` 36: each sample receive adds to the count, as `dlq.listMessages` documents | |
 | E4 | fail | `redrive     nothing to move: the dlq is empty`, exit 0, ≈ 1 min after the message reached the DLQ and right after E3 read `depth: 1` | F3 |
 | E5 | pass | right after E4: `{"object":"dlq_redrive","status":"started","depth":1}`, exit 0 (it did E4's job); repeated at 20:37:42 while that task could still run: `{"object":"dlq_redrive","status":"empty","depth":0}`, exit 0, the documented alternative. `redrive_in_progress` not observed: a one-message task ends within seconds | |
