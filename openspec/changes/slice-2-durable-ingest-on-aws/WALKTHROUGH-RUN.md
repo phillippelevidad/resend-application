@@ -29,7 +29,7 @@
 | B3 | pass | after C6: `synthesizing`, `migrating`, then stderr exactly the `key_id differs` refusal, exit 1, no `deploying` line | |
 | B4 | pass | the 12 lines exact, token `<redacted:token>`, `KillSwitchArmed true`, exit 0; `token current` → `bootstrap`, id 1 | F1 |
 | B5 | pass | the 10 lines exact, no token line, exit 0 | |
-| G1 | pass | the 8 lines exact: trip 13s, `429` ×5, Errors alarm 95s, restore 25s; stderr empty; exit 0 (reserved concurrency `0` accepted on the 50-quota account). No email reached the owner: G1 ran after T3 recreated both topics, before the owner confirmed their subscriptions. Rerun 21:55, both subscriptions confirmed: the 8 lines exact (trip 13s, `429` ×5, Errors alarm 126s, restore 13s), exit 0, health all zero after; the owner received `ALARM: "LedgerApp-usage-trip"` (trip topic) and `Ledger kill switch tripped` (alert topic) | |
+| G1 | pass | the 8 lines exact: trip 13s, `429` ×5, Errors alarm 95s, restore 25s; stderr empty; exit 0 (reserved concurrency `0` accepted on the 50-quota account). No email reached the owner: G1 ran after T3 recreated both topics, before the owner confirmed their subscriptions. Rerun 21:55, both subscriptions confirmed: the 8 lines exact (trip 13s, `429` ×5, Errors alarm 126s, restore 13s), exit 0, health all zero after; the owner received `ALARM: "LedgerApp-usage-trip"` (trip topic), `Ledger kill switch tripped` and `ALARM: "LedgerGuardrails-kill-switch-errors"` (alert topic) | |
 | G2 | pass | inside the trip window: the exact `api_unavailable` document, exit 1 | |
 | G3 | pass | `error: unknown command 'reconcile'`, exit 2 | |
 | G4 | inconclusive | rerun: the deploy half passes (F3 fixed): B5's lines, exit 0; `LedgerGuardrails-drill` exists with one `ACTUAL` `GREATER_THAN` `0.1` `ABSOLUTE_VALUE` notification, state `OK`. The trip half cannot happen: both budgets read actual spend `0.0` USD | F4 |
@@ -95,7 +95,7 @@ AWS-U05 quota 50 · AWS-U06 secrets delete at once (rerun's T1, T2 again) · AWS
 
 ## Held for the owner
 
-- Both SNS subscriptions the rerun's T3 recreated: confirmed by the owner, 2026-10-18 (CBL-03). The G1 rerun's `Ledger kill switch tripped` email: received. Its `kill-switch-errors` alarm email: for the owner to observe.
+- Both SNS subscriptions the rerun's T3 recreated: confirmed by the owner, 2026-10-18 (CBL-03). The G1 rerun's `Ledger kill switch tripped` and `ALARM: "LedgerGuardrails-kill-switch-errors"` emails: both received by the owner.
 - F4's decision, then G4's trip half and G5.
 
 ## Data created
