@@ -486,7 +486,11 @@ CBL-21's lone cold delivery stays separate.
 
 **`--chaos db-outage`** (`db-outage-run.ts`) repoints the database without touching Neon:
 
-1. D23's guard, plus a refusal when the worker's event source is already paused.
+1. D23's guard, plus a refusal when the worker's event source is already paused. As built, three
+   more refusals before any write: `LedgerApp-queue-age` already reading `ALARM` (step 6 would pass
+   at 0 m without the outage aging the queue), a secret that already holds the `.invalid` host (a
+   crashed run's fault, which must never be kept as "the original"; the line names
+   `pnpm aws:deploy`, which rewrites it), and a secret with no Postgres `pooledUrl`.
 2. Read `ledger/database` (`DatabaseSecretArn`) through `SecretsManagerSecretReaderAdapter`. Write
    the same JSON with `pooledUrl`'s host replaced by **`ledger-sim-db-outage.invalid`** through
    `secret-writer`. `.invalid` never resolves (RFC 2606), so every connect fails `ENOTFOUND` under a

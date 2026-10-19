@@ -88,6 +88,14 @@ A burst SHALL send request `i` at `i × seconds/events` after its start, with at
 - **WHEN** `--chaos db-outage` starts while the worker's event source is paused
 - **THEN** it exits `1` and sends nothing
 
+#### Scenario: Alarm already firing
+- **WHEN** `--chaos db-outage` starts while `LedgerApp-queue-age` reads `ALARM`
+- **THEN** it exits `1` before any write or recycle, and sends nothing
+
+#### Scenario: A crashed run's fault is still in place
+- **WHEN** `--chaos db-outage` starts while the database secret already points at `ledger-sim-db-outage.invalid`
+- **THEN** it exits `1` naming `pnpm aws:deploy`, before any write, and sends nothing
+
 #### Scenario: No secret printed
 - **WHEN** a db-outage run prints any line
 - **THEN** no line holds the database secret's value, a URL or a host other than `.invalid`, and nothing is written to disk
