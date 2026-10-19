@@ -16,7 +16,7 @@
 | Step | Status | Observed | Finding |
 | --- | --- | --- | --- |
 | S1–S5 | pass | install exit 0; Docker `28.0.4`; `LEDGER READY in 10s` (its `db:setup` printed only `ready`: `.env.local` already slice-2 shaped, so the first-setup `wrote` lines were not observable); names only; tree clean | |
-| S6 | skipped (env routed) | `$AWS_REGION` empty, `AWS_PROFILE` unset, `aws` not on PATH ([K2](../../../.agents/skills/rsa-manual-test/references/environment.md#known-issues)); profile `ledger`, `us-east-2` set per command | |
+| S6 | skipped (env routed) | `$AWS_REGION` empty, `AWS_PROFILE` unset, `aws` not on PATH ([K2](../../../../.agents/skills/rsa-manual-test/references/environment.md#known-issues)); profile `ledger`, `us-east-2` set per command | |
 | A1 | pass | `db:setup: ready`, exit 0, no `wrote` line | |
 | A2 | pass | `local-setup` (the documented variant), `operate`, id 7, no hash or plaintext, exit 0 | |
 | A3 | pass | JSON exact (`storage_bytes` 8574655); human layout exact, `8.6 MB of 1.0 GB`; exit 0 both | |
@@ -61,7 +61,7 @@
 
 - **Severity:** polish · **Category:** environment · **Status:** confirmed (B4, T3, E5) · **Step:** B4
 - **Expected:** "the deploy prints exactly these lines" (B4) · **Observed:** stderr `(node:<pid>) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'. …`, 9 lines, no value
-- **Suspected cause:** the owner's Neon URLs carry `sslmode=require` ([K3](../../../.agents/skills/rsa-manual-test/references/environment.md#known-issues)) · **Proposed fix:** `sslmode=verify-full` in the owner's URLs, said in `.env.example`
+- **Suspected cause:** the owner's Neon URLs carry `sslmode=require` ([K3](../../../../.agents/skills/rsa-manual-test/references/environment.md#known-issues)) · **Proposed fix:** `sslmode=verify-full` in the owner's URLs, said in `.env.example`
 
 ### F2 — teardown fails on a resource already deleted but still in the tagging index
 

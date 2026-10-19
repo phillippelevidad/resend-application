@@ -3,7 +3,7 @@
 ## Context
 
 See [proposal.md → Why](proposal.md#why). The pre-proposal
-[2026-10-17-slice-2-durable-ingest-on-aws.md](../../../.ai/pre-proposals/2026-10-17-slice-2-durable-ingest-on-aws.md)
+[2026-10-17-slice-2-durable-ingest-on-aws.md](../../../../.ai/pre-proposals/2026-10-17-slice-2-durable-ingest-on-aws.md)
 (*PP*) is decision-complete and checked (15 repairs, nothing left for the owner). Each decision
 below keeps its PP number (D1–D44) and carries what `opsx:apply` needs to build it. The PP keeps the
 authority trail for every decision and the contradictions C1–C19. Everything the build needs is in
@@ -35,9 +35,9 @@ since `e62bf50`):
   `package.json` has `synth` and no deploy script.
 
 Binding constraints: ADR-001, ADR-002, ADR-004, ADR-005, ADR-008, ADR-009, ADR-010, ADR-011,
-ADR-013, ADR-015, ADR-016, ADR-018, ADR-019 ([Decisions](../../../.ai/architecture.md#decisions)); the
-module boundaries in root [AGENTS.md](../../../AGENTS.md#module-boundaries) (only `packages/aws`
-imports `@aws-sdk/*`; apps are wiring only); [aws.md → Budget alarms](../../../.ai/aws.md#budget-alarms);
+ADR-013, ADR-015, ADR-016, ADR-018, ADR-019 ([Decisions](../../../../.ai/architecture.md#decisions)); the
+module boundaries in root [AGENTS.md](../../../../AGENTS.md#module-boundaries) (only `packages/aws`
+imports `@aws-sdk/*`; apps are wiring only); [aws.md → Budget alarms](../../../../.ai/aws.md#budget-alarms);
 and the `pp-general`, `pp-backend`, `pp-database`, `pp-testing`, `pp-cli`, `pp-infra` and `pp-workflow`
 skills. No ADR is departed from, so none is superseded.
 
@@ -212,7 +212,7 @@ with. A bare socket code is any client's, and the AWS SDK rejects with Node's ra
 (`@smithy/node-http-handler` 4.12.1), so an AWS port failure, raw or as a `cause`, never answers
 `503 database_unavailable` or pauses the worker. `onError` therefore classifies first, with no
 `internal_error` case ahead of it; D19's and D20's wrapping stays, so the `500` logs the AWS error's
-name. Evidence: [pp-database → Connection-error classification](../../../.agents/skills/pp-database/references/schema-and-repositories.md#connection-error-classification).
+name. Evidence: [pp-database → Connection-error classification](../../../../.agents/skills/pp-database/references/schema-and-repositories.md#connection-error-classification).
 
 #### D10 — `prepareDatabase` grows three things
 
@@ -495,7 +495,7 @@ Each adapter takes its SDK client from its composition root, and `packages/aws` 
 factory per client (`createSqsClient()`, `createLambdaClient()`, … one per approved
 `@aws-sdk/client-*`) that the root calls at module scope. No app, script or `infra/` file imports
 `@aws-sdk/*`: root AGENTS.md → Module boundaries ("Only `packages/aws` imports `@aws-sdk/*`") and
-[pp-general → review grep 4](../../../.agents/skills/pp-general/references/boundaries.md#review-greps),
+[pp-general → review grep 4](../../../../.agents/skills/pp-general/references/boundaries.md#review-greps),
 and the clients are `dependencies` of `packages/aws` alone, so nothing else could resolve them.
 Each unit test hands a stub with
 `send(command)` that records commands and answers from a script, asserting the commands sent and the
@@ -867,7 +867,7 @@ After the webhook exists (Ask-first) and its secret is placed by a redeploy: one
 `delivered@resend.dev`; `ledger email <id>` shows `delivered`; `ledger health` shows
 `queue 0 visible, 0 in flight` and `dlq 0 visible`; the delivery's `ingest.request_decoded` line
 shows `body_base64_count`, which settles AWS-U04 in aws.md. RS-U14 is already settled
-([RS-42](../../../.ai/resend.md#facts)).
+([RS-42](../../../../.ai/resend.md#facts)).
 
 ### Evidence map
 
@@ -1099,7 +1099,7 @@ report hold counts, names and states. No new column holds PII.
 ## Walkthrough plan
 
 `WALKTHROUGH.md` in this folder, in
-[the format](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). It runs well
+[the format](../../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). It runs well
 past ~15 minutes: two deploys, a drill and a budget wait.
 
 Personas: **Operator** (deploy, health, resume, tokens, drill, teardown), **Application developer**
@@ -1170,10 +1170,10 @@ exists, so the redeploy's new ingest URL needs no webhook update.
 
 | Not reachable | Carried by |
 | --- | --- |
-| `ledger reconcile` after a re-arm or a trip | [slice 4](../../../.ai/build-checklist.md#4--recovery) |
-| DLQ inspect and redrive; alarms with runbook entries; the burst and `--chaos db-outage` on AWS | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
-| A durable local queue; local DLQ operations | [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
-| MCP tools | [slice 5](../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
+| `ledger reconcile` after a re-arm or a trip | [slice 4](../../../../.ai/build-checklist.md#4--recovery) |
+| DLQ inspect and redrive; alarms with runbook entries; the burst and `--chaos db-outage` on AWS | [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
+| A durable local queue; local DLQ operations | [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| MCP tools | [slice 5](../../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
 | A deployed database outage (Neon cannot be stopped from the walk) | The Testcontainers outage test; slice 3's `--chaos db-outage` |
 
 ## Risks / Trade-offs

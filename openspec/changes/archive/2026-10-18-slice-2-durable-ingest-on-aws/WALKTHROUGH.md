@@ -8,7 +8,7 @@ hours on AWS Budgets ([design.md → Walkthrough plan](design.md#walkthrough-pla
 that carries it. A step without such a note that fails is a finding against this slice.
 
 Every `UI surfaces` entry on the
-[slice 2 card](../../../.ai/build-checklist.md#2--durable-ingest-on-aws) is reached: the deploy
+[slice 2 card](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws) is reached: the deploy
 command (B3, B4, B5, G4, G6, T3, C3); the teardown command (T1); `POST /webhooks/resend` deployed
 (C4, and G1's unsigned requests); `ledger email <email_id>` (C5, D1, F3); `ledger recipient <address>`
 (D2); `ledger health` (A3, G2, G5, C6, E3); `ledger worker resume` (A4, E4, F4);
@@ -67,7 +67,7 @@ echo "$AWS_REGION"
 
 ## Path A — local auth, health and tokens: tokens enforced, health and resume answer, scopes hold
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Rerun the local setup.**
 
@@ -207,7 +207,7 @@ echo "$AWS_REGION"
    401
    ```
 
-   The `docs` links answer `404` until the runbook lands → [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws).
+   The `docs` links answer `404` until the runbook lands → [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws).
 
 7. **List the tokens, revoke `walk-read`, then try to revoke the only `operate` token.**
 
@@ -252,7 +252,7 @@ echo "$AWS_REGION"
 
 ## Path B — deploy: the deploy command, its refusals, the first token printed once
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Read the account's Lambda concurrency quota.**
 
@@ -261,7 +261,7 @@ echo "$AWS_REGION"
    ```
 
    Expect: one integer, the account's concurrent-execution quota. Record that number only, never
-   the account id; it settles AWS-U05 ([aws.md](../../../.ai/aws.md#unverified)).
+   the account id; it settles AWS-U05 ([aws.md](../../../../.ai/aws.md#unverified)).
    **Ask-first:** an AWS call against the owner's account before the first deploy (card `Ops`).
 
 2. **Synthesize both stacks and scan the result for secrets.**
@@ -276,7 +276,7 @@ echo "$AWS_REGION"
    `Successfully synthesized to <repo>/infra/cdk.out` and
    `Supply a stack id (LedgerGuardrails, LedgerApp) to display its template.`, `exit=0`, with no
    AWS credentials used. The `grep` prints no file and `grep exit=1`: no CBL-01 hit
-   ([check-before-launch.md](../../../.ai/check-before-launch.md#public-repo-hygiene)).
+   ([check-before-launch.md](../../../../.ai/check-before-launch.md#public-repo-hygiene)).
 
 3. **Deploy with a fresh address-hash key against a database that holds hashes.**
 
@@ -325,7 +325,7 @@ echo "$AWS_REGION"
    half of AWS-U01. The owner stores the bootstrap token (it is printed once), pastes it at the
    `read -rs` prompt, and uses `<api url>` for `LEDGER_URL`. Two `AWS Notification - Subscription
    Confirmation` emails reach `LEDGER_ALERT_EMAIL`, one per topic; the owner confirms both
-   ([CBL-03](../../../.ai/check-before-launch.md#public-repo-hygiene)). `token current` prints
+   ([CBL-03](../../../../.ai/check-before-launch.md#public-repo-hygiene)). `token current` prints
    `"name": "bootstrap"` and `"scope": "operate"`, `exit=0`. A failure instead ends on stderr
    `aws:deploy: refused: <reason>` or `aws:deploy: failed: <reason>`, exit `1`, the reason naming a
    variable or a step, never a value (a missing input reads, for example,
@@ -358,7 +358,7 @@ echo "$AWS_REGION"
 
 ## Path G — trip drill and re-arm: alarm → kill switch → stopped stack → restored
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Run the alarm drill.**
 
@@ -412,7 +412,7 @@ echo "$AWS_REGION"
    (CBL-17).
    **Ask-first:** inside G1's trip window, which G1's approval opens.
 
-3. **Reconcile what the trip window held back → [slice 4](../../../.ai/build-checklist.md#4--recovery).**
+3. **Reconcile what the trip window held back → [slice 4](../../../../.ai/build-checklist.md#4--recovery).**
 
    ```bash
    pnpm -s ledger reconcile; echo "exit=$?"
@@ -474,7 +474,7 @@ echo "$AWS_REGION"
 
 ## Path T — teardown: refuses nothing queued, destroys in order, leaves nothing billable
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Tear both stacks down.**
 
@@ -510,7 +510,7 @@ echo "$AWS_REGION"
    Expect: either two lines, each a `ledger/database: …` or `ledger/webhook-signing-secrets: …`
    description followed by a deletion date (a recovery window, matching T1's `2 secret(s)`), or
    nothing (deleted at once, T1's `0 secret(s)`). Record which: it settles AWS-U06 in
-   [aws.md](../../../.ai/aws.md#unverified). Either way nothing is billed (AWS-11).
+   [aws.md](../../../../.ai/aws.md#unverified). Either way nothing is billed (AWS-11).
 
 3. **Redeploy, then issue one more `operate` token.**
 
@@ -532,7 +532,7 @@ echo "$AWS_REGION"
 
 ## Path C — connect the webhook and verify: a real Resend event lands in the deployed ledger
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas)
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas)
 
 1. **Create the production webhook for the ingest URL (owner-run).**
 
@@ -544,7 +544,7 @@ echo "$AWS_REGION"
    ```
 
    Expect: a JSON body carrying the webhook's `id` and `signing_secret`
-   ([RS-13](../../../.ai/resend.md#facts)), seen only in the owner's terminal and never pasted
+   ([RS-13](../../../../.ai/resend.md#facts)), seen only in the owner's terminal and never pasted
    into a transcript or run file (RS-05). The dashboard's webhook form does the same. The owner
    keeps the webhook id outside the repo (CBL-10).
    **Ask-first:** creates a webhook on the owner's Resend account.
@@ -582,7 +582,7 @@ echo "$AWS_REGION"
 
    Expect: a JSON body carrying the new email's `id`, then `200`
    ([Send Email](https://resend.com/docs/api-reference/emails/send-email); test addresses are exempt
-   from the own-address rule, [RS-42](../../../.ai/resend.md#facts)). Keep the id as `<email_id>`.
+   from the own-address rule, [RS-42](../../../../.ai/resend.md#facts)). Keep the id as `<email_id>`.
    **Ask-first:** one live send from the owner's Resend account (counts against quota, RS-32).
 
 5. **Read the email back from the deployed ledger.**
@@ -620,7 +620,7 @@ echo "$AWS_REGION"
    ```
 
    followed by two entries, `"type": "email.sent"` then `"type": "email.delivered"`, each with its
-   `"svix_id": "msg_<…>"` ([RS-39](../../../.ai/resend.md#facts)).
+   `"svix_id": "msg_<…>"` ([RS-39](../../../../.ai/resend.md#facts)).
    → **Why it matters.** Ships 12, the card's verify stage: a real Resend event through deployed
    ingest, SQS and the worker into Neon.
 
@@ -643,14 +643,14 @@ echo "$AWS_REGION"
 
    then one message per delivery holding `"message":"ingest.request_decoded"` and
    `"body_base64_count":<0 or 1>`, with no field outside the
-   [log fields](../../../.ai/data-modeling.md#log-fields) (no svix id, no body). `1` means API
+   [log fields](../../../../.ai/data-modeling.md#log-fields) (no svix id, no body). `1` means API
    Gateway base64-encodes Resend's body, `0` that it passes it plain: record it, which settles
-   AWS-U04 in [aws.md](../../../.ai/aws.md#unverified).
+   AWS-U04 in [aws.md](../../../../.ai/aws.md#unverified).
 
 ## Path D — support lookup, deployed: the verify send through `ledger email` and `ledger recipient`
 
-**Walked as:** [Support / on-call engineer](../../../.ai/about.md#target-personas)
-([J2](../../../.ai/features.md#j2--support-lookup))
+**Walked as:** [Support / on-call engineer](../../../../.ai/about.md#target-personas)
+([J2](../../../../.ai/features.md#j2--support-lookup))
 
 1. **Read the verify send in the human layout.**
 
@@ -702,7 +702,7 @@ echo "$AWS_REGION"
 
 ## Path E — operate the deployed pipeline: auth at the edge, health, resume, the database checks
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Call health with no token.**
 
@@ -746,7 +746,7 @@ echo "$AWS_REGION"
    Expect: exactly `worker      enabled (already enabled)`, then `exit=0`. A paused source would
    read `worker      changing (resumed)`; a failed probe exits `1` with stderr
    `The database is unreachable or at its storage limit, so the event source stays paused.` and its
-   hint. Pausing it needs a deployed database outage → [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws).
+   hint. Pausing it needs a deployed database outage → [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws).
 
 5. **Check the role timeouts, the lock serialization and the idle reconnect on Neon.**
 
@@ -770,12 +770,12 @@ echo "$AWS_REGION"
    `aws:db-check: PG-U04 the query after 6 minutes idle failed: <error_name> (connection-class: yes)`,
    which is safe (a connection error is retryable, D15): record the line. A value other than
    `honored` or `serialized` is recorded as observed and settles PG-U06 or PG-U02 negatively in
-   [integrations.md](../../../.ai/integrations.md#unverified). It writes nothing.
+   [integrations.md](../../../../.ai/integrations.md#unverified). It writes nothing.
    **Ask-first:** reads the deployed database secret and connects to Neon through the pooled URL.
 
 ## Path F — reviewer access: a `read` token can look, cannot operate, and dies on revoke
 
-**Walked as:** [Reviewer](../../../.ai/about.md#target-personas), the Operator issuing and revoking
+**Walked as:** [Reviewer](../../../../.ai/about.md#target-personas), the Operator issuing and revoking
 
 1. **As the Operator, issue the reviewer a `read` token.**
 
@@ -786,7 +786,7 @@ echo "$AWS_REGION"
    Expect: A5's layout with `name        review-walk` and `scope       read`, `exit=0`, and the
    stderr notice `ledger: this is the only time the token is shown; store it now.` Keep the
    `secret` with `read -rs REVIEW_TOKEN && export REVIEW_TOKEN`, and `<review_id>` from the
-   `token` line ([CBL-20](../../../.ai/check-before-launch.md#public-repo-hygiene)).
+   `token` line ([CBL-20](../../../../.ai/check-before-launch.md#public-repo-hygiene)).
 
 2. **As the reviewer, ask who the token is.**
 
@@ -896,8 +896,8 @@ F5 revoked the deployed walk tokens and A7 the local one.
 
 | Not reachable | Carried by |
 | --- | --- |
-| `ledger reconcile` after a re-arm or a trip (G3); `ledger gaps`, named in the not-found hints | [slice 4](../../../.ai/build-checklist.md#4--recovery) |
-| DLQ inspect and redrive; alarms with runbook entries, and the runbook the error `docs` links point at; the burst and `--chaos db-outage` on AWS | [slice 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
-| A durable local queue; local DLQ operations | [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
-| MCP tools, so the AI agent persona walks no path | [slice 5](../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
+| `ledger reconcile` after a re-arm or a trip (G3); `ledger gaps`, named in the not-found hints | [slice 4](../../../../.ai/build-checklist.md#4--recovery) |
+| DLQ inspect and redrive; alarms with runbook entries, and the runbook the error `docs` links point at; the burst and `--chaos db-outage` on AWS | [slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) |
+| A durable local queue; local DLQ operations | [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| MCP tools, so the AI agent persona walks no path | [slice 5](../../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
 | A deployed database outage, and with it a paused event source and `ledger worker resume` answering `resumed` (Neon cannot be stopped from the walk) | The Testcontainers outage test ([design.md → Evidence map](design.md#evidence-map)); slice 3's `--chaos db-outage` |

@@ -8,7 +8,7 @@ in CI, and fails loudly when a secret is committed or a README link breaks.
 ## Requirements
 
 ### Requirement: One gate, identical locally and in CI
-`pnpm verify` SHALL run the stages `install, docker, secrets, lint, links, typecheck, drift, unit, int, synth, e2e` in that order, stopping at the first failure. CI SHALL run exactly `pnpm verify` on every push and pull request, so the stage list has one source.
+`pnpm verify` SHALL run the stages `install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int, synth, e2e` in that order, stopping at the first failure. CI SHALL run exactly `pnpm verify` on every push and pull request, so the stage list has one source.
 
 #### Scenario: Every stage passes
 - **WHEN** `pnpm verify` runs and every stage exits 0
@@ -30,7 +30,7 @@ The CI workflow SHALL trigger on `push` and `pull_request` (never `pull_request_
 - **THEN** a CI run executes `pnpm verify` against it and its conclusion is `success` only if the gate passed
 
 ### Requirement: Secret scan over the full history
-The `secrets` stage SHALL scan every commit on every ref with gitleaks from a version- and digest-pinned image, using `.gitleaks.toml`, which extends the default ruleset and adds rules for Resend API keys (`re_`), `whsec_` signing secrets and Postgres URLs that carry a password. It SHALL work from a git worktree, where `.git` is a file.
+The `secrets` stage SHALL scan every commit on every ref with gitleaks from a version- and digest-pinned image, using `.gitleaks.toml`, which extends the default ruleset and adds rules for Resend API keys (`re_`), `whsec_` signing secrets, Postgres URLs that carry a password, and Ledger API tokens (`ldg_`). It SHALL work from a git worktree, where `.git` is a file.
 
 #### Scenario: Clean repository
 - **WHEN** no commit on any ref carries a match
@@ -39,6 +39,10 @@ The `secrets` stage SHALL scan every commit on every ref with gitleaks from a ve
 #### Scenario: A committed fake Resend key
 - **WHEN** any commit on any ref carries a string matching the Resend API key rule
 - **THEN** the stage exits 1 and the finding is reported with the secret redacted
+
+#### Scenario: A committed Ledger token
+- **WHEN** any commit on any ref carries a string matching `ldg_[0-9a-f]{64}_[0-9a-f]{64}`
+- **THEN** the stage exits 1 and the finding is reported with the token redacted
 
 #### Scenario: Local throwaway credentials
 - **WHEN** a Postgres URL with a password points at `localhost` or `127.0.0.1`
@@ -52,8 +56,8 @@ The `secrets` stage SHALL scan every commit on every ref with gitleaks from a ve
 Before scanning the repository, the `secrets` stage SHALL run the same image over a throwaway repository holding one fake value per custom rule, built at runtime so no tracked line matches a rule, and SHALL fail unless each custom rule reports a finding.
 
 #### Scenario: Canary caught
-- **WHEN** each of `resend-api-key`, `resend-webhook-secret` and `postgres-url` reports a finding on the canary
-- **THEN** the stage prints `secrets: canary caught 3/3 rules` and goes on to scan the repository
+- **WHEN** each of `resend-api-key`, `resend-webhook-secret`, `postgres-url` and `ledger-api-token` reports a finding on the canary
+- **THEN** the stage prints `secrets: canary caught 4/4 rules` and goes on to scan the repository
 
 #### Scenario: Rule rot
 - **WHEN** any custom rule reports no finding on the canary
@@ -132,3 +136,29 @@ The `int` stage SHALL start a fresh Postgres, ensure the runtime role, and apply
 #### Scenario: Closed sets match their checks
 - **WHEN** the integration tests insert every member of each closed-set column's tuple as the runtime role, and one value outside it
 - **THEN** every member is accepted and the outsider is refused with SQLSTATE `23514`
+
+### Requirement: Migration lint fails contract-breaking DDL
+The `migrations` stage SHALL check every migration file and fail on a statement holding `DROP`, `RENAME`, `ALTER … TYPE` or `SET NOT NULL` (case-insensitive, `--` comments ignored) unless the file's first line is `-- contract-step: <40-hex SHA>` or `-- contract-step: replace: <name>, <widen|narrow>` (ADR-018).
+
+#### Scenario: Unmarked DROP COLUMN
+- **WHEN** a migration holds `ALTER TABLE t DROP COLUMN c;` with no marker
+- **THEN** the stage names the file and exits 1
+
+#### Scenario: Marked contract step
+- **WHEN** the same statement's file starts with `-- contract-step: <40-hex SHA>`
+- **THEN** the stage passes it
+
+#### Scenario: Clean migrations
+- **WHEN** every migration is pure expand
+- **THEN** the stage prints `migrations: <n> checked, 0 unmarked` and exits 0
+
+### Requirement: The migration lint proves itself on every run
+Before checking the repository's migrations, the `migrations` stage SHALL lint an in-memory `ALTER TABLE t DROP COLUMN c;` that must fail and a marked copy that must pass, and SHALL exit 1 unless both behave.
+
+#### Scenario: Canary caught
+- **WHEN** the unmarked canary fails and the marked copy passes
+- **THEN** the stage prints `migrations: canary caught 1/1` and goes on to the migration files
+
+#### Scenario: Canary missed
+- **WHEN** the unmarked canary passes
+- **THEN** the stage exits 1 without checking the migration files

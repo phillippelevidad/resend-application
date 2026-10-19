@@ -37,7 +37,7 @@ no import of `@ledger/api`, `db`, `aws`, `ingest`, `worker`, `reconciler`, `disp
   otherwise the namespace as written; [Operation template](../../../../.ai/api-contract.md#operation-template)).
   Never a generic `request(path)` on the public surface.
 - **The methods today** (slice 1, then slice 2's
-  [D24](../../../../openspec/changes/slice-2-durable-ingest-on-aws/design.md#d24--sdk-methods)):
+  [D24](../../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#d24--sdk-methods)):
   `emails.get(emailId)`, `recipients.get(address)`, `health.get()`,
   `worker.resumeEventSource()`, `tokens.getCurrent()`, `tokens.list({ limit?, after? })`,
   `tokens.create({ name, scope })` and `tokens.revoke(tokenId: string)`, each `{ data, error }`.

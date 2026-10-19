@@ -20,7 +20,7 @@ stdout and stderr discipline, `--json`, colour · waiting on a `202` · the CLI'
 [pp-testing](../pp-testing/SKILL.md) · human output layouts → the slice 1 pre-proposal's
 [§12 Surfaces](../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md#12-surfaces)
 (`ledger email`, `ledger recipient`), slice 2's
-[design.md → Surfaces](../../../openspec/changes/slice-2-durable-ingest-on-aws/design.md#surfaces)
+[design.md → Surfaces](../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#surfaces)
 (`ledger health`, `ledger worker resume`, `ledger token create|list|revoke|current`), then each
 slice for the commands it adds.
 

@@ -2,22 +2,22 @@
 
 ## Why
 
-Slice 2 is the next spine card ([build-checklist → 2](../../../.ai/build-checklist.md#2--durable-ingest-on-aws))
+Slice 2 is the next spine card ([build-checklist → 2](../../../../.ai/build-checklist.md#2--durable-ingest-on-aws))
 and the first that deploys. Every later M1 slice runs on what it lands: slice 3's burst, chaos and
 DLQ runs need the deployed queue, worker and guardrails; slice 4's reconciler is a Lambda on the
 hourly schedule this slice creates, reading the `ledger/database` secret and the token scopes this
 slice adds. The budget alarm and kill switch MUST exist from the first deploy
-([lens clause 7](../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized),
-[aws.md → Budget alarms](../../../.ai/aws.md#budget-alarms)), and bearer tokens land here because the
-read API becomes reachable from the internet ([api-contract.md → Conventions](../../../.ai/api-contract.md#conventions):
+([lens clause 7](../../../../AGENTS.md#decision-lens--evidence-over-claims-right-sized),
+[aws.md → Budget alarms](../../../../.ai/aws.md#budget-alarms)), and bearer tokens land here because the
+read API becomes reachable from the internet ([api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions):
 "From slice 2, every mode enforces"). Slice 1's ports make this cheap: SQS replaces the in-process
 queue behind the same `QueuePort`, and the same `createApi` app goes behind `@hono/aws-lambda`. Six
 `[Unverified]` rows MUST settle here, and only a real deploy can settle them (AWS-U01, AWS-U02,
 AWS-U11, PG-U01, PG-U02, PG-U06;
-[Open questions owed by slice](../../../.ai/architecture.md#open-questions-owed-by-slice)).
+[Open questions owed by slice](../../../../.ai/architecture.md#open-questions-owed-by-slice)).
 
 The decision-complete brief is the checked pre-proposal
-[2026-10-17-slice-2-durable-ingest-on-aws.md](../../../.ai/pre-proposals/2026-10-17-slice-2-durable-ingest-on-aws.md)
+[2026-10-17-slice-2-durable-ingest-on-aws.md](../../../../.ai/pre-proposals/2026-10-17-slice-2-durable-ingest-on-aws.md)
 (cited below as *PP*; checked 2026-10-17: 15 repaired, 0 for the owner). Every decision it settles
 (D1–D44, C1–C19, R1–R20) is carried forward unchanged.
 
@@ -35,10 +35,10 @@ and its repair have landed since `e62bf50`; no code changed).
 7. Guardrails stack with the USD 50 budget, SNS, the kill switch (on in the owner's deployment), the usage trip sized to admit one burst, the steady default-route throttle with its computed worst-case overshoot stated in aws.md → Budget alarms item 7, and a scripted re-arm; AWS-U01, AWS-U02 and AWS-U11 settled by the recorded trip drill; evidence: CDK assertion test that the budget, its notifications and the kill-switch wiring exist (aws.md → Budget alarms, item 8).
 8. `pnpm verify` lints migrations for contract-breaking DDL (`DROP`, `RENAME`, `ALTER … TYPE`, `SET NOT NULL`) unless marked as a contract step; evidence: the lint fails on a fixture migration with `DROP COLUMN`.
 9. One deploy command (migrate with the direct URL, then deploy both stacks) and one teardown command; the deploy command refuses an address-hash key whose `key_id` differs from stored hashes, and a pending contract step whose `contract-step` SHA is not an ancestor of the deployed `DeployedCommit` (ADR-018); the teardown command refuses a non-empty queue or DLQ without `--discard-queued`; evidence: a deploy-command test for each refusal, a teardown test for its refusal, and a post-destroy listing of stack-tagged resources finds nothing billable.
-10. The deploy command creates a DML-only runtime role that cannot delete from `webhook_events`, with role-level `idle_in_transaction_session_timeout` and `lock_timeout` below the worker timeout ([integrations.md → How it is used](../../../.ai/integrations.md#decision--neon)); evidence: integration test for `permission denied` on `DELETE FROM webhook_events` and on `CREATE TABLE`, and one where an idle lock holder does not stop the worker committing.
+10. The deploy command creates a DML-only runtime role that cannot delete from `webhook_events`, with role-level `idle_in_transaction_session_timeout` and `lock_timeout` below the worker timeout ([integrations.md → How it is used](../../../../.ai/integrations.md#decision--neon)); evidence: integration test for `permission denied` on `DELETE FROM webhook_events` and on `CREATE TABLE`, and one where an idle lock holder does not stop the worker committing.
 11. PG-U01 settled from Neon's docs or support; PG-U02 settled by a deployed test where two transactions on one `email_id` serialize through the pooled URL; PG-U06 settled by `SHOW idle_in_transaction_session_timeout` through the pooled URL.
 12. Verify stage walked with one Ask-first send to `delivered@resend.dev`, `ledger email` showing `delivered` and `ledger health` showing queue and DLQ at 0; it settles RS-U14 and AWS-U04.
-13. RS-U21 settled by the Ask-first two-recipient send from the project's verified sending domain to `delivered@resend.dev` and `bounced@resend.dev`, observing each event's own `data.to` (through `resend webhooks listen` or the deployed ledger's stored payload and `ledger email`), with the result in resend.md. Settled early, 2026-10-17: [RS-43](../../../.ai/resend.md#facts), observed through `resend webhooks listen` and the dashboard's webhook event log.
+13. RS-U21 settled by the Ask-first two-recipient send from the project's verified sending domain to `delivered@resend.dev` and `bounced@resend.dev`, observing each event's own `data.to` (through `resend webhooks listen` or the deployed ledger's stored payload and `ledger email`), with the result in resend.md. Settled early, 2026-10-17: [RS-43](../../../../.ai/resend.md#facts), observed through `resend webhooks listen` and the dashboard's webhook event log.
 14. RS-U07 closed by the Ask-first test webhook pointed at an endpoint that returns `401`, or proved safe by the exact-`200` contract, its row citing the result.
 15. AWS-U03, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12 and PG-U04 closed or proved safe either way, each [Unverified] row citing its test, measurement or teardown drill.
 
@@ -73,7 +73,7 @@ How each bullet lands, in one line (detail in [design.md](design.md)):
 - **11:** Neon's docs read at apply for PG-U01; `pnpm aws:db-check` settles PG-U02 and PG-U06 on the
   deploy (PP D37, D42).
 - **12:** the walk's verify path; the delivery's `body_base64_count` settles AWS-U04; RS-U14 is
-  already settled as [RS-42](../../../.ai/resend.md#facts), so the bullet ticks when the walk passes
+  already settled as [RS-42](../../../../.ai/resend.md#facts), so the bullet ticks when the walk passes
   (PP D44, C2).
 - **13:** already ticked; nothing to build.
 - **14:** proved safe by the exact-`200` contract: every infrastructure fault answers `503`, so a
@@ -138,7 +138,7 @@ Mapped in PP §23.
   `scripts/verify.mjs`, `scripts/migration-lint.mjs` (new), `scripts/secret-scan.mjs`,
   `.gitleaks.toml`, root `package.json`, `.env.example`.
 - **Public contract:** six operations already named in
-  [api-contract.md](../../../.ai/api-contract.md#healthget) under slice 2, with PP §12's wire details;
+  [api-contract.md](../../../../.ai/api-contract.md#healthget) under slice 2, with PP §12's wire details;
   `bearerAuth` and a `401` on every route; seven public environment variables; six CLI commands; five
   `pnpm aws:*` scripts. No new error code.
 - **Schema:** one table, two migrations, pure expand. `0000` and `0001` are frozen and untouched.
@@ -153,7 +153,7 @@ Mapped in PP §23.
   folder. No edit loosens a rule; C9 and C10 change spec requirements and each tightens or keeps its
   safety rule, which the commit body states.
 
-**Ask-first items** ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions)). Every row was
+**Ask-first items** ([root AGENTS.md → Permissions](../../../../AGENTS.md#permissions)). Every row was
 approved by the owner on 2026-10-17 in one itemized round (PP §7, approvals table); the last two are
 held and approved one at a time, when each runs:
 
@@ -169,7 +169,7 @@ held and approved one at a time, when each runs:
 | `.gitleaks.toml` rule | `ledger-api-token` (`ldg_` bearer token) plus its canary in `scripts/secret-scan.mjs` | `.gitleaks.toml` rule |
 | Schema | `api_tokens` and migrations `0002_create-api-tokens` (generated) and `0003_grant-api-tokens` (custom); pure expand; unfrozen until merged to `main` | Schema |
 | AWS runs | `aws lambda get-account-settings`, every `pnpm aws:deploy`, `pnpm aws:trip-drill`, `pnpm aws:rearm`, `pnpm aws:db-check`, `pnpm aws:teardown` — **held: approved one at a time, when each runs** | AWS runs |
-| Live Resend writes | Creating the production webhook for the deployed ingest URL; the verify send to `delivered@resend.dev` — **held: approved one at a time, when each runs** ([integrations.md → Locked rules](../../../.ai/integrations.md#locked-rules-must), rule 8) | Live Resend writes |
+| Live Resend writes | Creating the production webhook for the deployed ingest URL; the verify send to `delivered@resend.dev` — **held: approved one at a time, when each runs** ([integrations.md → Locked rules](../../../../.ai/integrations.md#locked-rules-must), rule 8) | Live Resend writes |
 
 `"@ledger/<pkg>": "workspace:*"` entries are boundary declarations, not Ask-first. Anything outside
 these rows (another package or version, a `ci.yml` edit, another variable, flag, route, error code or
