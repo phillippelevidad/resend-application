@@ -26,8 +26,8 @@ or AWS resource) stops uncommitted for the owner. Every AWS action group 12 name
 
 ## 1. The card
 
-- [ ] 1.1 Card (owner-ruled 2026-10-19, PP D30, C5: the rewording widens what may settle PG-U07, and the owner's explicit decision is what clears the [rule gate](../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built)): Ships 4's "with PG-U07 settled from Neon's docs or support, or a write over the limit" becomes "with PG-U07 settled from Neon's docs, source or support, or a write over the limit"; update the same bullet in [proposal.md → What Changes](proposal.md#what-changes); set `Status` to `[~]`. Verify: the card and the proposal quote the same text, and `Status` reads `` `[~]` ``.
-- [ ] 1.2 Run `pnpm check`, then commit and push the card and the proposal, the body quoting the owner's ruling. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
+- [x] 1.1 Card (owner-ruled 2026-10-19, PP D30, C5: the rewording widens what may settle PG-U07, and the owner's explicit decision is what clears the [rule gate](../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built)): Ships 4's "with PG-U07 settled from Neon's docs or support, or a write over the limit" becomes "with PG-U07 settled from Neon's docs, source or support, or a write over the limit"; update the same bullet in [proposal.md → What Changes](proposal.md#what-changes); set `Status` to `[~]`. Verify: the card and the proposal quote the same text, and `Status` reads `` `[~]` ``.
+- [x] 1.2 Run `pnpm check`, then commit and push the card and the proposal, the body quoting the owner's ruling. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 2. Kernel — `packages/shared`, `packages/aws` names (Ships 2's port; D1–D3, D33)
 
