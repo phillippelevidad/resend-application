@@ -16,3 +16,16 @@ export const ingestEnvelopeSchema = z.object({
 });
 
 export type IngestEnvelope = z.infer<typeof ingestEnvelopeSchema>;
+
+// A queue body read back as an envelope, or `undefined` when it is not JSON or not an envelope: the
+// failure path's reads (the worker's failure log, the DLQ inspect, invariant 4), which never throw.
+export function parseIngestEnvelope(body: string): IngestEnvelope | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  const envelope = ingestEnvelopeSchema.safeParse(parsed);
+  return envelope.success ? envelope.data : undefined;
+}

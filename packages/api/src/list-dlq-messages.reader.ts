@@ -1,4 +1,4 @@
-import { errorRegistry, ingestEnvelopeSchema } from '@ledger/core';
+import { errorRegistry, parseIngestEnvelope } from '@ledger/core';
 import { type DlqPort, type DlqRawMessage, LedgerError } from '@ledger/shared';
 import type { DlqMessageListRead, DlqMessageRead } from './dlq-message-response.mapper.ts';
 
@@ -24,8 +24,8 @@ const parseJson = (text: string): unknown => {
 // address, `from`, subject, tag or bounce text never reaches the mapper (api-contract.md →
 // dlq.listMessages). A body that is not an envelope keeps only its receive count.
 function readMessage(raw: DlqRawMessage): DlqMessageRead {
-  const envelope = ingestEnvelopeSchema.safeParse(parseJson(raw.body));
-  if (!envelope.success) {
+  const envelope = parseIngestEnvelope(raw.body);
+  if (envelope === undefined) {
     return {
       svixId: null,
       type: null,
@@ -35,13 +35,13 @@ function readMessage(raw: DlqRawMessage): DlqMessageRead {
       receiveCount: raw.receiveCount,
     };
   }
-  const payload = asRecord(parseJson(envelope.data.rawBody));
+  const payload = asRecord(parseJson(envelope.rawBody));
   return {
-    svixId: envelope.data.svixId,
+    svixId: envelope.svixId,
     type: stringOrNull(payload?.type),
     emailId: stringOrNull(asRecord(payload?.data)?.email_id),
     eventCreatedAt: stringOrNull(payload?.created_at),
-    enqueuedAt: envelope.data.receivedAt,
+    enqueuedAt: envelope.receivedAt,
     receiveCount: raw.receiveCount,
   };
 }

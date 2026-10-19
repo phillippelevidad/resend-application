@@ -28,6 +28,7 @@ export {
   eventSourceSchema,
   type IngestEnvelope,
   ingestEnvelopeSchema,
+  parseIngestEnvelope,
 } from './ingest-envelope.schema.ts';
 export type { LedgerEvent } from './ledger-event.ts';
 export { maskAddress } from './mask-address.ts';

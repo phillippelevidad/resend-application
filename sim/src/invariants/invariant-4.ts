@@ -1,4 +1,4 @@
-import { ingestEnvelopeSchema } from '@ledger/core';
+import { parseIngestEnvelope } from '@ledger/core';
 import type { DlqPort } from '@ledger/shared';
 
 // Simulator invariant 4 (architecture.md → Simulator invariants), read as D24 reads it: the DLQ holds
@@ -23,20 +23,9 @@ const maxSamples = 10;
 // The fail line names at most this many stray ids, so a large leak stays one readable line.
 const shownIds = 5;
 
-const parseJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-};
-
 // The envelope's `svixId` only. The payload is never parsed, so no address or subject is read
 // (simulator.md → Invariant checkers). A body that is not an envelope adds no id.
-function svixIdOf(body: string): string | undefined {
-  const envelope = ingestEnvelopeSchema.safeParse(parseJson(body));
-  return envelope.success ? envelope.data.svixId : undefined;
-}
+const svixIdOf = (body: string): string | undefined => parseIngestEnvelope(body)?.svixId;
 
 // Pure, so its pass and fail cases need no queue. Ids and counts only on the line.
 export function checkInvariant4(
