@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_BUDGET_USD } from '../src/guardrails.stack.ts';
 
 // D33's input assertion, run before step 1. Keys are listed in the order the refusal names them, so
 // with nothing set the first one named is `LEDGER_DEPLOY_DATABASE_URL`. Every message names what is
@@ -69,7 +70,7 @@ export const deployEnvSchema = z
       z.coerce
         .number({ error: 'must be a positive number of USD' })
         .positive({ error: 'must be a positive number of USD' })
-        .default(50),
+        .default(DEFAULT_BUDGET_USD),
     ),
   })
   .transform((env) => ({

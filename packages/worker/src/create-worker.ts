@@ -1,4 +1,4 @@
-import type { EventSourceState } from '@ledger/core';
+import { type EventSourceState, type ResumeOutcome, resumeOutcomes } from '@ledger/core';
 import {
   classifyDatabaseError,
   type Database,
@@ -30,9 +30,8 @@ export type WorkerDeps = {
   addressHashKey: Uint8Array;
 };
 
-// D16: what the resume event answers, the read API's `worker.resumeEventSource` included (D20).
-export const resumeOutcomes = ['resumed', 'already_enabled', 'probe_failed'] as const;
-export type ResumeOutcome = (typeof resumeOutcomes)[number];
+// D16: what the resume event answers; the outcomes live in `@ledger/core`, shared with the read API.
+export { type ResumeOutcome, resumeOutcomes };
 export type ResumeResult = { outcome: ResumeOutcome; state: EventSourceState };
 
 export type Worker = {

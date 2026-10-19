@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { parseArgs } from 'node:util';
-import { addressHashKeyId } from '@ledger/core';
+import { addressHashKeyId, tokenNamePattern } from '@ledger/core';
 import type { ApiTokenValues, ContractStep } from '@ledger/db';
 import { RUNTIME_ROLE } from '@ledger/db';
 import { ConfigError, type Env, loadConfig, mintApiToken } from '@ledger/shared';
@@ -82,8 +82,6 @@ export type RunDeployOptions = {
 
 const SCRIPT = 'aws:deploy';
 const USAGE = 'usage: pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]';
-// D21's token-name rule, so a name the API would refuse is never inserted here either.
-const TOKEN_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 // The bootstrap row's label (D8, `api_tokens_bootstrap_key`).
 const BOOTSTRAP_TOKEN_NAME = 'bootstrap';
 
@@ -132,7 +130,8 @@ function parseDeployArgs(argv: readonly string[]): DeployArgs {
     throw refuse(USAGE);
   }
   const name = values['issue-operate-token'];
-  if (name !== undefined && !TOKEN_NAME.test(name)) {
+  // D21's token-name rule, so a name the API would refuse is never inserted here either.
+  if (name !== undefined && !tokenNamePattern.test(name)) {
     throw refuse(
       "the --issue-operate-token name must be 1 to 64 characters from A-Z, a-z, 0-9, '.', '_' and '-', starting with a letter or digit",
     );

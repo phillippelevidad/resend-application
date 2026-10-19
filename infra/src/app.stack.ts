@@ -1,3 +1,4 @@
+import { RESUME_EVENT } from '@ledger/core';
 import { ArnFormat, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import { HttpApi, HttpMethod, HttpStage } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
@@ -65,8 +66,8 @@ export const USAGE_TRIP_THRESHOLD = 15_000;
 export const HOURLY_CRON = 'cron(0 * * * ? *)';
 export const SCHEDULE_RETRY_ATTEMPTS = 0;
 export const SCHEDULE_MAX_EVENT_AGE_SECONDS = 60;
-// ADR-015, D17: the event the worker answers with `resume()`.
-export const RESUME_EVENT = { ledger: 'resume-event-source' } as const;
+// ADR-015, D17: the event the worker answers with `resume()`, defined once in `@ledger/core`.
+export { RESUME_EVENT };
 
 // api-contract.md → Ingest boundary.
 export const INGEST_PATH = '/webhooks/resend';

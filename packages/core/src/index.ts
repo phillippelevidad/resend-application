@@ -19,6 +19,9 @@ export {
   eventSourceStateFromLambda,
   eventSourceStateSchema,
   eventSourceStates,
+  RESUME_EVENT,
+  type ResumeOutcome,
+  resumeOutcomes,
 } from './event-source-states.ts';
 export { addressHashKeyId, hashAddress } from './hash-address.ts';
 export {
@@ -40,5 +43,10 @@ export { projectRecipient, type RecipientState } from './project-recipient.proje
 export { type SanitizeForJsonbResult, sanitizeForJsonb } from './sanitize-for-jsonb.ts';
 export { type SoftSignal, softSignalSchema } from './soft-signal.schema.ts';
 export { type StickySignal, stickySignalSchema } from './sticky-signal.schema.ts';
-export { type TokenScope, tokenScopeSchema, tokenScopes } from './token-scopes.ts';
+export {
+  type TokenScope,
+  tokenNamePattern,
+  tokenScopeSchema,
+  tokenScopes,
+} from './token-scopes.ts';
 export { type WebhookEnvelope, webhookEnvelopeSchema } from './webhook-envelope.schema.ts';

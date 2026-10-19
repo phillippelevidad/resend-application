@@ -1,5 +1,5 @@
 import { createRoute, type RouteHandler, z } from '@hono/zod-openapi';
-import { tokenScopeSchema } from '@ledger/core';
+import { tokenNamePattern, tokenScopeSchema } from '@ledger/core';
 import { bearerSecurity, requireScope } from './auth.middleware.ts';
 import type { ApiEnv } from './create-api.ts';
 import type { CreateTokenCommand } from './create-token.command.ts';
@@ -8,10 +8,7 @@ import { createdTokenResponseMapper } from './token-response.mapper.ts';
 import { createdTokenResponseSchema } from './token-response.schema.ts';
 
 // D21: the operator's label, 1 to 64 characters, starting with a letter or digit.
-const nameSchema = z
-  .string()
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)
-  .openapi({ example: 'review-2026-10-20' });
+const nameSchema = z.string().regex(tokenNamePattern).openapi({ example: 'review-2026-10-20' });
 
 // `token.create` → `POST /tokens` (api-contract.md → token.create).
 export const createTokenRoute = createRoute({

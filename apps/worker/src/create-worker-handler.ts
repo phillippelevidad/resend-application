@@ -1,4 +1,4 @@
-import { errorRegistry } from '@ledger/core';
+import { errorRegistry, RESUME_EVENT } from '@ledger/core';
 import { type BatchResponse, errorFields, LedgerError, type Logger } from '@ledger/shared';
 import type { ResumeResult, Worker } from '@ledger/worker';
 import { z } from 'zod';
@@ -13,7 +13,7 @@ const sqsEventSchema = z.object({
 
 // D17: the resume event, sent asynchronously by the hourly schedule and synchronously by the read
 // API's `worker.resumeEventSource` (D20).
-const resumeEventSchema = z.object({ ledger: z.literal('resume-event-source') });
+const resumeEventSchema = z.object({ ledger: z.literal(RESUME_EVENT.ledger) });
 
 // The one field of the Lambda context object the adapter reads (D6).
 export type LambdaContext = { readonly awsRequestId: string };

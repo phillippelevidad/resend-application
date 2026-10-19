@@ -1,14 +1,17 @@
-import { type EventSourceState, errorRegistry, eventSourceStateSchema } from '@ledger/core';
+import {
+  type EventSourceState,
+  errorRegistry,
+  eventSourceStateSchema,
+  RESUME_EVENT,
+  resumeOutcomes,
+} from '@ledger/core';
 import { type FunctionInvokePort, LedgerError } from '@ledger/shared';
 import { z } from 'zod';
 
-// D17: the event the worker's handler answers with its `resume()`.
-const RESUME_EVENT = { ledger: 'resume-event-source' } as const;
-
 // D16's `ResumeResult`, parsed here because the invoke's answer crosses a function boundary: the API
-// never trusts it unparsed (D20).
+// never trusts it unparsed (D20). D17's `RESUME_EVENT` is what the worker's handler answers.
 const resumeResultSchema = z.object({
-  outcome: z.enum(['resumed', 'already_enabled', 'probe_failed']),
+  outcome: z.enum(resumeOutcomes),
   state: eventSourceStateSchema,
 });
 
