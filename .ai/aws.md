@@ -269,6 +269,17 @@ below was ratified by the owner on 2026-10-15.
    - **Just under the threshold**, a sustained flood spends ≤ 60k requests/h ≈ USD 0.18/h until the
      budget trip, which lags by up to a day of billing data plus 12 h (AWS-34): ≤ 36 h ≈
      **USD 6.5 above the cap**, the worst-case overshoot.
+   - **Burst throttle (slice 3):** `pnpm sim --burst` raises the `$default` stage's default route
+     to rate **1,200** rps, burst **2,400** for its run only: 1.2× a 10,000-in-10 s burst's mean
+     rate and two seconds of tokens, so a best-effort throttle (AWS-14) does not reject a paced
+     burst. Before raising, it refuses a tripped or unarmed stack and runs the **usage-trip
+     preflight**: the usage trip's metric `Sum` over its last period, read from the deployed alarm,
+     plus the burst's events MUST NOT exceed the threshold. A burst that dies without its `finally`
+     leaves the throttle raised until the usage trip fires (≤ 20 min): ≤ 1.44M requests ≈
+     **USD 4.3**, below the USD 6.5 worst case above. Evidence:
+     [burst-throttle.test.ts](../packages/aws/src/burst-throttle.test.ts) (the raise, and the
+     restore only over the raised value), [burst-run.test.ts](../sim/src/burst-run.test.ts) (the
+     preflight refusals, the `finally` restore, a trip left in place).
    Evidence for the throttle, the threshold and the constructed ARN:
    [app.stack.test.ts](../infra/src/app.stack.test.ts).
 8. **Evidence.** A CDK assertion test proves the budget (with `IncludeCredit: false`), the notifications and the kill-switch wiring exist

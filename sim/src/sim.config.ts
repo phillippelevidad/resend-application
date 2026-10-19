@@ -8,6 +8,8 @@ export type SimConfig =
   | { mode: 'offline' }
   | {
       mode: 'live';
+      // `LEDGER_URL` as given, which an AWS run's guard compares with `ApiUrl` (D23). Never printed.
+      ledgerUrl: string;
       // `$LEDGER_URL/webhooks/resend` (D32), never printed: it is the user's own value.
       ingestUrl: string;
       // The `whsec_` simulator secret `signWebhook` signs with (ADR-016).
@@ -62,6 +64,7 @@ export function readSimConfig(env: Env): SimConfig {
   }
   return {
     mode: 'live',
+    ledgerUrl,
     ingestUrl: ingestUrlOf(ledgerUrl),
     simulatorSecret: env.LEDGER_SIMULATOR_SECRET ?? '',
     databaseUrl: env.DATABASE_URL ?? '',

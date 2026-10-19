@@ -29,6 +29,7 @@ describe('readSimConfig', () => {
 
     expect(config.mode).toBe('live');
     if (config.mode !== 'live') return;
+    expect(config.ledgerUrl).toBe(live.LEDGER_URL);
     expect(config.ingestUrl).toBe('http://127.0.0.1:3200/webhooks/resend');
     expect(config.addressHashKey).toEqual(new Uint8Array(32).fill(0x0a));
     expect(config.simulatorSecret).toBe(live.LEDGER_SIMULATOR_SECRET);
