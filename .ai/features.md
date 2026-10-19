@@ -68,7 +68,7 @@ listed there as not an operation ([Coverage](api-contract.md#coverage)).
 - **Trigger:** DLQ depth alarm > 0.
 - **Steps:** `ledger dlq inspect` → fix deployed → `ledger dlq redrive` → depth returns to 0.
 - **Surfaces:** `dlq.listMessages` (`ledger dlq inspect`), `dlq.startRedrive` (`ledger dlq redrive`), `health.get`.
-- **Evidence:** poison-isolation integration test + simulator invariant 4 · `ledger dlq inspect` and `ledger dlq redrive`: [inspect CLI test](../apps/cli/src/commands/dlq-list-messages.cli.test.ts), [redrive CLI test](../apps/cli/src/commands/dlq-start-redrive.cli.test.ts), [route redaction test](../packages/api/src/list-dlq-messages.route.int.test.ts), [redrive route test](../packages/api/src/start-dlq-redrive.route.int.test.ts) · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws).
+- **Evidence:** [poison-isolation integration test](../packages/worker/src/poison-isolation.int.test.ts) + simulator invariant 4, on the deployed stack by `pnpm sim --poison 1` (2026-10-19), then inspect, redrive and the depth back at 0 · `ledger dlq inspect` and `ledger dlq redrive`: [inspect CLI test](../apps/cli/src/commands/dlq-list-messages.cli.test.ts), [redrive CLI test](../apps/cli/src/commands/dlq-start-redrive.cli.test.ts), [route redaction test](../packages/api/src/list-dlq-messages.route.int.test.ts), [redrive route test](../packages/api/src/start-dlq-redrive.route.int.test.ts) · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws).
 
 ### J5 — Secret rotation
 
@@ -92,13 +92,13 @@ listed there as not an operation ([Coverage](api-contract.md#coverage)).
 - **Trigger:** thousands of webhooks in seconds, up to the [ceiling](about.md#platform-scale-assumptions) of 10,000 in 10 s.
 - **Steps:** ingest keeps returning `200` → queue depth rises → worker drains at the bounded rate.
 - **Surfaces:** `pnpm sim --burst 10000/10s` (owner demo, [ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)); `health.get`.
-- **Evidence:** simulator invariants after burst · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws); published p50/p99 ingest latency and drain time in `docs/results.md` · [slice 9](build-checklist.md#9--real-aws-burst-numbers).
+- **Evidence:** simulator invariants 1, 2 and 4 after `pnpm sim --burst 10000/10s` on the deployed stack: 10,000 of 10,000 accepted in 16.8 s, client-observed p50 638 ms and p99 4,195 ms, every event stored after 101 s (2026-10-19). An earlier run that day accepted 9,999: CloudWatch counted 9,999 ingest requests with no `4xx`, `5xx`, error or throttle, so one failed on the sender's own connection before reaching AWS, and since the sender does not retry, that run failed its own exit rule and was rerun · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws); published p50/p99 ingest latency and drain time in `docs/results.md` · [slice 9](build-checklist.md#9--real-aws-burst-numbers).
 
 ## Ingest
 
 - Signature and timestamp verified on the raw body before enqueue; bad signature → `401`. evidence: unit test ([create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts)) · [slice 1](build-checklist.md#1--local-ledger-and-read-path).
 - `200` on enqueue, `503` on enqueue failure so Resend retries ([RS-10](resend.md#facts)). evidence: unit test ([create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts)) · [slice 1](build-checklist.md#1--local-ledger-and-read-path); both body encodings on AWS · [slice 2](build-checklist.md#2--durable-ingest-on-aws).
-- No database in the request path: a database outage is not a failed delivery. evidence: `--chaos db-outage` keeps ingest at `200` with 0 lost · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws).
+- No database in the request path: a database outage is not a failed delivery. evidence: `pnpm sim --chaos db-outage` on the deployed stack: 26 of 26 deliveries `200` on their first attempt with the database unreachable, 0 lost (invariant 1 after the resume), 2026-10-19 · [slice 3](build-checklist.md#3--operations-and-evidence-on-aws).
 
 ## Ledger & projections
 
@@ -132,7 +132,7 @@ listed there as not an operation ([Coverage](api-contract.md#coverage)).
 
 ## Evidence harness
 
-- `pnpm sim` ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) with duplicate, shuffle, burst and chaos knobs; four invariants checked after every run. evidence: the run output itself · [slice 1](build-checklist.md#1--local-ledger-and-read-path) (duplicates, shuffle), [slice 3](build-checklist.md#3--operations-and-evidence-on-aws) (burst, chaos).
+- `pnpm sim` ([ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) with duplicate, shuffle, burst and chaos knobs; four invariants checked after every run. evidence: the run output itself · [slice 1](build-checklist.md#1--local-ledger-and-read-path) (duplicates, shuffle), [slice 3](build-checklist.md#3--operations-and-evidence-on-aws) (on the deployed stack, 2026-10-19: duplicates and shuffle, poison, `--chaos db-outage` and the burst).
 - Real-AWS burst numbers published in `docs/results.md`. evidence: the results doc · [slice 9](build-checklist.md#9--real-aws-burst-numbers).
 - The whole system runs with `docker compose up` and no AWS account, through a Postgres-backed queue behind the queue port ([ADR-013](architecture.md#adr-013--pure-core-and-local-mode)). evidence: `pnpm sim` invariants 1, 2 and 4 in local mode · [slice 2B](build-checklist.md#2b--local-mode-queue-and-docker-compose).
 
