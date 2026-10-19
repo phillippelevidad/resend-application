@@ -4,14 +4,21 @@
 // queues, secrets least privilege, each function's environment, the schedule, the usage trip and the
 // outputs). Every number comes from the stack's own named constants. Synthesis bundles every
 // function for real, so a broken entry fails here too. No credentials and no AWS call.
-import { apiEnv, ingestEnv, workerEnv } from '@ledger/shared';
+// Slice 3 adds the three operating alarms (D17), every alarm's runbook link (D18), the read API's DLQ
+// grants (D9) and the simulator secret, synthesized both ways (D12).
+import { RUNBOOK_BASE_URL } from '@ledger/core';
+import { apiEnv, ingestEnv, ingestSimulatorEnv, workerEnv } from '@ledger/shared';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 import {
+  API_5XX_PERIOD_SECONDS,
+  API_5XX_THRESHOLD,
   API_MEMORY_MB,
   API_TIMEOUT_SECONDS,
   AppStack,
+  DLQ_DEPTH_PERIOD_SECONDS,
+  DLQ_DEPTH_THRESHOLD,
   DLQ_RETENTION_DAYS,
   HOURLY_CRON,
   INGEST_MEMORY_MB,
@@ -20,6 +27,8 @@ import {
   MAPPING_BATCH_SIZE,
   MAPPING_MAX_CONCURRENCY,
   MAX_RECEIVE_COUNT,
+  QUEUE_AGE_PERIOD_SECONDS,
+  QUEUE_AGE_THRESHOLD_SECONDS,
   RESUME_EVENT,
   SCHEDULE_MAX_EVENT_AGE_SECONDS,
   SCHEDULE_RETRY_ATTEMPTS,
@@ -32,7 +41,12 @@ import {
   WORKER_MEMORY_MB,
   WORKER_TIMEOUT_SECONDS,
 } from './app.stack.ts';
-import { FREE_STANDARD_ALARMS, GuardrailsStack, tripTopicName } from './guardrails.stack.ts';
+import {
+  alertTopicName,
+  FREE_STANDARD_ALARMS,
+  GuardrailsStack,
+  tripTopicName,
+} from './guardrails.stack.ts';
 import { LOG_RETENTION } from './ledger-function.construct.ts';
 
 const APP_STACK_NAME = 'LedgerApp';
@@ -40,12 +54,19 @@ const GUARDRAILS_STACK_NAME = 'LedgerGuardrails';
 const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 const DAY_SECONDS = 86_400;
 
-const template = Template.fromStack(
-  new AppStack(new App(), APP_STACK_NAME, {
-    commit: COMMIT,
-    guardrailsStackName: GUARDRAILS_STACK_NAME,
-  }),
-);
+const synthApp = (simulator: boolean): Template =>
+  Template.fromStack(
+    new AppStack(new App(), APP_STACK_NAME, {
+      commit: COMMIT,
+      guardrailsStackName: GUARDRAILS_STACK_NAME,
+      simulator,
+    }),
+  );
+
+// The adopter's default (no simulator secret) and the owner's deployment (D12). Synthesized here,
+// once each, for the same timeout reason as the guardrails template below.
+const template = synthApp(false);
+const withSimulator = synthApp(true);
 
 // The guardrails stack at its most (armed, with the drill budget and an alert address), for the
 // alarm count across both stacks. Synthesized here, not inside the test: bundling the kill switch
@@ -68,8 +89,8 @@ type Statement = {
   Condition?: Record<string, Record<string, unknown>>;
 };
 
-const resourcesOf = (type: string): Record<string, Resource> =>
-  template.findResources(type) as Record<string, Resource>;
+const resourcesOf = (type: string, from: Template = template): Record<string, Resource> =>
+  from.findResources(type) as Record<string, Resource>;
 const only = <T>(record: Record<string, T>): [string, T] => {
   const entries = Object.entries(record);
   expect(entries).toHaveLength(1);
@@ -78,20 +99,20 @@ const only = <T>(record: Record<string, T>): [string, T] => {
 const asArray = <T>(value: T | T[]): T[] => (Array.isArray(value) ? value : [value]);
 
 // The three functions by their stack-prefixed physical names (D27).
-const functionNamed = (name: string): [string, Resource] =>
+const functionNamed = (name: string, from: Template = template): [string, Resource] =>
   only(
     Object.fromEntries(
-      Object.entries(resourcesOf('AWS::Lambda::Function')).filter(
+      Object.entries(resourcesOf('AWS::Lambda::Function', from)).filter(
         ([, fn]) => fn.Properties.FunctionName === `${APP_STACK_NAME}-${name}`,
       ),
     ),
   );
 
 // Every statement of the policies attached to a function's role.
-const statementsOf = (name: string): Statement[] => {
-  const [, fn] = functionNamed(name);
+const statementsOf = (name: string, from: Template = template): Statement[] => {
+  const [, fn] = functionNamed(name, from);
   const roleId = (fn.Properties.Role as { 'Fn::GetAtt': [string, string] })['Fn::GetAtt'][0];
-  return Object.values(resourcesOf('AWS::IAM::Policy'))
+  return Object.values(resourcesOf('AWS::IAM::Policy', from))
     .filter((policy) =>
       (policy.Properties.Roles as { Ref: string }[]).some((role) => role.Ref === roleId),
     )
@@ -100,8 +121,60 @@ const statementsOf = (name: string): Statement[] => {
     );
 };
 
-const logicalIdOf = (type: string, predicate: (resource: Resource) => boolean): string =>
-  only(Object.fromEntries(Object.entries(resourcesOf(type)).filter(([, r]) => predicate(r))))[0];
+const logicalIdOf = (
+  type: string,
+  predicate: (resource: Resource) => boolean,
+  from: Template = template,
+): string =>
+  only(
+    Object.fromEntries(Object.entries(resourcesOf(type, from)).filter(([, r]) => predicate(r))),
+  )[0];
+
+// A secret by the logical name its description begins with (Secrets layout).
+const secretIdOf = (logicalName: string, from: Template = template): string =>
+  logicalIdOf(
+    'AWS::SecretsManager::Secret',
+    (secret) => String(secret.Properties.Description).startsWith(logicalName),
+    from,
+  );
+
+// The secrets a function's role can read, by logical id.
+const secretsReadBy = (name: string, from: Template = template): string[] =>
+  statementsOf(name, from)
+    .filter((statement) => asArray(statement.Action).includes('secretsmanager:GetSecretValue'))
+    .flatMap((statement) => asArray(statement.Resource as { Ref: string }))
+    .map((resource) => resource.Ref)
+    .sort();
+
+const environmentOf = (name: string, from: Template = template): Record<string, unknown> =>
+  (functionNamed(name, from)[1].Properties.Environment as { Variables: Record<string, unknown> })
+    .Variables;
+
+// An alarm by its physical name.
+const alarmNamed = (alarmName: string): Resource =>
+  only(
+    Object.fromEntries(
+      Object.entries(resourcesOf('AWS::CloudWatch::Alarm')).filter(
+        ([, alarm]) => alarm.Properties.AlarmName === alarmName,
+      ),
+    ),
+  )[1];
+
+// `arn:<partition>:sns:<region>:<account>:<topic>`, every variable part a pseudo-parameter (item 1).
+const constructedTopicArn = (topicName: string) => ({
+  'Fn::Join': [
+    '',
+    [
+      'arn:',
+      { Ref: 'AWS::Partition' },
+      ':sns:',
+      { Ref: 'AWS::Region' },
+      ':',
+      { Ref: 'AWS::AccountId' },
+      `:${topicName}`,
+    ],
+  ],
+});
 
 const sourceQueueId = logicalIdOf('AWS::SQS::Queue', (queue) =>
   Boolean(queue.Properties.RedrivePolicy),
@@ -163,13 +236,20 @@ describe('cost brake on the app template', () => {
     template.resourceCountIs(['AWS::CloudFormation::', 'Custom', 'Resource'].join(''), 0);
   });
 
-  it('holds the two Secrets layout secrets, destroyed, unnamed and empty in the template (AWS-11, AWS-38, CBL-01)', () => {
-    template.resourceCountIs('AWS::SecretsManager::Secret', 2);
-    template.allResources('AWS::SecretsManager::Secret', { DeletionPolicy: 'Delete' });
-    template.allResourcesProperties('AWS::SecretsManager::Secret', {
-      SecretString: Match.absent(),
-      Name: Match.absent(),
-    });
+  it('holds the two Secrets layout secrets, three with the simulator, destroyed, unnamed and empty in the template (AWS-11, AWS-38, CBL-01, D12)', () => {
+    for (const [from, count] of [
+      [template, 2],
+      [withSimulator, 3],
+    ] as const) {
+      from.resourceCountIs('AWS::SecretsManager::Secret', count);
+      from.allResources('AWS::SecretsManager::Secret', { DeletionPolicy: 'Delete' });
+      from.allResourcesProperties('AWS::SecretsManager::Secret', {
+        SecretString: Match.absent(),
+        GenerateSecretString: Match.anyValue(),
+        Name: Match.absent(),
+      });
+    }
+    secretIdOf('ledger/simulator-signing-secret', withSimulator);
   });
 
   it('encrypts every queue with SSE-SQS and holds no KMS key (AWS-25, AWS-31)', () => {
@@ -220,29 +300,33 @@ describe('cost brake on the app template', () => {
     });
   });
 
-  it('keeps the standard alarms of both stacks within the free count, with no composite alarm (AWS-28)', () => {
+  it('keeps the standard alarms of both stacks within the free count, with no composite alarm (AWS-28, D17)', () => {
     const guardrails = fullGuardrails;
-    const alarms = [template, guardrails].map(
+    // Both stacks at their most: the kill switch armed and the simulator on.
+    const alarms = [withSimulator, guardrails].map(
       (t) => Object.keys(t.findResources('AWS::CloudWatch::Alarm')).length,
     );
-    expect(alarms).toEqual([1, 1]);
-    expect(alarms.reduce((sum, count) => sum + count, 0)).toBeLessThanOrEqual(FREE_STANDARD_ALARMS);
-    template.resourceCountIs('AWS::CloudWatch::CompositeAlarm', 0);
-    guardrails.resourceCountIs('AWS::CloudWatch::CompositeAlarm', 0);
+    expect(alarms).toEqual([4, 1]);
+    const total = alarms.reduce((sum, count) => sum + count, 0);
+    expect(total).toBe(5);
+    expect(total).toBeLessThanOrEqual(FREE_STANDARD_ALARMS);
+    for (const t of [template, withSimulator, guardrails]) {
+      t.resourceCountIs('AWS::CloudWatch::CompositeAlarm', 0);
+    }
   });
 
-  it('lets no secret value reach a function or the template (CBL-01)', () => {
-    // Built at run time, so pp-infra's review grep 5 stays a check on the stacks' code.
-    expect(JSON.stringify(template.toJSON())).not.toContain(
-      ['resolve', 'secretsmanager'].join(':'),
-    );
-    const functions = Object.values(resourcesOf('AWS::Lambda::Function'));
-    expect(functions).toHaveLength(3);
-    for (const fn of functions) {
-      const variables = (fn.Properties.Environment as { Variables: Record<string, unknown> })
-        .Variables;
-      for (const value of Object.values(variables))
-        expect(isReferenceOrPlainName(value)).toBe(true);
+  it('lets no secret value reach a function or the template, with or without the simulator (CBL-01)', () => {
+    for (const from of [template, withSimulator]) {
+      // Built at run time, so pp-infra's review grep 5 stays a check on the stacks' code.
+      expect(JSON.stringify(from.toJSON())).not.toContain(['resolve', 'secretsmanager'].join(':'));
+      const functions = Object.values(resourcesOf('AWS::Lambda::Function', from));
+      expect(functions).toHaveLength(3);
+      for (const fn of functions) {
+        const variables = (fn.Properties.Environment as { Variables: Record<string, unknown> })
+          .Variables;
+        for (const value of Object.values(variables))
+          expect(isReferenceOrPlainName(value)).toBe(true);
+      }
     }
   });
 });
@@ -265,6 +349,12 @@ describe('the constants hold the values the spec pins', () => {
       HOURLY_CRON,
       SCHEDULE_RETRY_ATTEMPTS,
       SCHEDULE_MAX_EVENT_AGE_SECONDS,
+      QUEUE_AGE_PERIOD_SECONDS,
+      QUEUE_AGE_THRESHOLD_SECONDS,
+      DLQ_DEPTH_PERIOD_SECONDS,
+      DLQ_DEPTH_THRESHOLD,
+      API_5XX_PERIOD_SECONDS,
+      API_5XX_THRESHOLD,
     }).toEqual({
       SOURCE_RETENTION_DAYS: 13,
       DLQ_RETENTION_DAYS: 14,
@@ -278,6 +368,13 @@ describe('the constants hold the values the spec pins', () => {
       HOURLY_CRON: 'cron(0 * * * ? *)',
       SCHEDULE_RETRY_ATTEMPTS: 0,
       SCHEDULE_MAX_EVENT_AGE_SECONDS: 60,
+      // aws-stacks spec, D17: the three operating alarms.
+      QUEUE_AGE_PERIOD_SECONDS: 300,
+      QUEUE_AGE_THRESHOLD_SECONDS: 900,
+      DLQ_DEPTH_PERIOD_SECONDS: 300,
+      DLQ_DEPTH_THRESHOLD: 0,
+      API_5XX_PERIOD_SECONDS: 300,
+      API_5XX_THRESHOLD: 0,
     });
   });
 });
@@ -366,21 +463,68 @@ describe('wiring of the app template', () => {
   });
 
   it('grants each function read on exactly the secrets the Secrets layout gives it', () => {
-    const signingId = logicalIdOf('AWS::SecretsManager::Secret', (secret) =>
-      String(secret.Properties.Description).startsWith('ledger/webhook-signing-secrets'),
+    const signingId = secretIdOf('ledger/webhook-signing-secrets');
+    const databaseId = secretIdOf('ledger/database');
+    expect(secretsReadBy('ingest')).toEqual([signingId]);
+    expect(secretsReadBy('worker')).toEqual([databaseId]);
+    expect(secretsReadBy('api')).toEqual([databaseId]);
+  });
+
+  it('with the simulator, lets only ingest read the simulator secret (ADR-016, D12)', () => {
+    const signingId = secretIdOf('ledger/webhook-signing-secrets', withSimulator);
+    const databaseId = secretIdOf('ledger/database', withSimulator);
+    const simulatorId = secretIdOf('ledger/simulator-signing-secret', withSimulator);
+    expect(secretsReadBy('ingest', withSimulator)).toEqual([signingId, simulatorId].sort());
+    expect(secretsReadBy('worker', withSimulator)).toEqual([databaseId]);
+    expect(secretsReadBy('api', withSimulator)).toEqual([databaseId]);
+    // No other policy in the template names it either.
+    const policiesNaming = Object.values(resourcesOf('AWS::IAM::Policy', withSimulator)).filter(
+      (policy) => JSON.stringify(policy.Properties.PolicyDocument).includes(simulatorId),
     );
-    const databaseId = logicalIdOf('AWS::SecretsManager::Secret', (secret) =>
-      String(secret.Properties.Description).startsWith('ledger/database'),
+    expect(policiesNaming).toHaveLength(1);
+    expect(environmentOf('ingest', withSimulator)[ingestSimulatorEnv.SIMULATOR_SECRET_ARN]).toEqual(
+      { Ref: simulatorId },
     );
-    const secretsRead = (name: string): string[] =>
-      statementsOf(name)
-        .filter((statement) => asArray(statement.Action).includes('secretsmanager:GetSecretValue'))
-        .flatMap((statement) => asArray(statement.Resource as { Ref: string }))
-        .map((resource) => resource.Ref)
-        .sort();
-    expect(secretsRead('ingest')).toEqual([signingId]);
-    expect(secretsRead('worker')).toEqual([databaseId]);
-    expect(secretsRead('api')).toEqual([databaseId]);
+  });
+
+  it('without the simulator, holds no simulator secret and names none in any environment or policy (ADR-016, D12)', () => {
+    const json = JSON.stringify(template.toJSON());
+    expect(json).not.toContain(ingestSimulatorEnv.SIMULATOR_SECRET_ARN);
+    expect(json).not.toContain('ledger/simulator-signing-secret');
+    expect(json).not.toContain('SimulatorSecret');
+  });
+
+  it('grants the read API the DLQ inspect and redrive minimum, and no other function a DLQ permission (D9, AWS-60)', () => {
+    const sqsGrants = (name: string, from: Template = template): Record<string, string[]> => {
+      const grants: Record<string, string[]> = {};
+      for (const statement of statementsOf(name, from)) {
+        const actions = asArray(statement.Action).filter((action) => action.startsWith('sqs:'));
+        if (actions.length === 0) continue;
+        for (const resource of asArray(statement.Resource as { 'Fn::GetAtt': [string, string] })) {
+          const queueId = resource['Fn::GetAtt'][0];
+          grants[queueId] = [...(grants[queueId] ?? []), ...actions].sort();
+        }
+      }
+      return grants;
+    };
+    for (const from of [template, withSimulator]) {
+      expect(sqsGrants('api', from)).toEqual({
+        [dlqId]: [
+          'sqs:DeleteMessage',
+          'sqs:GetQueueAttributes',
+          'sqs:ListMessageMoveTasks',
+          'sqs:ReceiveMessage',
+          'sqs:StartMessageMoveTask',
+        ],
+        [sourceQueueId]: ['sqs:GetQueueAttributes', 'sqs:SendMessage'],
+      });
+      for (const name of ['ingest', 'worker']) {
+        const grants = sqsGrants(name, from);
+        expect(grants[dlqId]).toBeUndefined();
+        expect(Object.values(grants).flat()).not.toContain('sqs:StartMessageMoveTask');
+        expect(Object.values(grants).flat()).not.toContain('sqs:ListMessageMoveTasks');
+      }
+    }
   });
 
   it("scopes the event source mapping calls to the worker's mapping by condition (D16, D27)", () => {
@@ -409,6 +553,14 @@ describe('wiring of the app template', () => {
     expect(keysOf('ingest')).toEqual(Object.values(ingestEnv).sort());
     expect(keysOf('worker')).toEqual(Object.values(workerEnv).sort());
     expect(keysOf('api')).toEqual(Object.values(apiEnv).sort());
+    // D12: with the simulator, ingest's set is its names plus the simulator names, and only its.
+    const keysWithSimulator = (name: string) =>
+      Object.keys(environmentOf(name, withSimulator)).sort();
+    expect(keysWithSimulator('ingest')).toEqual(
+      [...Object.values(ingestEnv), ...Object.values(ingestSimulatorEnv)].sort(),
+    );
+    expect(keysWithSimulator('worker')).toEqual(Object.values(workerEnv).sort());
+    expect(keysWithSimulator('api')).toEqual(Object.values(apiEnv).sort());
     const [, api] = functionNamed('api');
     expect(
       (api.Properties.Environment as { Variables: Record<string, unknown> }).Variables[
@@ -418,10 +570,9 @@ describe('wiring of the app template', () => {
   });
 
   it('trips on the HTTP API request count over 15 minutes through a constructed trip-topic ARN (D30, item 1)', () => {
-    const [, alarm] = only(resourcesOf('AWS::CloudWatch::Alarm'));
+    const alarm = alarmNamed(`${APP_STACK_NAME}-usage-trip`);
     const apiId = only(resourcesOf('AWS::ApiGatewayV2::Api'))[0];
     expect(alarm.Properties).toMatchObject({
-      AlarmName: `${APP_STACK_NAME}-usage-trip`,
       Namespace: 'AWS/ApiGateway',
       MetricName: 'Count',
       Dimensions: [{ Name: 'ApiId', Value: { Ref: apiId } }],
@@ -432,24 +583,79 @@ describe('wiring of the app template', () => {
       ComparisonOperator: 'GreaterThanThreshold',
       TreatMissingData: 'notBreaching',
     });
-    const actions = alarm.Properties.AlarmActions as unknown[];
-    expect(actions).toHaveLength(1);
-    // `arn:<partition>:sns:<region>:<account>:<trip topic>`, every variable part a pseudo-parameter.
-    expect(actions[0]).toEqual({
-      'Fn::Join': [
-        '',
-        [
-          'arn:',
-          { Ref: 'AWS::Partition' },
-          ':sns:',
-          { Ref: 'AWS::Region' },
-          ':',
-          { Ref: 'AWS::AccountId' },
-          `:${tripTopicName(GUARDRAILS_STACK_NAME)}`,
-        ],
-      ],
-    });
+    // The trip topic's constructed ARN is its one action.
+    expect(alarm.Properties.AlarmActions).toEqual([
+      constructedTopicArn(tripTopicName(GUARDRAILS_STACK_NAME)),
+    ]);
+    expect(alarm.Properties.OKActions).toBeUndefined();
+    expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
     expect(JSON.stringify(template.toJSON())).not.toContain('Fn::ImportValue');
+  });
+
+  // D17, D14, D15, D16: one assertion per operating alarm, each to the alert topic's constructed
+  // ARN, its one action, on `ALARM` only, missing data not breaching.
+  const operatingAlarm = (alarmName: string, metric: Record<string, unknown>) => {
+    const alarm = alarmNamed(alarmName);
+    expect(alarm.Properties).toMatchObject({
+      ...metric,
+      EvaluationPeriods: 1,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    });
+    expect(alarm.Properties.AlarmActions).toEqual([
+      constructedTopicArn(alertTopicName(GUARDRAILS_STACK_NAME)),
+    ]);
+    expect(alarm.Properties.OKActions).toBeUndefined();
+    expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
+  };
+
+  it('alarms when the source queue holds a message older than 15 minutes, to the alert topic (D17, ADR-015, AWS-22)', () => {
+    operatingAlarm(`${APP_STACK_NAME}-queue-age`, {
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateAgeOfOldestMessage',
+      Dimensions: [{ Name: 'QueueName', Value: { 'Fn::GetAtt': [sourceQueueId, 'QueueName'] } }],
+      Statistic: 'Maximum',
+      Period: QUEUE_AGE_PERIOD_SECONDS,
+      Threshold: QUEUE_AGE_THRESHOLD_SECONDS,
+    });
+  });
+
+  it('alarms when the DLQ holds any visible message, to the alert topic (D17, AWS-22)', () => {
+    operatingAlarm(`${APP_STACK_NAME}-dlq-depth`, {
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateNumberOfMessagesVisible',
+      Dimensions: [{ Name: 'QueueName', Value: { 'Fn::GetAtt': [dlqId, 'QueueName'] } }],
+      Statistic: 'Maximum',
+      Period: DLQ_DEPTH_PERIOD_SECONDS,
+      Threshold: DLQ_DEPTH_THRESHOLD,
+    });
+  });
+
+  it('alarms on any HTTP API 5xx in five minutes, to the alert topic (D17, RS-10, RS-11, AWS-30)', () => {
+    operatingAlarm(`${APP_STACK_NAME}-api-5xx`, {
+      Namespace: 'AWS/ApiGateway',
+      MetricName: '5xx',
+      Dimensions: [
+        { Name: 'ApiId', Value: { Ref: only(resourcesOf('AWS::ApiGatewayV2::Api'))[0] } },
+      ],
+      Statistic: 'Sum',
+      Period: API_5XX_PERIOD_SECONDS,
+      Threshold: API_5XX_THRESHOLD,
+    });
+  });
+
+  it("ends every alarm's description with its runbook link (D18)", () => {
+    const alarms = Object.values(resourcesOf('AWS::CloudWatch::Alarm'));
+    expect(alarms).toHaveLength(4);
+    for (const alarm of alarms) {
+      const name = String(alarm.Properties.AlarmName);
+      const description = String(alarm.Properties.AlarmDescription);
+      expect(description.endsWith(`. Runbook: ${RUNBOOK_BASE_URL}#${name.toLowerCase()}`)).toBe(
+        true,
+      );
+      // One line, no ARN or account id (CBL-01).
+      expect(description).not.toMatch(/\n|arn:|\d{12}/);
+    }
   });
 
   it('admits one burst of about 12,000 requests in 15 minutes below the usage trip (item 7)', () => {
@@ -478,6 +684,18 @@ describe('wiring of the app template', () => {
     expect(outputs.ThrottleBurstLimit?.Value).toBe(String(THROTTLE_BURST_LIMIT));
     expect(outputs.QueueUrl?.Value).toEqual({ Ref: sourceQueueId });
     expect(outputs.DlqUrl?.Value).toEqual({ Ref: dlqId });
+  });
+
+  it('outputs SimulatorSecretArn only with the simulator (D12, D21)', () => {
+    const outputsOf = (from: Template) =>
+      from.toJSON().Outputs as Record<string, { Value: unknown }>;
+    expect(outputsOf(template).SimulatorSecretArn).toBeUndefined();
+    expect(outputsOf(withSimulator).SimulatorSecretArn?.Value).toEqual({
+      Ref: secretIdOf('ledger/simulator-signing-secret', withSimulator),
+    });
+    expect(Object.keys(outputsOf(withSimulator)).sort()).toEqual(
+      [...Object.keys(outputsOf(template)), 'SimulatorSecretArn'].sort(),
+    );
   });
 });
 

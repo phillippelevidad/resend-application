@@ -146,8 +146,10 @@ makes no AWS call before the first invocation (D32). Settled by it on 2026-10-17
   `/routes/*` grant. AWS-U11 stays `[Unverified]` until the trip drill's update succeeds under it.
 - **Physical names** (D27): `<stack>-<fn>` for functions (`LedgerApp-ingest`, `LedgerApp-worker`,
   `LedgerApp-api`, `LedgerGuardrails-kill-switch`), `LedgerApp-http` for the HTTP API,
-  `LedgerApp-hourly` for the schedule, `LedgerApp-usage-trip` and
-  `LedgerGuardrails-kill-switch-errors` for the alarms, `LedgerGuardrails-trip` and
+  `LedgerApp-hourly` for the schedule, `LedgerApp-usage-trip`, `LedgerApp-queue-age`,
+  `LedgerApp-dlq-depth`, `LedgerApp-api-5xx` and `LedgerGuardrails-kill-switch-errors` for the
+  alarms (the names from `@ledger/aws`'s `ledger-stacks.ts`, so the scripts and `sim` read the same
+  ones), `LedgerGuardrails-trip` and
   `LedgerGuardrails-alert` for the topics, `LedgerGuardrails-monthly` (and `-drill`) for the budgets,
   `/ledger/<function name>` for log groups. Queues and secrets take none.
 - **The worker's event source mapping** carries ADR-008's settings; `maxReceiveCount` is AWS-09's.
@@ -173,3 +175,12 @@ slice 2's. It deploys first and imports nothing from the app stack (item 1).
   because it needs the HTTP API's id. Its action is the trip topic's ARN built with `formatArn` from
   the topic's fixed name, never a cross-stack reference; the guardrails topics' policies let
   `cloudwatch.amazonaws.com` publish.
+- **The operating alarms** (slice 3, D17) also live in the app stack: queue age, DLQ depth and the
+  HTTP API's `5xx`, each on a free vended metric (AWS-22, AWS-30), one evaluation period,
+  `TreatMissingData: notBreaching`, and one action on `ALARM` only, the alert topic's ARN built the
+  same way from `alertTopicName`. No OK action: one email per incident.
+- **Every alarm's `AlarmDescription`** (both stacks) is one line of what fired, then
+  `Runbook: ${RUNBOOK_BASE_URL}#<alarm name in lowercase>`, built by `alarmDescription` in
+  `guardrails.stack.ts`; no ARN, account id or address (CBL-01). A new alarm adds its `###` entry
+  under `## Alarms` in [`docs/runbook.md`](../../../../docs/runbook.md) in the same change, or
+  `infra/src/runbook-links.test.ts` fails naming it.

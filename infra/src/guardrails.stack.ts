@@ -1,3 +1,5 @@
+import { KILL_SWITCH_ERRORS_ALARM_NAME } from '@ledger/aws';
+import { RUNBOOK_BASE_URL } from '@ledger/core';
 import { ArnFormat, Aws, CfnOutput, Duration, Stack, type StackProps } from 'aws-cdk-lib';
 import { CfnBudget } from 'aws-cdk-lib/aws-budgets';
 import { Alarm, ComparisonOperator, Stats, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
@@ -14,6 +16,12 @@ import { LedgerFunction } from './ledger-function.construct.ts';
 export const tripTopicName = (guardrailsStackName: string): string => `${guardrailsStackName}-trip`;
 export const alertTopicName = (guardrailsStackName: string): string =>
   `${guardrailsStackName}-alert`;
+
+// Slice 3, D18: every alarm's description, in both stacks, is one line of what fired, then its
+// runbook entry, whose GitHub anchor is the alarm's name in lowercase (`runbook-links.test.ts`). No
+// ARN, account id or address (CBL-01).
+export const alarmDescription = (whatFired: string, alarmName: string): string =>
+  `${whatFired}. Runbook: ${RUNBOOK_BASE_URL}#${alarmName.toLowerCase()}`;
 
 // aws.md → Budget alarms item 2: the cap's default, in USD.
 export const DEFAULT_BUDGET_USD = 50;
@@ -168,7 +176,11 @@ export class GuardrailsStack extends Stack {
     // Item 4, AWS-53: Lambda discards an async event after its retries and the budget does not alert
     // again that month (AWS-34), so a failed trip emails the owner.
     const errors = new Alarm(this, 'KillSwitchErrors', {
-      alarmName: `${stackName}-kill-switch-errors`,
+      alarmName: KILL_SWITCH_ERRORS_ALARM_NAME,
+      alarmDescription: alarmDescription(
+        'The kill switch failed: a budget or usage trip may not have stopped the app stack',
+        KILL_SWITCH_ERRORS_ALARM_NAME,
+      ),
       metric: killSwitch.fn.metricErrors({
         period: Duration.seconds(KILL_SWITCH_ERRORS_PERIOD_SECONDS),
         statistic: Stats.SUM,

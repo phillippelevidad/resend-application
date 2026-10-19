@@ -28,8 +28,8 @@ export const errorCodeSchema = z.enum(errorCodes);
 
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 
-// D4: the runbook in this repo's public GitHub tree. Its entries are slice 3's, so these links 404
-// until then.
+// D4: the runbook in this repo's public GitHub tree (`docs/runbook.md`, slice 3); every runbook link
+// resolves to a heading there (`infra/src/runbook-links.test.ts`).
 export const RUNBOOK_BASE_URL =
   'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md';
 

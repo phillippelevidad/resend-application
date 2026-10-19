@@ -1,4 +1,4 @@
-import { apiEnv, ingestEnv, killSwitchEnv, workerEnv } from '@ledger/shared';
+import { apiEnv, ingestEnv, ingestSimulatorEnv, killSwitchEnv, workerEnv } from '@ledger/shared';
 
 // D2: the internal variable values, keyed by the names `@ledger/shared` declares and each function's
 // `.config.ts` parses. Each builder returns exactly its object's keys, so the type checker refuses a
@@ -13,6 +13,13 @@ export const ingestEnvironment = (values: {
 }): EnvOf<typeof ingestEnv> => ({
   [ingestEnv.SIGNING_SECRETS_ARN]: values.signingSecretsArn,
   [ingestEnv.QUEUE_URL]: values.queueUrl,
+});
+
+// Slice 3, D12: merged into ingest's environment only when the stack has the simulator on.
+export const ingestSimulatorEnvironment = (values: {
+  simulatorSecretArn: string;
+}): EnvOf<typeof ingestSimulatorEnv> => ({
+  [ingestSimulatorEnv.SIMULATOR_SECRET_ARN]: values.simulatorSecretArn,
 });
 
 export const workerEnvironment = (values: {

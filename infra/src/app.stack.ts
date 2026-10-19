@@ -1,3 +1,10 @@
+import {
+  API_5XX_ALARM_NAME,
+  appOutputKeys,
+  DLQ_DEPTH_ALARM_NAME,
+  QUEUE_AGE_ALARM_NAME,
+  USAGE_TRIP_ALARM_NAME,
+} from '@ledger/aws';
 import { RESUME_EVENT } from '@ledger/core';
 import { ArnFormat, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import { HttpApi, HttpMethod, HttpStage } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -17,8 +24,13 @@ import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { Topic } from 'aws-cdk-lib/aws-sns';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
-import { apiEnvironment, ingestEnvironment, workerEnvironment } from './function-env.ts';
-import { tripTopicName } from './guardrails.stack.ts';
+import {
+  apiEnvironment,
+  ingestEnvironment,
+  ingestSimulatorEnvironment,
+  workerEnvironment,
+} from './function-env.ts';
+import { alarmDescription, alertTopicName, tripTopicName } from './guardrails.stack.ts';
 import { LedgerFunction } from './ledger-function.construct.ts';
 
 // D27: every value a named constant citing what fixes it. Sizes are initial, revisited from the
@@ -62,6 +74,20 @@ export const THROTTLE_BURST_LIMIT = 200;
 export const USAGE_TRIP_PERIOD_SECONDS = 900;
 export const USAGE_TRIP_THRESHOLD = 15_000;
 
+// Slice 3, D17: the three operating alarms, each on a free vended metric (AWS-22, AWS-30), one
+// period each, emailing the owner through the alert topic (D14).
+// ADR-015: a paused worker leaves the oldest message ageing; past 15 min it fires, within ≈ 20 min of
+// the pause. Poison messages never count toward this metric (AWS-22): the DLQ alarm sees them.
+export const QUEUE_AGE_PERIOD_SECONDS = 300;
+export const QUEUE_AGE_THRESHOLD_SECONDS = 900;
+// AWS-22: DLQ health is its visible count; any dead message fires it (J4's trigger).
+export const DLQ_DEPTH_PERIOD_SECONDS = 300;
+export const DLQ_DEPTH_THRESHOLD = 0;
+// RS-10, RS-11: a `5xx` to Resend is a failed delivery it retries and that can auto-disable the
+// endpoint; it is also how a throttled ingest surfaces. The HTTP API's `5xx` is vended (AWS-30).
+export const API_5XX_PERIOD_SECONDS = 300;
+export const API_5XX_THRESHOLD = 0;
+
 // AWS-10, integrations.md → Cadence: every Postgres-touching schedule shares the one hourly cron,
 // window off. No retry and a 60 s event age (AWS-10's minimum): the next tick supersedes a missed one.
 export const HOURLY_CRON = 'cron(0 * * * ? *)';
@@ -80,10 +106,13 @@ export type AppStackProps = StackProps & {
   // The guardrails stack, by name only: the usage trip publishes to its trip topic through an ARN
   // built from the topic's fixed name, never a cross-stack reference (aws.md → Budget alarms item 1).
   readonly guardrailsStackName: string;
+  // ADR-016, slice 3 D12: the simulator signing secret and ingest's read of it, only when on.
+  readonly simulator: boolean;
 };
 
-// ADR-001, ADR-002, ADR-008, ADR-010, ADR-015: ingest, the queues, the worker and its mapping, the
-// read API behind one HTTP API, the two secrets, the hourly resume schedule and the usage trip.
+// ADR-001, ADR-002, ADR-008, ADR-010, ADR-015, ADR-016: ingest, the queues, the worker and its
+// mapping, the read API behind one HTTP API, the two secrets (three with the simulator), the hourly
+// resume schedule, the usage trip and the three operating alarms.
 export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
@@ -117,6 +146,14 @@ export class AppStack extends Stack {
       description: 'ledger/database: the pooled URL, the address-hash key and the token tag key',
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    // ADR-016, D12: the simulator's signing secret exists only in a deployment that opts in, with the
+    // same layout rules; the deploy command writes its value (D21).
+    const simulatorSecret = props.simulator
+      ? new Secret(this, 'SimulatorSecret', {
+          description: 'ledger/simulator-signing-secret: the simulator signing secret (ADR-016)',
+          removalPolicy: RemovalPolicy.DESTROY,
+        })
+      : undefined;
 
     // AWS-25: SSE-SQS, at no cost and with no key to manage.
     const dlq = new Queue(this, 'Dlq', {
@@ -138,12 +175,17 @@ export class AppStack extends Stack {
       functionName: names.ingest,
       memorySize: INGEST_MEMORY_MB,
       timeout: Duration.seconds(INGEST_TIMEOUT_SECONDS),
-      environment: ingestEnvironment({
-        signingSecretsArn: signingSecrets.secretArn,
-        queueUrl: queue.queueUrl,
-      }),
+      environment: {
+        ...ingestEnvironment({
+          signingSecretsArn: signingSecrets.secretArn,
+          queueUrl: queue.queueUrl,
+        }),
+        ...(simulatorSecret &&
+          ingestSimulatorEnvironment({ simulatorSecretArn: simulatorSecret.secretArn })),
+      },
     });
     signingSecrets.grantRead(ingest.fn);
+    simulatorSecret?.grantRead(ingest.fn);
     ingest.fn.addToRolePolicy(
       new PolicyStatement({ actions: ['sqs:SendMessage'], resources: [queue.queueArn] }),
     );
@@ -192,6 +234,23 @@ export class AppStack extends Stack {
         actions: ['sqs:GetQueueAttributes'],
         resources: [queue.queueArn, dlq.queueArn],
       }),
+    );
+    // Slice 3, D9, AWS-60: the documented minimum for `dlq.listMessages` and a redrive back to the
+    // source queue. SQS moves messages on the caller's permissions, hence `DeleteMessage`, which the
+    // API's own code never calls. SSE-SQS (AWS-25), so no `kms:*`. The read API only.
+    api.fn.addToRolePolicy(
+      new PolicyStatement({
+        actions: [
+          'sqs:ReceiveMessage',
+          'sqs:DeleteMessage',
+          'sqs:StartMessageMoveTask',
+          'sqs:ListMessageMoveTasks',
+        ],
+        resources: [dlq.queueArn],
+      }),
+    );
+    api.fn.addToRolePolicy(
+      new PolicyStatement({ actions: ['sqs:SendMessage'], resources: [queue.queueArn] }),
     );
     // `GetMetricStatistics` takes no resource-level permission.
     api.fn.addToRolePolicy(
@@ -245,7 +304,11 @@ export class AppStack extends Stack {
       arnFormat: ArnFormat.NO_RESOURCE_NAME,
     });
     const usageTrip = new Alarm(this, 'UsageTrip', {
-      alarmName: `${stackName}-usage-trip`,
+      alarmName: USAGE_TRIP_ALARM_NAME,
+      alarmDescription: alarmDescription(
+        'The HTTP API passed its 15-minute request ceiling and published to the trip topic',
+        USAGE_TRIP_ALARM_NAME,
+      ),
       metric: httpApi.metricCount({
         period: Duration.seconds(USAGE_TRIP_PERIOD_SECONDS),
         statistic: Stats.SUM,
@@ -257,16 +320,78 @@ export class AppStack extends Stack {
     });
     usageTrip.addAlarmAction(new SnsAction(Topic.fromTopicArn(this, 'TripTopic', tripTopicArn)));
 
+    // D14: the operating alarms email the owner through the alert topic, its ARN built from the
+    // topic's fixed name like the trip topic's, never a cross-stack import (item 1). D15: an `ALARM`
+    // action only, one email per incident. D16: an idle queue stops reporting (AWS-22).
+    const alertAction = new SnsAction(
+      Topic.fromTopicArn(
+        this,
+        'AlertTopic',
+        this.formatArn({
+          service: 'sns',
+          resource: alertTopicName(props.guardrailsStackName),
+          arnFormat: ArnFormat.NO_RESOURCE_NAME,
+        }),
+      ),
+    );
+    const operatingAlarms = [
+      {
+        id: 'QueueAge',
+        alarmName: QUEUE_AGE_ALARM_NAME,
+        whatFired: 'The oldest message on the source queue is older than 15 minutes',
+        metric: queue.metricApproximateAgeOfOldestMessage({
+          period: Duration.seconds(QUEUE_AGE_PERIOD_SECONDS),
+          statistic: Stats.MAXIMUM,
+        }),
+        threshold: QUEUE_AGE_THRESHOLD_SECONDS,
+      },
+      {
+        id: 'DlqDepth',
+        alarmName: DLQ_DEPTH_ALARM_NAME,
+        whatFired: 'The dead-letter queue holds at least one message',
+        metric: dlq.metricApproximateNumberOfMessagesVisible({
+          period: Duration.seconds(DLQ_DEPTH_PERIOD_SECONDS),
+          statistic: Stats.MAXIMUM,
+        }),
+        threshold: DLQ_DEPTH_THRESHOLD,
+      },
+      {
+        id: 'Api5xx',
+        alarmName: API_5XX_ALARM_NAME,
+        whatFired: 'The HTTP API answered at least one 5xx',
+        metric: httpApi.metricServerError({
+          period: Duration.seconds(API_5XX_PERIOD_SECONDS),
+          statistic: Stats.SUM,
+        }),
+        threshold: API_5XX_THRESHOLD,
+      },
+    ];
+    for (const { id, alarmName, whatFired, metric, threshold } of operatingAlarms) {
+      new Alarm(this, id, {
+        alarmName,
+        alarmDescription: alarmDescription(whatFired, alarmName),
+        metric,
+        threshold,
+        comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: TreatMissingData.NOT_BREACHING,
+      }).addAlarmAction(alertAction);
+    }
+
     // What the deploy, teardown, re-arm and drill commands read (D33–D36).
-    new CfnOutput(this, 'DeployedCommit', { value: props.commit });
-    new CfnOutput(this, 'ApiUrl', { value: stage.url });
-    new CfnOutput(this, 'SigningSecretsArn', { value: signingSecrets.secretArn });
-    new CfnOutput(this, 'DatabaseSecretArn', { value: databaseSecret.secretArn });
-    new CfnOutput(this, 'QueueUrl', { value: queue.queueUrl });
-    new CfnOutput(this, 'DlqUrl', { value: dlq.queueUrl });
-    new CfnOutput(this, 'WorkerFunctionName', { value: names.worker });
-    new CfnOutput(this, 'ThrottleRateLimit', { value: String(THROTTLE_RATE_LIMIT) });
-    new CfnOutput(this, 'ThrottleBurstLimit', { value: String(THROTTLE_BURST_LIMIT) });
+    new CfnOutput(this, appOutputKeys.deployedCommit, { value: props.commit });
+    new CfnOutput(this, appOutputKeys.apiUrl, { value: stage.url });
+    new CfnOutput(this, appOutputKeys.signingSecretsArn, { value: signingSecrets.secretArn });
+    new CfnOutput(this, appOutputKeys.databaseSecretArn, { value: databaseSecret.secretArn });
+    // D12, D21: the deploy command writes the simulator value to this ARN, only with the flag.
+    if (simulatorSecret) {
+      new CfnOutput(this, appOutputKeys.simulatorSecretArn, { value: simulatorSecret.secretArn });
+    }
+    new CfnOutput(this, appOutputKeys.queueUrl, { value: queue.queueUrl });
+    new CfnOutput(this, appOutputKeys.dlqUrl, { value: dlq.queueUrl });
+    new CfnOutput(this, appOutputKeys.workerFunctionName, { value: names.worker });
+    new CfnOutput(this, appOutputKeys.throttleRateLimit, { value: String(THROTTLE_RATE_LIMIT) });
+    new CfnOutput(this, appOutputKeys.throttleBurstLimit, { value: String(THROTTLE_BURST_LIMIT) });
   }
 }
 

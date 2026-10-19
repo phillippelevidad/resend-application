@@ -29,7 +29,7 @@ Each name is fixed by the slice that introduces it and written into this table i
 | Function | Carries | Slice |
 | --- | --- | --- |
 | ingest | ARN of `ledger/webhook-signing-secrets`; the queue URL (`ingestEnv`: `SIGNING_SECRETS_ARN`, `QUEUE_URL`) | 2 |
-| ingest | ARN of `ledger/simulator-signing-secret`, only with the simulator flag ([ADR-016](../../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | 3 |
+| ingest | ARN of `ledger/simulator-signing-secret`, only with the simulator flag (`ingestSimulatorEnv`: `SIMULATOR_SECRET_ARN`, a second names object merged into ingest's environment only when `ledger:simulator=true`; `ingest.config.ts` parses it as optional) ([ADR-016](../../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)) | 3 |
 | worker | ARN of `ledger/database` (`workerEnv`: `DATABASE_SECRET_ARN`). It finds its own event source mapping by its own name from the reserved `AWS_LAMBDA_FUNCTION_NAME` (ADR-015, AWS-56), so that is no variable: its mapping's UUID would be a CloudFormation cycle (C5) | 2 |
 | worker | the dispatcher's function name ([ADR-017](../../../../.ai/architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep)) | 6 |
 | read API | ARN of `ledger/database`; queue and DLQ URLs (`health.get`, `dlq.*`); the worker's function name, which `worker.resumeEventSource` invokes and `health.get` finds the mapping by (`apiEnv`: `DATABASE_SECRET_ARN`, `QUEUE_URL`, `DLQ_URL`, `WORKER_FUNCTION_NAME`) | 2, 3 |
@@ -53,7 +53,9 @@ The `ledger/…` names are the logical names of the
   `unset`, which no `git merge-base --is-ancestor` accepts, so a deploy built from it refuses every
   contract step), `ledger:alertEmail` (optional), `ledger:budgetUsd` (default 50),
   `ledger:killSwitch` (`on` | `off`, default `off`), `ledger:budgetDrill` (`true` | `false`, default
-  `false`). `pnpm synth` passes none, so each has a default or is optional.
+  `false`). Slice 3's: `ledger:simulator` (`true` | `false`, default `false`), which the deploy
+  command passes from `LEDGER_SIMULATOR`; `true` adds the simulator secret, ingest's read of it and
+  the `SimulatorSecretArn` output. `pnpm synth` passes none, so each has a default or is optional.
 - **They arrive as CDK context** from the deploy command, as integrations.md already fixes for the
   webhook id; never in `cdk.json` or any tracked file (CBL-10). A local file holding them is
   git-ignored ([CBL-19](../../../../.ai/check-before-launch.md#public-repo-hygiene)).

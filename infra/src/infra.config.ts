@@ -10,6 +10,7 @@ export const infraContextKeys = {
   budgetUsd: 'ledger:budgetUsd',
   killSwitch: 'ledger:killSwitch',
   budgetDrill: 'ledger:budgetDrill',
+  simulator: 'ledger:simulator',
 } as const;
 
 // A synth without a commit exports `unset`, which no `git merge-base --is-ancestor` accepts, so a
@@ -38,6 +39,10 @@ export const infraConfigSchema = z
     [infraContextKeys.budgetDrill]: z
       .enum(['true', 'false'], { error: 'must be true or false' })
       .default('false'),
+    // Slice 3, D11, D12: the simulator secret, only in the owner's deployment (ADR-016).
+    [infraContextKeys.simulator]: z
+      .enum(['true', 'false'], { error: 'must be true or false' })
+      .default('false'),
   })
   .transform((context) => ({
     commit: context[infraContextKeys.commit],
@@ -45,6 +50,7 @@ export const infraConfigSchema = z
     budgetUsd: context[infraContextKeys.budgetUsd],
     killSwitch: context[infraContextKeys.killSwitch] === 'on',
     budgetDrill: context[infraContextKeys.budgetDrill] === 'true',
+    simulator: context[infraContextKeys.simulator] === 'true',
   }));
 
 export type InfraConfig = z.output<typeof infraConfigSchema>;
