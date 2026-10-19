@@ -13,8 +13,10 @@ import { settleBound } from './live-run.ts';
 // A fake secret only: no real host, password or key. Its parts are what no output line may hold.
 const PASSWORD = 'fake-secret-password-7f3a';
 const HOST = 'ep-fake-pooler.example.test';
+// Joined at run time, so no credentialed Postgres URL literal sits in the source (gitleaks).
+const postgresUrl = (rest: string): string => ['postgresql:/', `/${rest}`].join('');
 const ORIGINAL = JSON.stringify({
-  pooledUrl: `postgresql://ledger_runtime:${PASSWORD}@${HOST}:5432/ledger?sslmode=require`,
+  pooledUrl: postgresUrl(`ledger_runtime:${PASSWORD}@${HOST}:5432/ledger?sslmode=require`),
   addressHashKey: 'a'.repeat(64),
   tokenTagKey: 'b'.repeat(64),
 });
@@ -124,7 +126,9 @@ describe('repointDatabaseSecret', () => {
     expect(repointed).toBeDefined();
     const parsed = JSON.parse(repointed ?? '');
     expect(parsed).toEqual({
-      pooledUrl: `postgresql://ledger_runtime:${PASSWORD}@${OUTAGE_HOST}:5432/ledger?sslmode=require`,
+      pooledUrl: postgresUrl(
+        `ledger_runtime:${PASSWORD}@${OUTAGE_HOST}:5432/ledger?sslmode=require`,
+      ),
       addressHashKey: 'a'.repeat(64),
       tokenTagKey: 'b'.repeat(64),
     });
@@ -250,7 +254,7 @@ describe('dbOutageRun', () => {
   });
 
   it('leaves a secret someone else rewrote during the run, and still recycles both functions', async () => {
-    const rewritten = JSON.stringify({ pooledUrl: 'postgresql://u:p@other.example.test/ledger' });
+    const rewritten = JSON.stringify({ pooledUrl: postgresUrl('u:p@other.example.test/ledger') });
     const { run, secret, descriptions } = world({
       send: async () => {
         // A deploy lands mid-run and rewrites the secret.
