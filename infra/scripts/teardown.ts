@@ -5,6 +5,7 @@ import {
   createCloudFormationClient,
   createCloudWatchClient,
   createCloudWatchLogsClient,
+  createLambdaClient,
   createResourceGroupsTaggingClient,
   createSecretsManagerClient,
   createSqsClient,
@@ -29,6 +30,7 @@ const cloudWatch = createCloudWatchClient();
 const tagging = createResourceGroupsTaggingClient();
 const secretsManager = createSecretsManagerClient();
 const logs = createCloudWatchLogsClient();
+const lambda = createLambdaClient();
 
 // CDK's own output goes to a file outside the repository, never to the terminal (cdk-cli.ts).
 const cdkLog = join(mkdtempSync(join(tmpdir(), 'ledger-aws-teardown-')), 'cdk.log');
@@ -54,7 +56,7 @@ const steps: TeardownSteps = {
 
   listLeftovers: () =>
     listPostDestroyLeftovers(
-      { tagging, secretsManager, logs },
+      { tagging, secretsManager, logs, lambda },
       { tag: PROJECT_TAG, logGroupPrefixes: LOG_GROUP_PREFIXES },
     ),
 };

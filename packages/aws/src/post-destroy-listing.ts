@@ -2,6 +2,7 @@ import {
   type CloudWatchLogsClient,
   DescribeLogGroupsCommand,
 } from '@aws-sdk/client-cloudwatch-logs';
+import { GetEventSourceMappingCommand, type LambdaClient } from '@aws-sdk/client-lambda';
 import {
   GetResourcesCommand,
   type ResourceGroupsTaggingAPIClient,
@@ -12,6 +13,7 @@ export type PostDestroyClients = {
   tagging: ResourceGroupsTaggingAPIClient;
   secretsManager: SecretsManagerClient;
   logs: CloudWatchLogsClient;
+  lambda: LambdaClient;
 };
 
 export type PostDestroyScope = {
@@ -36,8 +38,9 @@ export type PostDestroyListing = {
 // across `GetResources` pages, plus every log group under the prefixes, across `DescribeLogGroups`
 // pages (an implicit `/aws/lambda/*` group carries no tag, AWS-19). A tagged secret counts only when
 // `DescribeSecret` shows no `DeletedDate`; one already gone (`ResourceNotFoundException`, which the
-// tagging index can still list for a while) counts as nothing. Teardown exits non-zero on any
-// leftover.
+// tagging index can still list for a while) counts as nothing. A tagged event source mapping counts
+// only while `GetEventSourceMapping` still finds it: the index kept listing a destroyed one
+// (WALKTHROUGH-RUN F2). Teardown exits non-zero on any leftover.
 export async function listPostDestroyLeftovers(
   clients: PostDestroyClients,
   scope: PostDestroyScope,
@@ -62,6 +65,10 @@ export async function listPostDestroyLeftovers(
         const state = await secretState(clients.secretsManager, mapping.ResourceARN);
         if (state === 'pending_deletion') pendingDeletion += 1;
         if (state !== 'present') continue;
+      }
+      if (leftover.service === 'lambda' && leftover.resource.startsWith(MAPPING_PREFIX)) {
+        const uuid = leftover.resource.slice(MAPPING_PREFIX.length);
+        if (!(await mappingExists(clients.lambda, uuid))) continue;
       }
       add(leftover);
     }
@@ -97,6 +104,18 @@ const fromArn = (arn: string): Leftover => {
   const parts = arn.split(':');
   return { service: parts[2] ?? '', resource: parts.slice(5).join(':').replace(/:\*$/, '') };
 };
+
+const MAPPING_PREFIX = 'event-source-mapping:';
+
+async function mappingExists(client: LambdaClient, uuid: string): Promise<boolean> {
+  try {
+    await client.send(new GetEventSourceMappingCommand({ UUID: uuid }));
+    return true;
+  } catch (error) {
+    if ((error as Error).name === 'ResourceNotFoundException') return false;
+    throw error;
+  }
+}
 
 async function secretState(
   client: SecretsManagerClient,

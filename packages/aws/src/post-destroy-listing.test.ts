@@ -7,6 +7,10 @@
 // (https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_DescribeLogGroups.html).
 import type { CloudWatchLogsClient } from '@aws-sdk/client-cloudwatch-logs';
 import {
+  type LambdaClient,
+  ResourceNotFoundException as LambdaResourceNotFoundException,
+} from '@aws-sdk/client-lambda';
+import {
   type ResourceGroupsTaggingAPIClient,
   ThrottledException,
 } from '@aws-sdk/client-resource-groups-tagging-api';
@@ -70,13 +74,60 @@ const logs = (groupsByPrefix: Readonly<Record<string, readonly string[]>>) =>
     };
   });
 
-const clients = (taggingStub: StubClient, secretsStub: StubClient, logsStub: StubClient) => ({
+const liveMappingUuid = '11111111-2222-3333-4444-555555555555';
+const goneMappingUuid = '66666666-7777-8888-9999-000000000000';
+
+// GetEventSourceMapping
+// (https://docs.aws.amazon.com/lambda/latest/api/API_GetEventSourceMapping.html): a destroyed
+// mapping answers `ResourceNotFoundException`, while the tagging index can still list it (F2).
+const lambda = () =>
+  new StubClient().answer('GetEventSourceMapping', (input) => {
+    if (input.UUID === goneMappingUuid) {
+      throw new LambdaResourceNotFoundException({ message: 'missing', ...metadata });
+    }
+    return { UUID: input.UUID, ...metadata };
+  });
+
+const clients = (
+  taggingStub: StubClient,
+  secretsStub: StubClient,
+  logsStub: StubClient,
+  lambdaStub: StubClient = lambda(),
+) => ({
   tagging: taggingStub.as<ResourceGroupsTaggingAPIClient>(),
   secretsManager: secretsStub.as<SecretsManagerClient>(),
   logs: logsStub.as<CloudWatchLogsClient>(),
+  lambda: lambdaStub.as<LambdaClient>(),
 });
 
 describe('listPostDestroyLeftovers', () => {
+  it('counts a tagged event source mapping only while GetEventSourceMapping still finds it (F2)', async () => {
+    const lambdaStub = lambda();
+    const result = await listPostDestroyLeftovers(
+      clients(
+        tagging([
+          [
+            arn('lambda', `event-source-mapping:${goneMappingUuid}`),
+            arn('lambda', `event-source-mapping:${liveMappingUuid}`),
+          ],
+        ]),
+        secretsManager(),
+        logs({}),
+        lambdaStub,
+      ),
+      scope,
+    );
+
+    expect(lambdaStub.inputs('GetEventSourceMapping')).toEqual([
+      { UUID: goneMappingUuid },
+      { UUID: liveMappingUuid },
+    ]);
+    expect(result).toEqual({
+      leftovers: [{ service: 'lambda', resource: `event-source-mapping:${liveMappingUuid}` }],
+      pendingDeletion: 0,
+    });
+  });
+
   it('counts a secret pending deletion and one already gone as no leftover', async () => {
     const result = await listPostDestroyLeftovers(
       clients(tagging([[pendingSecret], [goneSecret]]), secretsManager(), logs({})),
