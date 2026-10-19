@@ -5,7 +5,7 @@
 - **Started by this run:** `pnpm dev:full` (stopped in W2); both stacks (kept) · **Adopted:** none
 - **Time box:** 45 min, overridden by the owner's approval of the whole walk · **Wall clock used:** 52 min, owner wait included
 - **Order:** the owner approved every Ask-first step in this conversation and asked to front-load the owner-run steps: A → B1, B2, B4 → T → B5 → G1–G3 → E1–E4 → F1, F2, F4 → C → D → F3, F5, W1 → E5 → B3 → G4 → W2. Each step ran on the stack shape its `Expect:` assumes.
-- **Rerun:** 2026-10-18 21:36 · HEAD `75297d1` (clean) · deployed · 13 min · the failed steps only, owner-approved in this conversation ("rerun this"): T1 → T2 → T3 → G4 → G6. Rows T1–T3, G4–G6 are this rerun's; every other row is the first run's. T3 ran with C's webhook in place, so its ingest URL changed: the Resend webhook was repointed (owner-approved `PATCH /webhooks/{id}`, its 10 events resent unchanged) and `.env.deployed.local`'s `LEDGER_URL` rewritten.
+- **Rerun:** 2026-10-18 21:36 · HEAD `75297d1` (clean) · deployed · 13 min · the failed steps only, owner-approved in this conversation ("rerun this"): T1 → T2 → T3 → G4 → G6, then G1 (owner: "Yes, rerun G1") for its email. Rows T1–T3, G4–G6 are this rerun's; every other row is the first run's. T3 ran with C's webhook in place, so its ingest URL changed: the Resend webhook was repointed (owner-approved `PATCH /webhooks/{id}`, its 10 events resent unchanged) and `.env.deployed.local`'s `LEDGER_URL` rewritten.
 
 **Verdict:** walked with findings — F2 and F3 are fixed and verified on AWS; the drill budget deploys but cannot trip an account whose month-to-date spend is 0.00 USD (F4), so AWS-U01's second half and G5 stay open.
 
@@ -29,7 +29,7 @@
 | B3 | pass | after C6: `synthesizing`, `migrating`, then stderr exactly the `key_id differs` refusal, exit 1, no `deploying` line | |
 | B4 | pass | the 12 lines exact, token `<redacted:token>`, `KillSwitchArmed true`, exit 0; `token current` → `bootstrap`, id 1 | F1 |
 | B5 | pass | the 10 lines exact, no token line, exit 0 | |
-| G1 | pass | the 8 lines exact: trip 13s, `429` ×5, Errors alarm 95s, restore 25s; stderr empty; exit 0 (reserved concurrency `0` accepted on the 50-quota account) | |
+| G1 | pass | the 8 lines exact: trip 13s, `429` ×5, Errors alarm 95s, restore 25s; stderr empty; exit 0 (reserved concurrency `0` accepted on the 50-quota account). No email reached the owner: G1 ran after T3 recreated both topics, before the owner confirmed their subscriptions. Rerun 21:55, both subscriptions confirmed: the 8 lines exact (trip 13s, `429` ×5, Errors alarm 126s, restore 13s), exit 0, health all zero after; the owner received `ALARM: "LedgerApp-usage-trip"` (trip topic) and `Ledger kill switch tripped` (alert topic) | |
 | G2 | pass | inside the trip window: the exact `api_unavailable` document, exit 1 | |
 | G3 | pass | `error: unknown command 'reconcile'`, exit 2 | |
 | G4 | inconclusive | rerun: the deploy half passes (F3 fixed): B5's lines, exit 0; `LedgerGuardrails-drill` exists with one `ACTUAL` `GREATER_THAN` `0.1` `ABSOLUTE_VALUE` notification, state `OK`. The trip half cannot happen: both budgets read actual spend `0.0` USD | F4 |
@@ -95,7 +95,7 @@ AWS-U05 quota 50 · AWS-U06 secrets delete at once (rerun's T1, T2 again) · AWS
 
 ## Held for the owner
 
-- Observe the `Ledger kill switch tripped` email from G1. Both SNS subscriptions the rerun's T3 recreated: confirmed by the owner, 2026-10-18 (CBL-03).
+- Both SNS subscriptions the rerun's T3 recreated: confirmed by the owner, 2026-10-18 (CBL-03). The G1 rerun's `Ledger kill switch tripped` email: received. Its `kill-switch-errors` alarm email: for the owner to observe.
 - F4's decision, then G4's trip half and G5.
 
 ## Data created
