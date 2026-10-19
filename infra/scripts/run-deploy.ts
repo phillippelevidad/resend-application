@@ -36,6 +36,8 @@ export type DeployOutputs = {
   apiUrl: string;
   databaseSecretArn: string;
   signingSecretsArn: string;
+  // Slice 3, D12: the `SimulatorSecretArn` output, which the app stack has only with the simulator.
+  simulatorSecretArn: string | undefined;
   killSwitchArmed: boolean;
 };
 
@@ -46,6 +48,8 @@ export type DeployContext = {
   budgetUsd: number;
   killSwitch: boolean;
   budgetDrill: boolean;
+  // Slice 3, D11: `LEDGER_SIMULATOR=on`.
+  simulator: boolean;
 };
 
 export type DeploySteps = {
@@ -276,6 +280,7 @@ async function deploy(
       budgetUsd: config.budgetUsd,
       killSwitch: config.killSwitch,
       budgetDrill: args.budgetDrill,
+      simulator: config.simulator !== undefined,
     }),
   );
   if (await step('scanning cdk.out failed', () => steps.findTemplateSecret())) {
@@ -355,6 +360,8 @@ async function deploy(
   out.line(`api url ${apiUrl}`);
   out.line(`ingest url ${apiUrl}/webhooks/resend`);
   out.line(`KillSwitchArmed ${outputs.killSwitchArmed}`);
+  // D21: the simulator's state, never its value.
+  out.line(`simulator ${config.simulator === undefined ? 'off' : 'on'}`);
 }
 
 async function deployAndWrite(
@@ -393,6 +400,21 @@ async function deployAndWrite(
       steps.writeSecret(outputs.signingSecretsArn, JSON.stringify(webhookSecrets)),
     );
     out.line(`ledger/webhook-signing-secrets ${signingWrite}`);
+  }
+  // D21: the simulator value, with LEDGER_SIMULATOR=on only, into the secret the app stack then has.
+  const simulator = config.simulator;
+  if (simulator !== undefined) {
+    const simulatorSecretArn = outputs.simulatorSecretArn;
+    if (simulatorSecretArn === undefined) {
+      throw new DeployStopped(
+        'failed',
+        'the app stack has no SimulatorSecretArn output after a deploy with LEDGER_SIMULATOR=on',
+      );
+    }
+    const simulatorWrite = await step('writing ledger/simulator-signing-secret failed', () =>
+      steps.writeSecret(simulatorSecretArn, simulator.secret),
+    );
+    out.line(`ledger/simulator-signing-secret ${simulatorWrite}`);
   }
 
   // 10. The first `operate` token, printed once: only by the run that inserted it (D8).

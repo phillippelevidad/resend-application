@@ -382,7 +382,8 @@ Rejected: automatic DLQ redrive after recovery (needs a failure classification t
 ### ADR-016 — The simulator reaches AWS only through an opt-in simulator secret
 
 **Accepted** (owner, 2026-10-15); **amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-58).
-An off-by-default deploy flag creates one extra secret, `ledger/simulator-signing-secret`, read by
+An off-by-default deploy flag, the public variable `LEDGER_SIMULATOR` (`on` | `off`, read by
+`pnpm aws:deploy`), creates one extra secret, `ledger/simulator-signing-secret`, read by
 ingest only. Ingest verifies against it after the Resend
 set and stamps matching events `source = simulated`. The simulator generates fresh `svix_id`s and
 never reuses one captured from a real delivery, so a simulated event cannot displace a live one.
@@ -391,12 +392,12 @@ that stack holds test-address data only ([about.md → Risk appetite](about.md#r
 adopter's stack therefore never accepts a second, test signing secret, and the simulator never
 targets a stack holding adopter data ([features.md → verify](features.md#adopter-lifecycle)). The
 simulator is `sim/`, run as `pnpm sim`, not a `ledger` subcommand: it holds a signing secret and
-checks invariants through `packages/db`, both of which the CLI must never do (ADR-011). Cost:
+checks invariants through `packages/db`, both of which the CLI must never do (ADR-011). The simulator's control-plane steps, the burst's throttle and the chaos faults, run under the owner's credentials through `@ledger/aws`; every event still enters through ingest. Cost:
 USD 0.40/month, in the owner's deployment only (AWS-11). Locally (slices 1 and 2B), ingest reads an
 optional `LEDGER_SIMULATOR_SECRET` from `.env.local`, verified after the Resend set and stamping
 `simulated` exactly as on AWS.
 Rejected: a separate demo stack (doubles the idle secret and alarm lines); injecting straight into SQS (bypasses ingest, so no ingest latency numbers for slice 9).
-**Evidence:** pending — CDK assertion test: without the flag the template has no simulator secret and ingest references none; unit test: a simulator-signed request is rejected when the secret is absent (slice 3).
+**Evidence:** CDK assertion tests, synthesized both ways: without the flag the template has no simulator secret and ingest's environment and policies reference none; with it, the third secret is read by ingest's role alone, in [app.stack.test.ts](../infra/src/app.stack.test.ts) (slice 3). A simulator-signed delivery answers `401` with nothing enqueued when no simulator secret id is configured, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), and ingest's config reads `SIMULATOR_SECRET_ARN` only when set, in [create-ingest-handler.test.ts](../apps/ingest/src/create-ingest-handler.test.ts) (slice 3). `LEDGER_SIMULATOR=on` without a valid `LEDGER_SIMULATOR_SECRET` refuses before any AWS call; `on` synthesizes with the flag and writes the value after `cdk deploy`; `off` and unset write none; no output line holds the value, in [run-deploy.test.ts](../infra/scripts/run-deploy.test.ts) (slice 3).
 
 ### ADR-017 — The dispatcher is triggered after commit, plus an hourly sweep
 

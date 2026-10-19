@@ -72,6 +72,29 @@ export const deployEnvSchema = z
         .positive({ error: 'must be a positive number of USD' })
         .default(DEFAULT_BUDGET_USD),
     ),
+    // Slice 3, D11: on only in the owner's deployment, where it adds the simulator secret.
+    LEDGER_SIMULATOR: z.preprocess(
+      unsetIfEmpty,
+      z.enum(['on', 'off'], { error: 'must be on or off' }).default('off'),
+    ),
+    // Read and checked only with LEDGER_SIMULATOR=on (below): `.env.local` holds it for local mode too.
+    LEDGER_SIMULATOR_SECRET: z.preprocess(unsetIfEmpty, z.string().optional()),
+  })
+  // D11: with `on`, the value the deploy writes into the simulator secret must be one RS-02 secret,
+  // asserted before contacting AWS. The message names the variable's form, never its value.
+  .superRefine((env, ctx) => {
+    if (env.LEDGER_SIMULATOR !== 'on') return;
+    const secret = env.LEDGER_SIMULATOR_SECRET;
+    if (secret === undefined || !SIGNING_SECRET.test(secret)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['LEDGER_SIMULATOR_SECRET'],
+        message:
+          secret === undefined
+            ? 'must be set to one whsec_ signing secret when LEDGER_SIMULATOR is on'
+            : 'must be one whsec_ signing secret when LEDGER_SIMULATOR is on',
+      });
+    }
   })
   .transform((env) => ({
     databaseUrl: env.LEDGER_DEPLOY_DATABASE_URL,
@@ -82,6 +105,11 @@ export const deployEnvSchema = z
     webhookSecrets: env.LEDGER_DEPLOY_WEBHOOK_SECRETS,
     killSwitch: env.LEDGER_KILL_SWITCH === 'on',
     budgetUsd: env.LEDGER_BUDGET_USD,
+    // `undefined` with LEDGER_SIMULATOR off; with `on`, the refinement above guarantees the secret.
+    simulator:
+      env.LEDGER_SIMULATOR === 'on' && env.LEDGER_SIMULATOR_SECRET !== undefined
+        ? { secret: env.LEDGER_SIMULATOR_SECRET }
+        : undefined,
   }));
 
 export type DeployEnv = z.output<typeof deployEnvSchema>;

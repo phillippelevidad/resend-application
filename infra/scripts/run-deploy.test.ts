@@ -11,6 +11,7 @@ import { hashApiToken, hasValidTag, tokenTagKeyId } from '@ledger/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isAncestor } from './git.ts';
 import {
+  type DeployContext,
   type DeployedState,
   type DeploySteps,
   runDeploy,
@@ -32,6 +33,9 @@ const DEPLOYED_OTHER_TAG_KEY = '3c'.repeat(32);
 // The secret-shaped fixtures are built at run time, so no `whsec_` or credentialed Postgres URL
 // literal sits in the source (the gitleaks rules).
 const WEBHOOK_SECRET = `whsec_${Buffer.from('fakeWebhookSecret5').toString('base64')}`;
+const SIMULATOR_SECRET = `whsec_${Buffer.from('fakeSimulatorSecret6').toString('base64')}`;
+// Not RS-02's form, so `LEDGER_SIMULATOR=on` refuses it; the refusal must not echo it either.
+const MALFORMED_SIMULATOR_SECRET = 'fakeMalformedSimulatorSecret7';
 const ALERT_EMAIL = 'delivered@resend.dev';
 const databaseUrl = (scheme: string, password: string, host: string) =>
   `${scheme}://owner:${password}@${host}/ledger`;
@@ -46,12 +50,15 @@ const SECRETS = [
   TOKEN_TAG_KEY,
   DEPLOYED_OTHER_TAG_KEY,
   WEBHOOK_SECRET,
+  SIMULATOR_SECRET,
+  MALFORMED_SIMULATOR_SECRET,
   ALERT_EMAIL,
 ];
 
 const DEPLOYED_COMMIT = 'a'.repeat(40);
 const DATABASE_SECRET_ARN = 'fake-database-secret';
 const SIGNING_SECRETS_ARN = 'fake-signing-secrets';
+const SIMULATOR_SECRET_ARN = 'fake-simulator-secret';
 const KEY_ID = addressHashKeyId(new Uint8Array(Buffer.from(ADDRESS_HASH_KEY, 'hex')));
 
 const baseEnv = {
@@ -96,6 +103,10 @@ type World = {
   tokens: ApiTokenValues[];
   failingStack: string | undefined;
   prepared: { runtimePassword: string; resetPassword: boolean } | undefined;
+  // The context the last synth was given; the app stack has `SimulatorSecretArn` only when it set
+  // the simulator flag (D12), unless `simulatorOutputMissing` drops it.
+  synthesized: DeployContext | undefined;
+  simulatorOutputMissing: boolean;
 };
 
 const newWorld = (overrides: Partial<World> = {}): World => ({
@@ -117,6 +128,8 @@ const newWorld = (overrides: Partial<World> = {}): World => ({
   tokens: [],
   failingStack: undefined,
   prepared: undefined,
+  synthesized: undefined,
+  simulatorOutputMissing: false,
   ...overrides,
 });
 
@@ -153,8 +166,9 @@ function fakeSteps(world: World): DeploySteps {
       call('isAncestor');
       return world.isAncestor(sha, deployedCommit);
     },
-    async synthesize() {
+    async synthesize(context) {
       call('synthesize');
+      world.synthesized = context;
     },
     async findTemplateSecret() {
       call('findTemplateSecret');
@@ -192,6 +206,10 @@ function fakeSteps(world: World): DeploySteps {
         apiUrl: 'https://api.example.invalid/',
         databaseSecretArn: DATABASE_SECRET_ARN,
         signingSecretsArn: SIGNING_SECRETS_ARN,
+        simulatorSecretArn:
+          world.synthesized?.simulator === true && !world.simulatorOutputMissing
+            ? SIMULATOR_SECRET_ARN
+            : undefined,
         killSwitchArmed: true,
       };
     },
@@ -255,6 +273,7 @@ const CHANGES = [
   'deployStack:LedgerApp',
   `writeSecret:${DATABASE_SECRET_ARN}`,
   `writeSecret:${SIGNING_SECRETS_ARN}`,
+  `writeSecret:${SIMULATOR_SECRET_ARN}`,
   'insertBootstrapToken',
   'insertToken',
 ];
@@ -273,6 +292,14 @@ describe('the input assertion', () => {
     ['LEDGER_DEPLOY_WEBHOOK_SECRETS', { LEDGER_DEPLOY_WEBHOOK_SECRETS: `${WEBHOOK_SECRET},nope` }],
     ['LEDGER_KILL_SWITCH', { LEDGER_KILL_SWITCH: 'yes' }],
     ['LEDGER_BUDGET_USD', { LEDGER_BUDGET_USD: '-5' }],
+    ['LEDGER_SIMULATOR', { LEDGER_SIMULATOR: 'yes' }],
+    // D11: with `on`, a missing, empty or malformed simulator value refuses before any AWS call.
+    ['LEDGER_SIMULATOR_SECRET', { LEDGER_SIMULATOR: 'on' }],
+    ['LEDGER_SIMULATOR_SECRET', { LEDGER_SIMULATOR: 'on', LEDGER_SIMULATOR_SECRET: '' }],
+    [
+      'LEDGER_SIMULATOR_SECRET',
+      { LEDGER_SIMULATOR: 'on', LEDGER_SIMULATOR_SECRET: MALFORMED_SIMULATOR_SECRET },
+    ],
   ])('refuses naming %s before any step runs', async (variable, change) => {
     const world = newWorld();
     const env = Object.fromEntries(
@@ -547,10 +574,11 @@ describe('the order and what a deploy writes', () => {
       `writeSecret:${SIGNING_SECRETS_ARN}`,
       'insertBootstrapToken',
     ]);
-    expect(run.lines.slice(-4)).toEqual([
+    expect(run.lines.slice(-5)).toEqual([
       'aws:deploy: api url https://api.example.invalid\n',
       'aws:deploy: ingest url https://api.example.invalid/webhooks/resend\n',
       'aws:deploy: KillSwitchArmed true\n',
+      'aws:deploy: simulator off\n',
       'aws:deploy: done\n',
     ]);
   });
@@ -664,9 +692,86 @@ describe('the bootstrap token (Ships 5)', () => {
   });
 });
 
+// Ships 3 (D11, D21): `LEDGER_SIMULATOR=on` synthesizes the simulator secret and writes its value
+// after `cdk deploy`, never through the template; `off` and unset do neither.
+describe('the simulator secret (Ships 3)', () => {
+  const simulatorOn = {
+    ...baseEnv,
+    LEDGER_SIMULATOR: 'on',
+    LEDGER_SIMULATOR_SECRET: SIMULATOR_SECRET,
+  };
+
+  it('passes ledger:simulator=true and writes the simulator value after both stack deploys', async () => {
+    const world = newWorld();
+    const run = await deploy(world, { env: simulatorOn });
+    expect(run.code).toBe(0);
+    expect(world.synthesized?.simulator).toBe(true);
+    expect(world.secrets.get(SIMULATOR_SECRET_ARN)).toBe(SIMULATOR_SECRET);
+    const write = world.calls.indexOf(`writeSecret:${SIMULATOR_SECRET_ARN}`);
+    expect(write).toBeGreaterThan(world.calls.indexOf('deployStack:LedgerApp'));
+    expect(write).toBeGreaterThan(world.calls.indexOf(`writeSecret:${SIGNING_SECRETS_ARN}`));
+    expect(run.lines).toContain('aws:deploy: ledger/simulator-signing-secret written\n');
+    expect(run.lines.slice(-3)).toEqual([
+      'aws:deploy: KillSwitchArmed true\n',
+      'aws:deploy: simulator on\n',
+      'aws:deploy: done\n',
+    ]);
+  });
+
+  it('writes nothing on a re-run with the same value', async () => {
+    const world = newWorld();
+    await deploy(world, { env: simulatorOn });
+    const rerun = await deploy(world, { env: simulatorOn });
+    expect(rerun.code).toBe(0);
+    expect(rerun.lines).toContain('aws:deploy: ledger/simulator-signing-secret unchanged\n');
+  });
+
+  it.each([
+    ['off', { ...baseEnv, LEDGER_SIMULATOR: 'off', LEDGER_SIMULATOR_SECRET: SIMULATOR_SECRET }],
+    ['unset', baseEnv],
+    ['empty', { ...baseEnv, LEDGER_SIMULATOR: '' }],
+    // `.env.local` holds the local simulator value too; with `off` it is neither read nor checked.
+    [
+      'off with a malformed value',
+      { ...baseEnv, LEDGER_SIMULATOR_SECRET: MALFORMED_SIMULATOR_SECRET },
+    ],
+  ])('passes ledger:simulator=false and writes no simulator secret when %s', async (_case, env) => {
+    const world = newWorld();
+    const run = await deploy(world, { env });
+    expect(run.code).toBe(0);
+    expect(world.synthesized?.simulator).toBe(false);
+    expect(world.calls).not.toContain(`writeSecret:${SIMULATOR_SECRET_ARN}`);
+    expect(world.secrets.has(SIMULATOR_SECRET_ARN)).toBe(false);
+    expect(run.lines.slice(-2)).toEqual(['aws:deploy: simulator off\n', 'aws:deploy: done\n']);
+  });
+
+  it('fails when the app stack has no SimulatorSecretArn output after a deploy with on', async () => {
+    const world = newWorld({ simulatorOutputMissing: true });
+    const run = await deploy(world, { env: simulatorOn });
+    expect(run.code).toBe(1);
+    expect(lastLine(run)).toBe(
+      'aws:deploy: failed: the app stack has no SimulatorSecretArn output after a deploy with LEDGER_SIMULATOR=on\n',
+    );
+    expect(world.calls).not.toContain('insertBootstrapToken');
+  });
+});
+
 describe('the output', () => {
   it('holds no secret value fed in, on success or on any failure', async () => {
+    const simulatorOn = { LEDGER_SIMULATOR: 'on', LEDGER_SIMULATOR_SECRET: SIMULATOR_SECRET };
     const runs = [
+      await deploy(newWorld(), { env: { ...baseEnv, ...simulatorOn } }),
+      await deploy(newWorld({ simulatorOutputMissing: true }), {
+        env: { ...baseEnv, ...simulatorOn },
+      }),
+      await deploy(newWorld(), {
+        env: {
+          ...baseEnv,
+          LEDGER_SIMULATOR: 'on',
+          LEDGER_SIMULATOR_SECRET: MALFORMED_SIMULATOR_SECRET,
+        },
+      }),
+      await deploy(newWorld(), { env: { ...baseEnv, LEDGER_SIMULATOR_SECRET: SIMULATOR_SECRET } }),
       await deploy(newWorld()),
       await deploy(newWorld({ appDeployed: false, killSwitchArmed: undefined })),
       await deploy(newWorld({ storedKeyId: '0badc0de' })),
