@@ -21,13 +21,18 @@ invocation, so importing the bundle needs no AWS access (slice 2 D32's bundle sm
 Ingest's root builds `createIngest` at module scope and makes no AWS call there; its memoized read
 is step 1's cache, filled on the first request. That function:
 
-1. **Gets the secret set** through `SecretReaderPort` by the id its root passes
-   (`SIGNING_SECRETS_ARN` on AWS; locally a `StaticSecretReaderAdapter` over the parsed
-   `LEDGER_WEBHOOK_SECRETS`), parsed with Zod as a JSON array of `whsec_` strings
-   (`signing-secrets.schema.ts`). The result is cached per container for
+1. **Gets the secret set** through `SecretReaderPort` by the ids its root passes: the Resend set
+   by `signingSecretsId` (`SIGNING_SECRETS_ARN` on AWS), parsed with Zod as a JSON array of
+   `whsec_` strings, then, after it, the simulator secret by `simulatorSecretId`
+   (`SIMULATOR_SECRET_ARN`, set only on a stack deployed with the simulator on, ADR-016), parsed as
+   one bare `whsec_` string (`signing-secrets.schema.ts`, slice 3 D13). Locally both come from one
+   `StaticSecretReaderAdapter` holding a record of id → value over the parsed
+   `LEDGER_WEBHOOK_SECRETS` and `LEDGER_SIMULATOR_SECRET`. No `simulatorSecretId` means no
+   simulator secret, so a simulator-signed request answers `401`; a failed or unparseable read of
+   either id fails the whole read. The result is cached per container for
    `SECRET_SET_TTL_MS` (5 minutes) against the clock port (ADR-009), so an added or retired secret
-   takes effect without a redeploy; concurrent requests share one pending read. A failed read, a
-   value that fails the parse, or a set with no secret at all (no Resend secret and no simulator
+   takes effect without a redeploy; concurrent requests share one pending read. A failed read
+   (the simulator secret's included), a value that fails the parse, or a set with no secret at all (no Resend secret and no simulator
    secret) answers `503` with the fixed body `unavailable`, logs `ingest.secrets_unavailable` with
    `error_name` only, enqueues nothing and emits no metric. Resend retries a `503` (RS-10); a `401`
    on an infra fault would read as a wrong secret and can auto-disable the webhook (RS-11), and the

@@ -8,7 +8,14 @@ import { Buffer } from 'node:buffer';
 import { errorRegistry } from '@ledger/core';
 import { signWebhook } from '@ledger/core/testing';
 import { createIngest } from '@ledger/ingest';
-import { createLogger, InProcessQueueAdapter, LedgerError, type QueuePort } from '@ledger/shared';
+import {
+  ConfigError,
+  createLogger,
+  InProcessQueueAdapter,
+  LedgerError,
+  loadConfig,
+  type QueuePort,
+} from '@ledger/shared';
 import { FakeClock, FakeSecretReader, RecordingMetrics } from '@ledger/shared/testing';
 import { describe, expect, it } from 'vitest';
 import {
@@ -16,6 +23,7 @@ import {
   type HttpApiEvent,
   type InvocationFields,
 } from './create-ingest-handler.ts';
+import { ingestConfigSchema } from './ingest.config.ts';
 
 // Built at run time from a label, so no `whsec_` literal sits in the source (the gitleaks rule).
 const testSecret = (label: string) =>
@@ -86,7 +94,7 @@ const harness = (queueOverride?: QueuePort) => {
   const ingest = createIngest({
     secretReader: new FakeSecretReader({ [signingSecretsId]: JSON.stringify([secret]) }),
     signingSecretsId,
-    simulatorSecret: undefined,
+    simulatorSecretId: undefined,
     queue: queueOverride ?? queue,
     clock,
     logger,
@@ -258,5 +266,47 @@ describe('createIngestHandler', () => {
       },
     ]);
     expect(lines.join('')).not.toContain('delivered@resend.dev');
+  });
+});
+
+// D12, D13: `main.ts` passes `simulatorSecretArn` as ingest's `simulatorSecretId`, so its absence is
+// what makes a simulator-signed request answer `401` on a stack deployed without the simulator.
+describe('ingestConfigSchema', () => {
+  const required = {
+    SIGNING_SECRETS_ARN: 'test/webhook-signing-secrets',
+    QUEUE_URL: 'http://127.0.0.1:9324/ledger-queue',
+  };
+
+  it('parses with no SIMULATOR_SECRET_ARN as no simulator secret id', () => {
+    expect(loadConfig(ingestConfigSchema, required)).toEqual({
+      signingSecretsArn: 'test/webhook-signing-secrets',
+      queueUrl: 'http://127.0.0.1:9324/ledger-queue',
+      simulatorSecretArn: undefined,
+    });
+  });
+
+  it('parses SIMULATOR_SECRET_ARN, when set, as the simulator secret id', () => {
+    const config = loadConfig(ingestConfigSchema, {
+      ...required,
+      SIMULATOR_SECRET_ARN: 'test/simulator-signing-secret',
+    });
+
+    expect(config.simulatorSecretArn).toBe('test/simulator-signing-secret');
+  });
+
+  it('refuses an empty SIMULATOR_SECRET_ARN, naming the variable and not its value', () => {
+    const failure = (() => {
+      try {
+        loadConfig(ingestConfigSchema, { ...required, SIMULATOR_SECRET_ARN: '' });
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    })();
+
+    expect(failure).toBeInstanceOf(ConfigError);
+    expect((failure as ConfigError).issues.map((issue) => issue.variable)).toEqual([
+      'SIMULATOR_SECRET_ARN',
+    ]);
   });
 });

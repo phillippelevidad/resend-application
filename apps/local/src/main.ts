@@ -90,17 +90,20 @@ function start({ port, host }: Flags, config: LocalConfig): void {
   const apiDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: apiLogger });
 
   const queue = new InProcessQueueAdapter({ clock, logger: workerLogger });
-  // D13: ingest reads its signing-secret set through the port in both runtimes; locally the set is
-  // the parsed `LEDGER_WEBHOOK_SECRETS`, held under one local id in the JSON form Secrets Manager
-  // holds on AWS.
+  // D13: ingest reads both secrets through the port in both runtimes. Locally the Resend set is the
+  // parsed `LEDGER_WEBHOOK_SECRETS`, held under one local id in the JSON form Secrets Manager holds
+  // on AWS, and the simulator secret, when `LEDGER_SIMULATOR_SECRET` is set, its bare `whsec_` string
+  // under a second id.
   const signingSecretsId = 'local/webhook-signing-secrets';
+  const simulatorSecret = config.secrets.simulator;
+  const simulatorSecretId = 'local/simulator-signing-secret';
   const ingest = createIngest({
-    secretReader: new StaticSecretReaderAdapter(
-      signingSecretsId,
-      JSON.stringify(config.secrets.resend),
-    ),
+    secretReader: new StaticSecretReaderAdapter({
+      [signingSecretsId]: JSON.stringify(config.secrets.resend),
+      ...(simulatorSecret === undefined ? {} : { [simulatorSecretId]: simulatorSecret }),
+    }),
     signingSecretsId,
-    simulatorSecret: config.secrets.simulator,
+    simulatorSecretId: simulatorSecret === undefined ? undefined : simulatorSecretId,
     queue,
     clock,
     logger: ingestLogger,

@@ -14,19 +14,20 @@ import {
   INGEST_BODY_UNAUTHORIZED,
   INGEST_BODY_UNAVAILABLE,
 } from './ingest-bodies.ts';
-import { signingSecretsSchema } from './signing-secrets.schema.ts';
+import { signingSecretSchema, signingSecretsSchema } from './signing-secrets.schema.ts';
 
 // ADR-009, D13: a successfully read secret set is reused for at most 5 minutes per container, so an
 // added or retired secret takes effect with no redeploy (RS-04).
 export const SECRET_SET_TTL_MS = 300_000;
 
-// D13: the Resend signing secrets are read through the port by id (Secrets Manager on AWS, the
-// parsed `LEDGER_WEBHOOK_SECRETS` locally); the simulator secret stays typed config until slice 3
-// (ADR-016), in the `whsec_` form `webhooks.verify` takes (RS-02).
+// D13: both secrets are read through the port by id (Secrets Manager on AWS, the parsed
+// `LEDGER_WEBHOOK_SECRETS` and `LEDGER_SIMULATOR_SECRET` locally). The Resend set is a JSON array of
+// `whsec_` strings; the simulator secret (ADR-016) is one bare `whsec_` string (RS-02). No
+// `simulatorSecretId` means no simulator secret: a simulator-signed request answers `401`.
 export type IngestDeps = {
   secretReader: SecretReaderPort;
   signingSecretsId: string;
-  simulatorSecret: string | undefined;
+  simulatorSecretId: string | undefined;
   queue: QueuePort;
   clock: ClockPort;
   logger: Logger;
@@ -65,7 +66,7 @@ const typeOf = (payload: unknown): string | undefined => {
 export function createIngest({
   secretReader,
   signingSecretsId,
-  simulatorSecret,
+  simulatorSecretId,
   queue,
   clock,
   logger,
@@ -79,8 +80,15 @@ export function createIngest({
   // ADR-016: the Resend set in stored order first, then the simulator secret; the match sets
   // `source`, and only ingest sets it. A set with no secret at all would answer `401` to every
   // delivery, which tells Resend the secret is wrong; it is an infrastructure fault instead (D13).
+  // The simulator secret is read after the Resend set, under the same cache; a failed or
+  // unparseable read of it fails the whole read, so every request answers `503`, never `401`
+  // (RS-09, RS-10): an unreadable secret is an infrastructure fault, not an absent one.
   const readCandidates = async (): Promise<readonly Candidate[]> => {
     const resendSecrets = signingSecretsSchema.parse(await secretReader.read(signingSecretsId));
+    const simulatorSecret =
+      simulatorSecretId === undefined
+        ? undefined
+        : signingSecretSchema.parse(await secretReader.read(simulatorSecretId));
     const candidates: readonly Candidate[] = [
       ...resendSecrets.map((secret): Candidate => ({ secret, source: 'live' })),
       ...(simulatorSecret === undefined

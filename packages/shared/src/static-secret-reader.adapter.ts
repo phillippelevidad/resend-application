@@ -1,22 +1,22 @@
 import { LedgerError } from './ledger.error.ts';
 import type { SecretReaderPort } from './secret-reader.port.ts';
 
-// D1, D13: local mode's secret reader. `apps/local` builds it over the value its config parsed from
-// `.env.local`, so ingest takes the port in both runtimes. It answers that one value for the one id
-// it was built with and rejects any other, as Secrets Manager rejects an id it does not hold.
+// D1, D13: local mode's secret reader. `apps/local` builds it over the values its config parsed from
+// `.env.local`, one per id (the Resend set, and the simulator secret when set), so ingest takes the
+// port in both runtimes. It answers each id's value and rejects any other id, as Secrets Manager
+// rejects an id it does not hold.
 export class StaticSecretReaderAdapter implements SecretReaderPort {
-  readonly #secretId: string;
-  readonly #value: string;
+  readonly #secrets: ReadonlyMap<string, string>;
 
-  constructor(secretId: string, value: string) {
-    this.#secretId = secretId;
-    this.#value = value;
+  constructor(secrets: Readonly<Record<string, string>>) {
+    this.#secrets = new Map(Object.entries(secrets));
   }
 
   async read(secretId: string): Promise<string> {
-    if (secretId !== this.#secretId) {
+    const value = this.#secrets.get(secretId);
+    if (value === undefined) {
       throw new LedgerError('internal_error', 'No secret is configured under the requested id.');
     }
-    return this.#value;
+    return value;
   }
 }
