@@ -156,7 +156,7 @@ scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools.
 | **packages/worker** | Worker logic: ledger transaction, projections, outbox (ADR-004, ADR-015) | 1 |
 | **packages/api** | Hono app factory: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)); source of the OpenAPI document (ADR-011, ADR-019) | 1 |
 | **packages/sdk** | Public TS client for the read API: generated types plus a thin client (ADR-011, ADR-019) | 1 |
-| **packages/aws** | The only `@aws-sdk/*` importer: one factory per SDK client; the port adapters for the SQS queue, SQS attributes, Secrets Manager, ESM control and Lambda invoke; the kill switch's trip and restore steps; the AWS reads and writes the `aws:*` scripts make. DLQ receive and redrive land in slice 3 (ADR-013) | 2 |
+| **packages/aws** | The only `@aws-sdk/*` importer: one factory per SDK client; the port adapters for the SQS queue, SQS attributes, the DLQ (receive and redrive), Secrets Manager, ESM control and Lambda invoke; the kill switch's trip and restore steps; the AWS reads and writes the `aws:*` scripts and the simulator's AWS runs make; the stack, function and alarm names `infra`, its scripts and `sim` share (ADR-013) | 2 |
 | **packages/reconciler** | Reconciler logic: gap detection + replay (ADR-007) | 4 |
 | **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) | 4 |
 | **packages/dispatcher** | Dispatcher logic: outbox delivery (ADR-006, ADR-017) | 6 |
@@ -272,12 +272,15 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # naming the first missing one, before contacting AWS; pnpm db:setup writes both
                    # keys before it touches a database, so it writes them even with no local Postgres,
                    # then ends `db:setup: failed: Postgres is unreachable …`); optional
-                   # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD.
+                   # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD,
+                   # LEDGER_SIMULATOR (on|off; with on, LEDGER_SIMULATOR_SECRET is required, then
+                   # written into the simulator secret).
                    # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
                    # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
                    # an address-hash key_id mismatch; migrates, deploys
                    # LedgerGuardrails then LedgerApp, writes the secrets, prints the bootstrap token
-                   # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed
+                   # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed,
+                   # then `simulator on` or `simulator off`, never the value
 pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag
                    # discards them); destroys LedgerApp, then LedgerGuardrails only if that succeeded;
                    # lists billable leftovers (exit 1 on any); prints the two steps outside AWS
