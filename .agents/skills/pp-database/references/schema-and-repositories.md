@@ -17,6 +17,7 @@ packages/db/
     <kebab>.repository.ts    # one per table
     executor.ts              # the Executor and Transaction types
     create-database.ts       # the connection factory
+    database-client.ts       # the pg Client subclass that marks its socket errors for the classifier
     run-transaction.ts       # runTransaction: a transaction that discards a failed connection
     prepare-database.ts      # ensure the runtime role, then migrate (pp-database → migrations)
     deploy-checks.ts         # the deploy command's read-only refusal checks (owner URL only)
@@ -198,9 +199,25 @@ and `pg-pool` attaches the connect error as `cause` on its timeout. A match anyw
 | --- | --- |
 | SQLSTATE class `08` (`08000`, `08001`, `08003`, `08004`, `08006`, `08007`, `08P01`) | [Postgres errcodes](https://www.postgresql.org/docs/current/errcodes-appendix.html) |
 | `57P01` `admin_shutdown`, `57P02` `crash_shutdown`, `57P03` `cannot_connect_now` | same |
-| Node socket codes: `ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`, `EPIPE`, `ENOTFOUND`, `EAI_AGAIN`, `EHOSTUNREACH`, `ENETUNREACH` | Node system errors |
+| Node socket codes: `ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`, `EPIPE`, `ENOTFOUND`, `EAI_AGAIN`, `EHOSTUNREACH`, `ENETUNREACH`, **only with a pg origin** (below) | Node system errors |
 | `pg` errors with no `code`, by exact message: `Connection terminated unexpectedly`, `Connection terminated due to connection timeout`, `Client has encountered a connection error and is not queryable`, and `Query read timeout` (the pool's `query_timeout` fired, slice 2) | [pg client](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg/lib/client.js), [pg-pool](https://raw.githubusercontent.com/brianc/node-postgres/master/packages/pg-pool/index.js) |
 | `53100` `disk_full`, classified for Neon's storage-limit error on a Free project at its cap (whether Neon raises exactly this, and how `pg` surfaces it, is PG-U07, `[Unverified]`; an unmatched code follows ADR-008, as before). Not a connection error: classified here so the worker pauses and the queue holds instead of draining to the DLQ | [ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) |
+
+**A socket code counts only with a pg origin.** Every client's socket raises the same codes, and
+the AWS SDK rejects with Node's own error, renamed `TimeoutError` and given `$metadata`
+(`@smithy/node-http-handler` 4.12.1), so a bare code is no evidence of the database. It has a pg
+origin when it sits inside a `DrizzleQueryError`, or when a `DatabaseClient` connection emitted
+it: the pg `Client` subclass that `createDatabase`'s pools and `prepareDatabase` connect with
+marks every error on its `Connection`'s `error` event, the one path pg 8.23.1 sends a socket error
+down (`lib/connection.js`). That mark is what covers the raw errors no wrapper carries: a refused
+`pool.connect()`, and `runTransaction`'s `BEGIN` and `COMMIT` on the checked-out client. Never
+build a pool or client with pg's own `Client` on a runtime path, and never classify a socket code
+by its value alone: an AWS port error would then answer `503 database_unavailable` and pause the
+worker. Evidence: [classify-database-error.test.ts](../../../../packages/db/src/classify-database-error.test.ts)
+(an AWS SDK socket error, raw or as a `cause`, stays unclassified) and
+[classify-database-error.int.test.ts](../../../../packages/db/src/classify-database-error.int.test.ts)
+(a reset under Drizzle and on a raw checked-out client classifies; the stopped server's socket
+error from an HTTP client does not).
 
 Never pg-pool's `timeout exceeded when trying to connect`: it is raised, with no `cause`, when no
 pooled client frees up in time, which on a size-1 pool is a leaked checkout or a `db` call inside a

@@ -1,5 +1,5 @@
 import { createDatabase, type Executor } from '@ledger/db';
-import { createLogger, type Logger, mintApiToken } from '@ledger/shared';
+import { createLogger, LedgerError, type Logger, mintApiToken } from '@ledger/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApi } from './create-api.ts';
 import { bearer, TEST_TOKEN_TAG_KEY, testApiDeps } from './testing/api-test-deps.ts';
@@ -100,6 +100,49 @@ describe('createApi error mapping', () => {
     ]);
     expect(JSON.stringify(lines())).not.toContain('delivered@resend.dev');
   });
+
+  // Issue 8: a socket code with no pg origin is not the database. An AWS port error reaching
+  // `onError` unwrapped (as `@smithy/node-http-handler` 4.12.1 rejects it: Node's error renamed
+  // `TimeoutError`, with the retry strategy's `$metadata`) answers `500`, never `503`. Raised here
+  // from the token lookup, the first throw every route reaches, so no route's own wrapping helps.
+  it.each([
+    ['raw', (sdk: Error): Error => sdk],
+    [
+      'as the cause of an internal_error',
+      (sdk: Error): Error =>
+        new LedgerError('internal_error', 'An unexpected error occurred.', { cause: sdk }),
+    ],
+  ])(
+    'an AWS SDK socket error, %s, answers 500 internal_error, not 503, and logs its name',
+    async (_shape, raise) => {
+      const sdkError = Object.assign(new Error('read ECONNRESET'), {
+        code: 'ECONNRESET',
+        name: 'TimeoutError',
+        $metadata: { attempts: 3, totalRetryDelay: 0 },
+      });
+      const broken = {
+        select: () => {
+          throw raise(sdkError);
+        },
+      } as unknown as Executor;
+      const { logger, lines } = recordingLogger();
+      const api = createApi(testApiDeps(broken, { logger, requestId: () => 'req-sdk' }));
+
+      const response = await api.request('/emails/e1', { headers: bearer(token) });
+
+      expect(response.status).toBe(500);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'internal_error',
+      );
+      expect(lines()).toEqual([
+        expect.objectContaining({
+          message: 'api.internal_error',
+          request_id: 'req-sdk',
+          error_name: 'TimeoutError',
+        }),
+      ]);
+    },
+  );
 
   it.each([
     ['GET', '/nope'],

@@ -106,8 +106,8 @@ describe('worker.resumeEventSource', () => {
     expect(body.error.code).toBe('internal_error');
   });
 
-  // An SDK network failure carries a socket code the database classifier also matches; D20 still
-  // answers it `500`, never `503 database_unavailable`.
+  // An SDK network failure carries a socket code, which the database classifier matches only with a
+  // pg origin; D20 answers it `500`, never `503 database_unavailable`.
   it('an invoke failing with a socket error code answers 500 internal_error, not 503', async () => {
     class SocketFailingInvoke extends FakeFunctionInvoke {
       override async invoke(payload: unknown): Promise<unknown> {

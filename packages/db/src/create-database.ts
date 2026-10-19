@@ -1,6 +1,7 @@
 import { errorFields, type Logger } from '@ledger/shared';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { DatabaseClient } from './database-client.ts';
 
 // D9: both bounds sit below every function timeout, so a blackholed connect or an unanswered query
 // ends as an error the classifier sees, never as a Lambda timeout that drains the batch to the DLQ.
@@ -27,6 +28,8 @@ export type Database = {
 // `process.env` (pp-general → Config).
 export function createDatabase({ url, max, logger }: CreateDatabaseOptions): Database {
   const pool = new Pool({
+    // Marks each socket error its connections raise, so the classifier counts it (D9).
+    Client: DatabaseClient,
     connectionString: url,
     max,
     connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,

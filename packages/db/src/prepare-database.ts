@@ -2,7 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { LedgerError } from '@ledger/shared';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Client, escapeIdentifier, escapeLiteral } from 'pg';
+import { type Client, escapeIdentifier, escapeLiteral } from 'pg';
+import { DatabaseClient } from './database-client.ts';
 
 // The DML-only role every runtime connects as. drizzle/0001_grant-ledger-tables.sql spells the
 // same literal (SQL cannot import it), so a mismatch fails as `permission denied` in the harness.
@@ -49,7 +50,8 @@ export async function prepareDatabase({
   // A DDL statement waiting behind a live transaction would queue every later statement on its
   // table; `lock_timeout` fails the run instead, with nothing applied. The one session setting
   // allowed, because this connection never goes through the pooler (pp-database → Running migrations).
-  const client = new Client({ connectionString: ownerUrl, options: '-c lock_timeout=5s' });
+  // A `DatabaseClient`, so a refused connect classifies (`pnpm db:setup`'s unreachable reason).
+  const client = new DatabaseClient({ connectionString: ownerUrl, options: '-c lock_timeout=5s' });
   await client.connect();
   try {
     await ensureRuntimeRole(client, runtimePassword, resetPassword);

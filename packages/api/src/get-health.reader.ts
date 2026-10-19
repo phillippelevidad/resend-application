@@ -40,8 +40,8 @@ export class GetHealthReader {
   async execute(input: GetHealthInput): Promise<HealthRead> {
     const { queueAttributes, eventSource, storageLimitBytes } = this.#deps;
     // Raised as `internal_error` with the AWS error as `cause`, so `onError` answers `500` as D19
-    // says. Left raw, an SDK socket error (`ECONNRESET`, `ENOTFOUND`) would match the database
-    // classifier and answer `503 database_unavailable`, a status this route does not declare.
+    // says and logs the AWS error's name. The classifier never reads an SDK socket error
+    // (`ECONNRESET`, `ENOTFOUND`) as the database: it counts a socket code only with a pg origin.
     const [queue, eventSourceState] = await Promise.all([
       queueAttributes.read(),
       eventSource.getState(),

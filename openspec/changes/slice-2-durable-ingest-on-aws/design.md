@@ -205,6 +205,15 @@ classifier gains:
 - `53100` (`disk_full`) as ADR-015's out-of-storage class. Safe either way until PG-U07 (slice 3): an
   unmatched code follows ADR-008, as today.
 
+And it narrows (code review issue 8; the owner: "Narrow the classifier"): a Node socket code counts
+only with a pg origin, inside a `DrizzleQueryError` or emitted by the connection of a
+`DatabaseClient`, the pg `Client` subclass `createDatabase`'s pools and `prepareDatabase` connect
+with. A bare socket code is any client's, and the AWS SDK rejects with Node's raw error
+(`@smithy/node-http-handler` 4.12.1), so an AWS port failure, raw or as a `cause`, never answers
+`503 database_unavailable` or pauses the worker. `onError` therefore classifies first, with no
+`internal_error` case ahead of it; D19's and D20's wrapping stays, so the `500` logs the AWS error's
+name. Evidence: [pp-database → Connection-error classification](../../../.agents/skills/pp-database/references/schema-and-repositories.md#connection-error-classification).
+
 #### D10 — `prepareDatabase` grows three things
 
 One path for the deploy command, `pnpm db:setup` and the harness:

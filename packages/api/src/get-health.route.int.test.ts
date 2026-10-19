@@ -128,9 +128,9 @@ describe('health.get with Postgres up', () => {
     ]);
   });
 
-  // An SDK network failure carries a socket code the database classifier also matches; D19 still
-  // answers an AWS read error `500`, never `503 database_unavailable`, which the route does not
-  // declare.
+  // An SDK network failure carries a socket code, which the database classifier matches only with a
+  // pg origin; D19 answers an AWS read error `500`, never `503 database_unavailable`, which the route
+  // does not declare.
   it('a queue read failing with a socket error code answers 500 internal_error, not 503', async () => {
     const queueAttributes: QueueAttributesPort = {
       read: async () => {

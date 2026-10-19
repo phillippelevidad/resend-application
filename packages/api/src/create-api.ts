@@ -126,17 +126,9 @@ function respond(c: Context<ApiEnv>, code: ErrorCode, overrides: ErrorOverrides 
 // `500 internal_error`, logged by name and request id, its message never sent.
 function onError(logger: Logger) {
   return (err: Error, c: Context<ApiEnv>): Response => {
-    // D19, D20: an AWS port failure arrives raised as `internal_error`, the SDK error as `cause`. It
-    // is answered as raised, before the classifier, which would read an SDK socket error
-    // (`ECONNRESET`) in that `cause` as the database. Logged by the cause's name.
-    if (err instanceof LedgerError && err.code === 'internal_error') {
-      logger.error('api.internal_error', {
-        request_id: c.get('requestId'),
-        ...errorFields(err.cause ?? err),
-      });
-      return respond(c, 'internal_error', { message: err.message, hint: err.hint, docs: err.docs });
-    }
-    // C3: the classifier next, so a driver error wrapped anywhere answers `503`.
+    // C3: the classifier first, so a driver error wrapped anywhere answers `503`. It counts a socket
+    // code only with a pg origin, so an AWS SDK socket error (`ECONNRESET`), raw or as a `cause`,
+    // falls through to `500` (D9).
     if (classifyDatabaseError(err) !== undefined) {
       return respond(c, 'database_unavailable');
     }
@@ -148,6 +140,14 @@ function onError(logger: Logger) {
     }
     // A run-outcome or client-side code has no HTTP status: a defect here (pp-general → Errors).
     if (err instanceof LedgerError && errorRegistry[err.code].status !== null) {
+      // D19, D20: an AWS port failure arrives raised as `internal_error`, the SDK error as
+      // `cause`, logged by the cause's name.
+      if (err.code === 'internal_error') {
+        logger.error('api.internal_error', {
+          request_id: c.get('requestId'),
+          ...errorFields(err.cause ?? err),
+        });
+      }
       return respond(c, err.code, { message: err.message, hint: err.hint, docs: err.docs });
     }
     logger.error('api.internal_error', { request_id: c.get('requestId'), ...errorFields(err) });
