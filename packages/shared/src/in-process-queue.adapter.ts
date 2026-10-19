@@ -2,6 +2,7 @@ import { setTimeout as sleepFor } from 'node:timers/promises';
 import type { IngestEnvelope } from '@ledger/core';
 import type { ClockPort } from './clock.port.ts';
 import type { Logger } from './create-logger.ts';
+import type { DlqPort, DlqSample, RedriveStart } from './dlq.port.ts';
 import type { QueueConsumer, QueueMessage, QueuePort } from './queue.port.ts';
 import type { QueueAttributesPort, QueueSnapshot } from './queue-attributes.port.ts';
 
@@ -47,8 +48,9 @@ const realSleep = (ms: number, signal: AbortSignal): Promise<void> =>
 // SQS standard is (ADR-002): a message is acknowledged only when the consumer leaves it out of
 // `batchItemFailures`, redelivered after 1 s otherwise, and moved to the dead list after its 5th
 // receive, so none is dropped without reaching a dead store. Slice 2B's Postgres queue makes it
-// durable. It is local mode's `QueueAttributesPort` too (D40).
-export class InProcessQueueAdapter implements QueuePort, QueueAttributesPort {
+// durable. It is local mode's `QueueAttributesPort` too (D40), and its `DlqPort` over the dead list
+// (slice 3, D3).
+export class InProcessQueueAdapter implements QueuePort, QueueAttributesPort, DlqPort {
   readonly #clock: ClockPort;
   readonly #logger: Logger;
   readonly #sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -105,6 +107,38 @@ export class InProcessQueueAdapter implements QueuePort, QueueAttributesPort {
 
   deadList(): readonly DeadListEntry[] {
     return [...this.#deadList];
+  }
+
+  // D3: the dead list's first `limit` entries, removing none; nothing is in flight on it, so `depth`
+  // is its length.
+  async sample(limit: number): Promise<DlqSample> {
+    return {
+      depth: this.#deadList.length,
+      messages: this.#deadList
+        .slice(0, limit)
+        .map(({ body, receiveCount }) => ({ body, receiveCount })),
+    };
+  }
+
+  // D3: every dead entry back on the waiting list, its receive count reset, under a new message id as
+  // a redrive gives on SQS (AWS-21). It completes at once, so it never answers `redrive_in_progress`.
+  async startRedrive(): Promise<RedriveStart> {
+    const moved = this.#deadList.splice(0);
+    if (moved.length === 0) return { status: 'empty', depth: 0 };
+    const now = this.#clock.now().getTime();
+    for (const { body, svixId } of moved) {
+      this.#lastId += 1;
+      this.#waiting.push({
+        messageId: String(this.#lastId),
+        body,
+        svixId,
+        enqueuedAt: now,
+        receiveCount: 0,
+        visibleAt: now,
+      });
+    }
+    this.#kick();
+    return { status: 'started', depth: moved.length };
   }
 
   // Never delivers inside `enqueue`: ingest answers once its enqueue resolved, not after the worker

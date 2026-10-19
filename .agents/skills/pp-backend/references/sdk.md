@@ -37,12 +37,15 @@ no import of `@ledger/api`, `db`, `aws`, `ingest`, `worker`, `reconciler`, `disp
   otherwise the namespace as written; [Operation template](../../../../.ai/api-contract.md#operation-template)).
   Never a generic `request(path)` on the public surface.
 - **The methods today** (slice 1, then slice 2's
-  [D24](../../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#d24--sdk-methods)):
+  [D24](../../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#d24--sdk-methods),
+  then slice 3's [D10](../../../../openspec/changes/archive/2026-10-19-slice-3-operations-and-evidence-on-aws/design.md#d10--sdk-and-cli)):
   `emails.get(emailId)`, `recipients.get(address)`, `health.get()`,
   `worker.resumeEventSource()`, `tokens.getCurrent()`, `tokens.list({ limit?, after? })`,
-  `tokens.create({ name, scope })` and `tokens.revoke(tokenId: string)`, each `{ data, error }`.
-  The exported data types are the generated schemas by name: `Email`, `Recipient`, `Health`,
-  `EventSource`, `Token`, `CreatedToken`, `TokenList`. A path or query value is passed as given
+  `tokens.create({ name, scope })`, `tokens.revoke(tokenId: string)`, `dlq.listMessages({ limit? })`
+  and `dlq.startRedrive()`, each `{ data, error }`. `dlq.startRedrive` answers both `202 started`
+  and `200 empty` as `data`. The exported data types are the generated schemas by name: `Email`,
+  `Recipient`, `Health`, `EventSource`, `Token`, `CreatedToken`, `TokenList`, `DlqMessageList`,
+  `DlqMessage`, `DlqRedrive`. A path or query value is passed as given
   (`tokenId` a string, `limit` and `after` numbers sent as query strings): its range and format are
   the API's `validation_failed`, never checked in the SDK. `FakeLedgerClient` in `@ledger/sdk/testing`
   grows the same methods and records each call as `{ method, argument }`.
@@ -84,6 +87,10 @@ surface that sits close to Resend's. Everything inside the server still throws.
   short, so a startup read such as `token.getCurrent` answers promptly.
 - **Never a command.** `token.create` mints a new token per call and is never retried; the other
   commands state their own idempotency and the SDK retries none of them.
+- **Until slice 5, no method retries.** `dlq.listMessages` and `dlq.startRedrive` each send exactly
+  one request per call, on a lost response and on a shapeless `503` alike (slice 3 D10; evidence:
+  [create-ledger-client.test.ts](../../../../packages/sdk/src/create-ledger-client.test.ts)).
+  `dlq.startRedrive` is a command and stays unretried after slice 5 too.
 - The count and the backoff curve are the slice 5 pre-proposal's. Evidence: SDK unit tests
   (slice 5); the SDK ↔ API contract tests from slice 1 grow per slice.
 

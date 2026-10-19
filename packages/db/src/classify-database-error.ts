@@ -17,8 +17,8 @@ const CONNECTION_SQLSTATES: ReadonlySet<string> = new Set([
   '57P02',
   '57P03',
   // `disk_full`: ADR-015's out-of-storage class, not a connection error, classified so the worker
-  // pauses instead of draining to the DLQ. Whether Neon's storage limit raises it is PG-U07 (D9);
-  // until then an unmatched code follows ADR-008, as before.
+  // pauses instead of draining to the DLQ. Neon raises it over a project's storage limit
+  // (`ERRCODE_DISK_FULL` in `pgxn/neon/pagestore_smgr.c`; PG-U07, settled 2026-10-19).
   '53100',
 ]);
 

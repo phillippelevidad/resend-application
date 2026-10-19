@@ -21,8 +21,9 @@ stdout and stderr discipline, `--json`, colour · waiting on a `202` · the CLI'
 [§12 Surfaces](../../../.ai/pre-proposals/2026-10-17-slice-1-local-ledger-and-read-path.md#12-surfaces)
 (`ledger email`, `ledger recipient`), slice 2's
 [design.md → Surfaces](../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#surfaces)
-(`ledger health`, `ledger worker resume`, `ledger token create|list|revoke|current`), then each
-slice for the commands it adds.
+(`ledger health`, `ledger worker resume`, `ledger token create|list|revoke|current`), slice 3's
+[design.md → Surfaces](../../../openspec/changes/archive/2026-10-19-slice-3-operations-and-evidence-on-aws/design.md#surfaces)
+(`ledger dlq inspect`, `ledger dlq redrive`), then each slice for the commands it adds.
 
 ## Precedence
 
@@ -53,7 +54,7 @@ pp-general; a doc beats both.
   kebab-cased (`email.get` → `email-get.cli.ts` → `emailGetCli`; `dlq.listMessages` →
   `dlq-list-messages.cli.ts`). The command, its arguments and flags are copied from the operation's
   **Surfaces** line. `reconcile.getRun` has no command: `ledger reconcile` calls it to wait.
-- **A group is a plain `.command()` with no action** (`worker`, `token`, later `dlq`), made on the
+- **A group is a plain `.command()` with no action** (`worker`, `token`, `dlq`), made on the
   configured root in `create-program.ts`; each operation under it registers on the group through
   its own `.cli.ts`, which takes the group as its `parent` (`ledger token create` →
   `token-create.cli.ts` → `tokenCreateCli(token, deps)`). The file is still named for the operation

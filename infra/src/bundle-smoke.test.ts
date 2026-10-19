@@ -26,6 +26,8 @@ new GuardrailsStack(app, 'LedgerGuardrails', {
 new AppStack(app, 'LedgerApp', {
   commit: '0123456789abcdef0123456789abcdef01234567',
   guardrailsStackName: 'LedgerGuardrails',
+  // The owner's shape, so ingest also loads with its optional `SIMULATOR_SECRET_ARN` (slice 3, D12).
+  simulator: true,
 });
 const assembly = app.synth();
 

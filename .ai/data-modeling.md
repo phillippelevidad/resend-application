@@ -304,7 +304,8 @@ _Evidence: the slice 1 schema and worker items hold; the other items are pending
   the typed columns of each unprojectable kind in
   [to-ledger-row.test.ts](../packages/worker/src/to-ledger-row.test.ts).
 - Slice 1: sim invariant 1.
-- Slice 3: a unit test that a simulator-signed event is stamped `simulated`.
+- Slice 3: a unit test that a simulator-signed event is stamped `simulated`, in
+  [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts).
 - Slice 4: replays dedupe on `svix_id` (RS-U01).
 - Slice 7: a rebuild after redaction yields identical projections.
 

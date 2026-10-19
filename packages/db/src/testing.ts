@@ -1,18 +1,18 @@
-// @ledger/db/testing: the int harness's per-file handle (pp-testing → Postgres harness). Only
-// `*.int.test.ts` files import it; the `int` project's global setup provides what it injects.
+// @ledger/db/testing: the int harness's per-file handle (pp-testing → Postgres harness), and the
+// sim's poison fault. `*.int.test.ts` files and `sim` import it; the `int` project's global setup
+// provides what `createTestDatabase` injects. Nothing here imports `vitest` or Testcontainers at
+// load, because `pnpm sim` runs it under plain `node` (D32) and needs only the poison fault.
 import { randomUUID } from 'node:crypto';
 import { LedgerError, type Logger } from '@ledger/shared';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Client, escapeIdentifier, Pool } from 'pg';
-import { inject } from 'vitest';
 import { createDatabase, type Database } from './create-database.ts';
 import { RUNTIME_ROLE } from './prepare-database.ts';
-import {
-  preparePostgres,
-  startPostgresContainer,
-  withCredentials,
-  withDatabase,
-} from './testing/postgres-container.ts';
+
+// The harness's container module, loaded at its first use: it pulls in Testcontainers.
+const postgresContainer = () => import('./testing/postgres-container.ts');
+
+export { addPoisonFault, POISON_ID_PREFIX, removePoisonFault } from './testing/poison-fault.ts';
 
 export type TestDatabase = {
   // Connected as the runtime role, through the deployed factory: what tests pass to repositories,
@@ -40,6 +40,9 @@ const silentLogger: Logger = {
 // One clone of the migrated template per test file: never truncated, never shared, so files run
 // in parallel and each test asserts only on its own ids.
 export async function createTestDatabase(): Promise<TestDatabase> {
+  // Loaded here, its only use, so the module itself loads under plain `node` (D32).
+  const { inject } = await import('vitest');
+  const { withCredentials, withDatabase } = await postgresContainer();
   const { maintenanceUrl, runtimeUser, runtimePassword, template } = inject('postgresHarness');
   const name = `test_${randomUUID().replaceAll('-', '')}`;
 
@@ -117,6 +120,7 @@ const OUTAGE_DATABASE = 'ledger_outage';
 // file. The one exception to one container per run. Its start costs seconds: one per file, in
 // `beforeAll`.
 export async function startOutageDatabase(): Promise<OutageDatabase> {
+  const { preparePostgres, startPostgresContainer, withCredentials } = await postgresContainer();
   const container = await startPostgresContainer(OUTAGE_DATABASE, { stoppable: true });
   try {
     const ownerUrl = container.getConnectionUri();

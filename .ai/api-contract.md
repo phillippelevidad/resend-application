@@ -35,8 +35,10 @@ lookup moved to a request body; redaction is always on; and the simulator is `pn
     credentials), `LEDGER_DEPLOY_DATABASE_POOLED_URL` (Neon pooled URL, owner credentials),
     `LEDGER_DEPLOY_WEBHOOK_SECRETS` (optional, comma-separated `whsec_` values),
     `LEDGER_ALERT_EMAIL` (required; the budget and kill-switch alert address, never committed),
-    `LEDGER_KILL_SWITCH` (`on` | `off`, default `off`) and `LEDGER_BUDGET_USD` (a positive number,
-    default `50`); and any such variable added later.
+    `LEDGER_KILL_SWITCH` (`on` | `off`, default `off`), `LEDGER_BUDGET_USD` (a positive number,
+    default `50`) and `LEDGER_SIMULATOR` (`on` | `off`, default `off`; with `on`, the deploy
+    requires `LEDGER_SIMULATOR_SECRET` and writes it into `ledger/simulator-signing-secret`); and
+    any such variable added later.
   - **Internal variables** are the ones CDK sets on a Lambda (secret ARNs, the worker's function
     name, queue URLs). Their names live in `packages/shared/src/function-env.ts`, one
     `as const` object per function, imported by `infra/src/function-env.ts`, which sets each value
@@ -129,8 +131,9 @@ The canonical registry, and the only place error codes are listed.
 `packages/core` mirrors this table. The enum lands with the first error in slice 1, and the test
 that fails when the two drift lands in slice 5 (ADR-011). `docs` links a Resend page where Resend
 behavior is the cause. Otherwise it is the absolute URL of the runbook entry
-`docs/runbook.md#<code>` in this repo's public GitHub tree, built from one base-URL constant, whose
-entries are owed by slice 3 and completed in slice 7.
+[`docs/runbook.md#<code>`](../docs/runbook.md#error-codes) in this repo's public GitHub tree, built
+from one base-URL constant. Its entries are there from slice 3 and completed in slice 7; every link
+resolves to a heading ([runbook-links.test.ts](../infra/src/runbook-links.test.ts)).
 
 | Code | HTTP | Meaning | Hint | Docs | Raised by |
 | --- | --- | --- | --- | --- | --- |
@@ -255,8 +258,8 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 - **Surfaces:** SDK `ledger.dlq.listMessages` · CLI `ledger dlq inspect [--limit <1-10>]` · MCP `inspect_dlq`
 - **Kind:** read `[view-shaped]`. A **sample** of up to 10 dead messages plus the total depth. SQS has no complete listing (AWS-50). Each item gives `svix_id`, type, `email_id`, `event_created_at`, enqueue time and receive count. No address or subject, raw or masked, and no payload. Why a message failed is in the worker's logs under its `svix_id` (runbook)
 - **Scope:** `read` · **Public contract:** yes (Ask-first)
-- **In / Out:** `limit` (1–10) → the list envelope (`has_more` when the depth exceeds the sample). It parses only the [ingest envelope](architecture.md#adr-001--verify-then-enqueue) ids and type. In local mode it reads dead rows of [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
-- **Errors:** `validation_failed`
+- **In / Out:** `limit` (1–10, default 10) → the list envelope with `depth` top-level (visible plus in flight) and `has_more` when the depth exceeds the sample, no cursor. It reads the [ingest envelope](architecture.md#adr-001--verify-then-enqueue)'s `svixId` and `receivedAt`, and only `type`, `created_at` and `data.email_id` from the raw body; no other path is read. In local mode it reads the in-process dead list until slice 2B, then dead rows of [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
+- **Errors:** `validation_failed`, `database_unavailable` (the token lookup)
 - **Idempotency / rate limit:** safe to repeat. It receives with a short visibility timeout and never deletes. Each receive adds to the count it reports, which is harmless on a DLQ with no redrive policy of its own (AWS-50). No Resend call
 - **Slices:** 3 — Operations and evidence on AWS; 2B — Local-mode queue and docker compose; 5 — MCP server and contract hardening
 
@@ -299,10 +302,10 @@ checks and MCP tool registration key on each entry's **Scope**, never on its sec
 
 - **Operation:** `dlq.startRedrive` → `POST /dlq/redrive` _(design intent; OpenAPI authoritative)_
 - **Surfaces:** SDK `ledger.dlq.startRedrive` · CLI `ledger dlq redrive` · MCP `redrive_dlq` (registered only under [MCP least privilege](#conventions))
-- **Kind:** **command**. It moves every DLQ message back to the source queue with `StartMessageMoveTask` (AWS-21) and answers `202` with the depth at start. An empty DLQ answers `200` and starts no task. Progress shows as the DLQ depth falling in `health.get`. In local mode it clears `dead_at` and resets `receive_count` on dead rows of [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
+- **Kind:** **command**. It moves every DLQ message back to the source queue with `StartMessageMoveTask` (AWS-21) and answers `202` with the depth at start. An empty DLQ answers `200` and starts no task. Progress shows as the DLQ depth falling in `health.get`. In local mode it moves the in-process dead list back to the queue until slice 2B; from 2B it clears `dead_at` and resets `receive_count` on dead rows of [local_queue_messages](data-modeling.md#local_queue_messages--the-local-mode-queue)
 - **Scope:** `operate` · **Public contract:** yes (Ask-first)
-- **In / Out:** none → the task handle and the starting depth
-- **Errors:** `forbidden`, `redrive_in_progress`
+- **In / Out:** none → the status and the starting depth. No task handle: it embeds the queue ARN and the account id (AWS-61)
+- **Errors:** `forbidden`, `redrive_in_progress`, `database_unavailable` (the token lookup)
 - **Idempotency / rate limit:** safe to repeat. A second call while a task runs is refused (one active task per queue, AWS-21). Redriven messages get a new SQS `messageId`, and the worker dedupes on `svix_id`, so no event is applied twice (AWS-21, [ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)). A poison message that is not yet fixed returns to the DLQ after `maxReceiveCount` (ADR-008). No Resend call
 - **Slices:** 3 — Operations and evidence on AWS; 2B — Local-mode queue and docker compose; 5 — MCP server and contract hardening
 

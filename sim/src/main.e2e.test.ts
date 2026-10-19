@@ -322,6 +322,10 @@ describe('pnpm sim (sim/src/main.ts)', () => {
     // as the namespace and the shuffle silently dropped.
     [['--namespace', '--shuffle'], '--namespace'],
     [['--verbose'], '--verbose'],
+    [['--burst', '20000/10s'], '--burst'],
+    [['--burst', '10/0s'], '--burst'],
+    [['--chaos', 'network'], '--chaos'],
+    [['--poison', '11'], '--poison'],
   ])('rejects %j with one stderr line naming %s, exit 2 and nothing on stdout', (args, flag) => {
     const { code, stdout, stderr } = runSim(args);
 
@@ -329,4 +333,74 @@ describe('pnpm sim (sim/src/main.ts)', () => {
     expect(stdout).toBe('');
     expect(stderr).toMatch(new RegExp(`^sim: ${flag} [^\\n]+\\n$`));
   });
+
+  it('names every flag, the AWS knobs included, when given one it does not know', () => {
+    const { code, stderr } = runSim(['--help']);
+
+    expect(code).toBe(2);
+    expect(stderr).toBe(
+      'sim: --help is not a flag; the flags are --seed, --namespace, --duplicates, --shuffle, --burst, --chaos and --poison\n',
+    );
+  });
+
+  it.each([
+    [['--burst', '10/1s', '--poison', '1'], '--burst and --poison'],
+    [['--chaos', 'db-outage', '--burst', '10/1s'], '--burst and --chaos'],
+    [['--poison', '1', '--duplicates', '0.2'], '--poison and --duplicates'],
+    [['--chaos', 'db-outage', '--duplicates', '0.2', '--shuffle'], '--chaos and --duplicates'],
+  ])('refuses the knob pair %j naming %s, exit 2 and nothing on stdout', (args, pair) => {
+    const { code, stdout, stderr } = runSim(args, { env: { LEDGER_URL: '' } });
+
+    expect(code).toBe(2);
+    expect(stdout).toBe('');
+    expect(stderr).toBe(`sim: ${pair} exclude each other; pass one of them\n`);
+  });
+
+  it.each([
+    [['--burst', '10000/10s'], '--burst'],
+    [['--chaos', 'db-outage'], '--chaos'],
+    [['--poison', '1', '--shuffle'], '--poison'],
+  ])(
+    'refuses the AWS run %j without LEDGER_URL: its one line, exit 2, nothing on stdout and no AWS call',
+    {
+      timeout: runTimeoutMs,
+    },
+    async (args, knob) => {
+      // Every AWS client is pointed at a loopback listener that counts connections, with throwaway
+      // credentials, so an AWS call the run made never leaves the machine. `spawnSync` blocks this
+      // process, so such a call goes unanswered and the run times out (`code` null) as well as
+      // being counted.
+      let connections = 0;
+      const aws = createServer((_request, response) => response.end());
+      aws.on('connection', () => {
+        connections += 1;
+      });
+      await new Promise<void>((resolve) => aws.listen(0, '127.0.0.1', resolve));
+      const { port } = aws.address() as AddressInfo;
+      try {
+        // The deployed file's other names loaded, `LEDGER_URL` emptied by the shell.
+        const { code, stdout, stderr } = runSim(args, {
+          env: {
+            ...livePrerequisites,
+            LEDGER_URL: '',
+            AWS_ENDPOINT_URL: `http://127.0.0.1:${port}`,
+            AWS_REGION: 'us-east-2',
+            AWS_ACCESS_KEY_ID: 'sim-e2e-not-a-key',
+            AWS_SECRET_ACCESS_KEY: 'sim-e2e-not-a-secret',
+          },
+        });
+        // `spawnSync` blocked this process's loop; one turn lets any queued connection be counted.
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(code).toBe(2);
+        expect(stdout).toBe('');
+        expect(stderr).toBe(
+          `sim: ${knob} needs a live run against the deployed stack: load .env.deployed.local\n`,
+        );
+        expect(connections).toBe(0);
+      } finally {
+        await new Promise<void>((resolve) => aws.close(() => resolve()));
+      }
+    },
+  );
 });

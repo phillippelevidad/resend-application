@@ -518,6 +518,118 @@
           "name",
           "scope"
         ]
+      },
+      "DlqMessageList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DlqMessage"
+            }
+          }
+        },
+        "required": [
+          "object",
+          "has_more",
+          "depth",
+          "data"
+        ]
+      },
+      "DlqMessage": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "dlq_message"
+            ]
+          },
+          "svix_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event_created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enqueued_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "receive_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "object",
+          "svix_id",
+          "type",
+          "email_id",
+          "event_created_at",
+          "enqueued_at",
+          "receive_count"
+        ]
+      },
+      "DlqRedrive": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "dlq_redrive"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "started",
+              "empty"
+            ]
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "object",
+          "status",
+          "depth"
+        ]
       }
     },
     "parameters": {}
@@ -1097,6 +1209,164 @@
           },
           "409": {
             "description": "`last_operate_token`: revoking it would leave no active `operate` token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dlq/messages": {
+      "get": {
+        "operationId": "dlq.listMessages",
+        "summary": "A sample of dead messages and the DLQ depth, ids and counts only",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[1-9]|10)$",
+              "example": "10"
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to `limit` dead messages, never removed or hidden, and the total depth.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqMessageList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dlq/redrive": {
+      "post": {
+        "operationId": "dlq.startRedrive",
+        "summary": "Move every dead message back to the source queue",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`status: empty`: the DLQ held nothing, so no redrive started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqRedrive"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "`status: started`: a redrive is moving `depth` messages; watch the DLQ depth fall in `health.get`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqRedrive"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the token lacks the `operate` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`redrive_in_progress`: a redrive task is already running; SQS allows one per queue.",
             "content": {
               "application/json": {
                 "schema": {

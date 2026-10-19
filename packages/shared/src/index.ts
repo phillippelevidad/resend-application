@@ -14,9 +14,16 @@ export {
   type LogSink,
   logFieldKeys,
 } from './create-logger.ts';
+export type { DlqPort, DlqRawMessage, DlqSample, RedriveStart } from './dlq.port.ts';
 export { EmfMetricsAdapter, type EmfMetricsDeps } from './emf-metrics.adapter.ts';
 export type { EventSourceControlPort } from './event-source-control.port.ts';
-export { apiEnv, ingestEnv, killSwitchEnv, workerEnv } from './function-env.ts';
+export {
+  apiEnv,
+  ingestEnv,
+  ingestSimulatorEnv,
+  killSwitchEnv,
+  workerEnv,
+} from './function-env.ts';
 export type { FunctionInvokePort } from './function-invoke.port.ts';
 export { InProcessFunctionInvokeAdapter } from './in-process-function-invoke.adapter.ts';
 export {

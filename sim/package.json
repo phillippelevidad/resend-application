@@ -5,6 +5,7 @@
   "description": "Simulation and chaos harness, run as pnpm sim",
   "license": "MIT",
   "dependencies": {
+    "@ledger/aws": "workspace:*",
     "@ledger/core": "workspace:*",
     "@ledger/db": "workspace:*",
     "@ledger/shared": "workspace:*"

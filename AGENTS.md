@@ -156,7 +156,7 @@ scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools.
 | **packages/worker** | Worker logic: ledger transaction, projections, outbox (ADR-004, ADR-015) | 1 |
 | **packages/api** | Hono app factory: read routes plus `operate`-scoped routes ([api-contract.md](.ai/api-contract.md)); source of the OpenAPI document (ADR-011, ADR-019) | 1 |
 | **packages/sdk** | Public TS client for the read API: generated types plus a thin client (ADR-011, ADR-019) | 1 |
-| **packages/aws** | The only `@aws-sdk/*` importer: one factory per SDK client; the port adapters for the SQS queue, SQS attributes, Secrets Manager, ESM control and Lambda invoke; the kill switch's trip and restore steps; the AWS reads and writes the `aws:*` scripts make. DLQ receive and redrive land in slice 3 (ADR-013) | 2 |
+| **packages/aws** | The only `@aws-sdk/*` importer: one factory per SDK client; the port adapters for the SQS queue, SQS attributes, the DLQ (receive and redrive), Secrets Manager, ESM control and Lambda invoke; the kill switch's trip and restore steps; the AWS reads and writes the `aws:*` scripts and the simulator's AWS runs make; the stack, function and alarm names `infra`, its scripts and `sim` share (ADR-013) | 2 |
 | **packages/reconciler** | Reconciler logic: gap detection + replay (ADR-007) | 4 |
 | **packages/resend-client** | Resend API wrapper that owns the shared rate limiter. The only place that calls Resend's API (ADR-012) | 4 |
 | **packages/dispatcher** | Dispatcher logic: outbox delivery (ADR-006, ADR-017) | 6 |
@@ -272,12 +272,17 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # naming the first missing one, before contacting AWS; pnpm db:setup writes both
                    # keys before it touches a database, so it writes them even with no local Postgres,
                    # then ends `db:setup: failed: Postgres is unreachable …`); optional
-                   # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD.
+                   # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD,
+                   # LEDGER_SIMULATOR (on|off; with on, LEDGER_SIMULATOR_SECRET is required, then
+                   # written into the simulator secret).
                    # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
                    # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
-                   # an address-hash key_id mismatch; migrates, deploys
+                   # an address-hash key_id mismatch (the owner's kept stack: put only
+                   # .env.deployed.local's LEDGER_ADDRESS_HASH_KEY in the shell, since
+                   # .env.local's is the local key); migrates, deploys
                    # LedgerGuardrails then LedgerApp, writes the secrets, prints the bootstrap token
-                   # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed
+                   # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed,
+                   # then `simulator on` or `simulator off`, never the value
 pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag
                    # discards them); destroys LedgerApp, then LedgerGuardrails only if that succeeded;
                    # lists billable leftovers (exit 1 on any); prints the two steps outside AWS
@@ -295,6 +300,15 @@ pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shu
                    # Live when LEDGER_URL is non-empty (the default once pnpm db:setup has written
                    # .env.local): sends signed events to apps/local, prints `sent requests=… accepted=…`,
                    # settles, then checks invariants 1 and 2. `LEDGER_URL= pnpm sim` runs offline
+pnpm sim --burst <events>/<seconds>s     # AWS runs (Ask-first): each needs the deployed LEDGER_URL and
+pnpm sim --chaos db-outage               # the owner's DATABASE_URL from .env.deployed.local in the shell
+pnpm sim --poison <1-10>                 # (without LEDGER_URL: exit 2), AWS credentials too. They exclude
+                   # each other and --duplicates (--shuffle combines); each refuses (exit 1) unless the
+                   # target is the armed, untripped LedgerApp with an empty DLQ and LEDGER_SIMULATOR=on.
+                   # Burst: 1-10000 events paced over 1-600 s, quota and usage-trip preflights, raised
+                   # throttle restored in finally, p50/p99 and bytes per event. db-outage: repoints the
+                   # database secret, proves the pause and queue-age alarm, restores, drains. Poison:
+                   # n events fail their insert and reach the DLQ; invariant 4 checks it
 
 # CLI (no `bin` until slice 8; loads .env.local, written by pnpm db:setup)
 pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
@@ -307,6 +321,9 @@ pnpm -s ledger token create --name <name> --scope <read|operate> [--json]   # op
 pnpm -s ledger token list [--json]       # operate; the newest 100, a stderr notice when more exist
 pnpm -s ledger token revoke <token_id> [--json]   # operate; never the last active operate token
 pnpm -s ledger token current [--json]    # the token LEDGER_TOKEN holds: id, name, scope
+pnpm -s ledger dlq inspect [--limit <1-10>] [--json]   # dead messages, ids and counts only, and the
+                   # DLQ depth; a stderr notice pointing at the worker logs when the DLQ is not empty
+pnpm -s ledger dlq redrive [--json]      # operate; moves every dead message back to the queue, returns at once
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
                    # without -s (pnpm's banner then precedes the output)

@@ -65,3 +65,14 @@ paths = [
   '''^infra/scripts/run-deploy\.test\.ts$''',
   '''^infra/scripts/template-secrets\.test\.ts$''',
 ]
+
+# The same slip in one pushed slice 3 branch commit: in 878997a three credentialed Postgres URLs to
+# *.example.test hosts, with the password fake-secret-password-7f3a and u:p, in the db-outage run's
+# test. Owner-approved 2026-10-19. Exactly this commit, one file and one rule are excused; f16664d builds
+# the values at run time.
+[[allowlists]]
+description = "Fake test fixtures committed as literals in one slice 3 branch commit"
+condition = "AND"
+targetRules = ["postgres-url"]
+commits = ["878997abbbf74af0072d065f03a2c9a13dd59ae3"]
+paths = ['''^sim/src/db-outage-run\.test\.ts$''']

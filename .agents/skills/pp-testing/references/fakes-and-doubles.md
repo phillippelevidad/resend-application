@@ -93,11 +93,31 @@ used only by that package's own tests (no `./testing` export):
 
 ## DLQ redrive
 
-Redrive runs through SQS, not Postgres (`StartMessageMoveTask`, AWS-21). Its evidence:
+Redrive runs through SQS, not Postgres (`StartMessageMoveTask`, AWS-21). `DlqPort` has two
+implementations, `SqsDlqAdapter` and the in-process queue's dead list, and both run
+`dlqPortContract` ([Shared contract suites](vitest-layout.md#shared-contract-suites); slice 3, D3):
+the SQS side from `sqs-dlq.adapter.test.ts`, its `deadLetter` seeding the stubbed DLQ; the
+in-process side from `in-process-queue.adapter.test.ts`, its `deadLetter` failing the message
+through every receive. Its evidence:
 
-1. **The adapter against the port contract** (slice 3): the DLQ adapter's unit test, as above,
-   sending `StartMessageMoveTask` for the DLQ and mapping "one active task per queue" (AWS-21) to
-   `redrive_in_progress` ([Error codes](../../../../.ai/api-contract.md#error-codes)).
+1. **The adapter against the port contract** (slice 3):
+   [`sqs-dlq.adapter.test.ts`](../../../../packages/aws/src/sqs-dlq.adapter.test.ts), over a stubbed
+   SQS client that holds a small DLQ (its visible messages, the ones a receive hid, its move tasks;
+   a receive with a visibility timeout above 0 hides what it returns, and a start empties the DLQ).
+   It asserts the request and what it leaves: `ReceiveMessage` with `VisibilityTimeout: 0`,
+   `WaitTimeSeconds: 1` and `MaxNumberOfMessages: limit`, and never `DeleteMessage` (AWS-59); a
+   second sample still sees every message; a `RUNNING` task from `ListMessageMoveTasks` answers
+   `redrive_in_progress` ([Error codes](../../../../.ai/api-contract.md#error-codes)) with no start
+   sent, while `COMPLETED`, `CANCELLED`, `FAILED` and `CANCELLING` do not refuse; whatever the depth
+   reads, a confirming receive (`MaxNumberOfMessages: 1`, visibility 0, `WaitTimeSeconds: 1`) that
+   returns nothing answers `empty` with no start, and a depth of 0 beside a received message starts
+   the task and answers `depth` 1 (AWS-62; the stale-depth lag measured on the deployed stack, F3's
+   branch `[Unverified]`); otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no
+   `DestinationArn`, and no `TaskHandle` in the result (AWS-61); a scripted start error (each name
+   the API Reference lists) propagates unchanged with no second start, because "one active task per
+   queue" (AWS-21) has no named error (AWS-U14). The status and error names are cited from the API
+   Reference in the file's header. Removing `VisibilityTimeout: 0`, the `RUNNING` check, the empty
+   check or the confirming receive fails a case.
 2. **The simulator invariant** (slice 3): the poison run passes invariant 4, and a redrive after the
    fix returns the DLQ depth to 0 ([slice 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws)).
 3. **What does run through Postgres:** a redriven message gets a new `messageId` but keeps its

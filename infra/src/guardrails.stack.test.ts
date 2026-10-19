@@ -4,6 +4,7 @@
 // unencrypted and open to Budgets and CloudWatch, the kill switch (armed only with its flag) and its
 // `Errors` alarm, the drill budget only with its flag, and no `Fn::ImportValue` (item 1). Synthesized
 // both ways; no credentials and no AWS call.
+import { RUNBOOK_BASE_URL } from '@ledger/core';
 import { killSwitchEnv } from '@ledger/shared';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
@@ -257,6 +258,21 @@ describe.each(variants)('budget wiring on the guardrails template (%s)', (_, tem
       TreatMissingData: 'notBreaching',
       AlarmActions: [{ Ref: topicId(template, alertTopicName(GUARDRAILS_STACK_NAME)) }],
     });
+    // Slice 3, D15: one action, on `ALARM` only.
+    expect(alarm.Properties.OKActions).toBeUndefined();
+    expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
+  });
+
+  it("ends the kill switch alarm's description with its runbook link (slice 3, D18)", () => {
+    const [, alarm] = only(resourcesOf(template, 'AWS::CloudWatch::Alarm'));
+    const description = String(alarm.Properties.AlarmDescription);
+    expect(
+      description.endsWith(
+        `. Runbook: ${RUNBOOK_BASE_URL}#${`${GUARDRAILS_STACK_NAME}-kill-switch-errors`.toLowerCase()}`,
+      ),
+    ).toBe(true);
+    // One line, no ARN or account id (CBL-01).
+    expect(description).not.toMatch(/\n|arn:|\d{12}/);
   });
 
   it("grants the kill switch only D29's calls, each on its narrowest resource (D29, AWS-U11)", () => {

@@ -26,8 +26,8 @@ const clock: ClockPort = { now: () => new Date() };
 export const ingest = createIngest({
   secretReader: new SecretsManagerSecretReaderAdapter({ client: createSecretsManagerClient() }),
   signingSecretsId: config.signingSecretsArn,
-  // ADR-016: no simulator secret on AWS until slice 3.
-  simulatorSecret: undefined,
+  // ADR-016, D13: read through the same port, only on a stack deployed with the simulator on.
+  simulatorSecretId: config.simulatorSecretArn,
   queue: new SqsQueueAdapter({ client: createSqsClient(), queueUrl: config.queueUrl }),
   clock,
   logger,

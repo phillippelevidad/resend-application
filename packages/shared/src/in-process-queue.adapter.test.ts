@@ -1,13 +1,14 @@
 // D8: the local queue is at-least-once, batches at most 10, redelivers a failed message after 1 s and
 // dead-lists it after its 5th receive with one `queue.dead_lettered` line. Time moves only through
 // `FakeClock`, so every step is deterministic. As `QueueAttributesPort`, it counts its own lists (D40).
-// Both shared port contracts run over it here (D1).
+// The shared port contracts run over it here (D1), the `DlqPort` one over its dead list (slice 3, D3).
 import type { IngestEnvelope } from '@ledger/core';
 import { describe, expect, it } from 'vitest';
 import type { ClockPort } from './clock.port.ts';
 import { createLogger } from './create-logger.ts';
 import { InProcessQueueAdapter } from './in-process-queue.adapter.ts';
 import type { BatchResponse, QueueMessage } from './queue.port.ts';
+import { dlqPortContract } from './testing/dlq-port-contract.ts';
 import { FakeClock } from './testing/fake-clock.ts';
 import { queueAttributesPortContract } from './testing/queue-attributes-port-contract.ts';
 import { queuePortContract } from './testing/queue-port-contract.ts';
@@ -249,6 +250,64 @@ describe('InProcessQueueAdapter', () => {
     });
   });
 
+  it('a redrive delivers a dead message again from receive count 1, so it takes 5 more receives to dead-list it (D3)', async () => {
+    const { clock, consumer, queue, receives } = harness((svixId) => svixId === 'msg_poison');
+    queue.start(consumer);
+    await queue.enqueue(envelope('msg_poison'));
+    await settle();
+    for (let step = 0; step < 4; step += 1) {
+      clock.advance(1_000);
+      await settle();
+    }
+    expect(queue.deadList()).toHaveLength(1);
+
+    expect(await queue.startRedrive()).toEqual({ status: 'started', depth: 1 });
+    await settle();
+    expect(receives.get('msg_poison')).toBe(6);
+
+    for (let step = 0; step < 3; step += 1) {
+      clock.advance(1_000);
+      await settle();
+    }
+    expect(receives.get('msg_poison')).toBe(9);
+    expect(queue.deadList()).toEqual([]);
+
+    clock.advance(1_000);
+    await settle();
+    expect(receives.get('msg_poison')).toBe(10);
+    expect(queue.deadList()).toHaveLength(1);
+    expect(queue.deadList()[0]).toMatchObject({ svixId: 'msg_poison', receiveCount: 5 });
+  });
+
+  it('a redrive after the fault is fixed commits the message, and read() reports dlqVisible 0 (D3)', async () => {
+    let poisoned = true;
+    const { clock, committed, consumer, queue } = harness(
+      (svixId) => poisoned && svixId === 'msg_poison',
+    );
+    queue.start(consumer);
+    await queue.enqueue(envelope('msg_poison'));
+    await settle();
+    for (let step = 0; step < 4; step += 1) {
+      clock.advance(1_000);
+      await settle();
+    }
+    expect((await queue.read()).dlqVisible).toBe(1);
+
+    poisoned = false;
+    expect(await queue.startRedrive()).toEqual({ status: 'started', depth: 1 });
+    await settle();
+
+    expect(committed).toEqual(['msg_poison']);
+    expect(queue.deadList()).toEqual([]);
+    expect(await queue.read()).toEqual({
+      visible: 0,
+      inFlight: 0,
+      oldestAgeSeconds: null,
+      dlqVisible: 0,
+      dlqInFlight: 0,
+    });
+  });
+
   it('delivers a message enqueued while a redelivery waits without waiting for it', async () => {
     const { committed, consumer, queue } = harness((svixId) => svixId === 'msg_waits');
     queue.start(consumer);
@@ -293,6 +352,26 @@ queuePortContract('InProcessQueueAdapter', () => {
     accepted: async () => {
       await settle();
       return [...bodies];
+    },
+  };
+});
+
+dlqPortContract('InProcessQueueAdapter', () => {
+  const clock = new FakeClock();
+  const queue = new InProcessQueueAdapter({ clock, logger: silentLogger(), sleep: clock.sleep });
+  // A consumer failing every receive, so each message is dead-listed after its 5th.
+  queue.start(async (messages) => ({
+    batchItemFailures: messages.map((message) => ({ itemIdentifier: message.messageId })),
+  }));
+  return {
+    port: queue,
+    deadLetter: async (body) => {
+      await queue.enqueue(JSON.parse(body) as IngestEnvelope);
+      await settle();
+      for (let receive = 1; receive < 5; receive += 1) {
+        clock.advance(1_000);
+        await settle();
+      }
     },
   };
 });

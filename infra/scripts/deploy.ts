@@ -77,6 +77,7 @@ function contextArgs(context: DeployContext): string[] {
     [infraContextKeys.budgetUsd]: String(context.budgetUsd),
     [infraContextKeys.killSwitch]: context.killSwitch ? 'on' : 'off',
     [infraContextKeys.budgetDrill]: context.budgetDrill ? 'true' : 'false',
+    [infraContextKeys.simulator]: context.simulator ? 'true' : 'false',
   };
   return Object.entries(values).flatMap(([key, value]) => ['-c', `${key}=${value}`]);
 }
@@ -172,6 +173,8 @@ function createSteps(config: DeployEnv): DeploySteps {
         apiUrl: required(appStack.outputs, appOutputKeys.apiUrl),
         databaseSecretArn: required(appStack.outputs, appOutputKeys.databaseSecretArn),
         signingSecretsArn: required(appStack.outputs, appOutputKeys.signingSecretsArn),
+        // Present only with the simulator (D12); runDeploy fails when `on` finds it absent.
+        simulatorSecretArn: appStack.outputs[appOutputKeys.simulatorSecretArn],
         killSwitchArmed,
       };
     },

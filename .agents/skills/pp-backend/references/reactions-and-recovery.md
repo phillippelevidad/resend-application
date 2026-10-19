@@ -105,12 +105,30 @@ slice 4.
 ## DLQ inspect and redrive
 
 [ADR-008](../../../../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq),
-[dlq.startRedrive](../../../../.ai/api-contract.md#dlqstartredrive). Lands in slice 3.
+[dlq.startRedrive](../../../../.ai/api-contract.md#dlqstartredrive). Both go through `DlqPort`
+(`packages/shared`); on AWS, `SqsDlqAdapter` (`packages/aws/src/sqs-dlq.adapter.ts`, slice 3 D4)
+implements it, and its unit test pins every bullet below.
 
-- **Inspect** receives a sample of up to 10 with a short visibility timeout and **never deletes**
-  (AWS-50); it parses only the envelope ids and type, never the payload.
-- **Redrive** is `StartMessageMoveTask` through the DLQ port (AWS-21). One active task per queue: a
-  second call is `redrive_in_progress`. An empty DLQ answers `200` and starts nothing.
+- **Inspect** reads the depth (visible plus in flight, `GetQueueAttributes`), then receives a sample
+  of up to 10 with **`VisibilityTimeout: 0`** and a **1-second long poll** (`WaitTimeSeconds: 1`), and
+  **never deletes** (AWS-50). Visibility 0 hides no sampled message from a following redrive or
+  depth; the long poll queries every server, where a short poll samples a subset and can answer
+  nothing from a small DLQ (AWS-59). The depth never comes from the sample's length. The adapter
+  returns raw bodies; the reader parses the envelope's `svixId` and `receivedAt` and exactly three
+  payload paths, `type`, `created_at` and `data.email_id` (slice 3 D5,
+  [read-api.md → Mappers](read-api.md#mappers)).
+- **Redrive** is `StartMessageMoveTask` through the DLQ port (AWS-21), and **`ListMessageMoveTasks`
+  (`MaxResults: 1`) runs before any start**: a `RUNNING` task answers `redrive_in_progress` with no
+  start sent, because SQS allows one active task per queue and names no "task already running"
+  error (AWS-60, AWS-U14). Every answer is confirmed by one receive (`MaxNumberOfMessages: 1`,
+  visibility 0, the 1-second long poll, AWS-59), whatever the depth reads, because the approximate
+  attributes lag (AWS-62): nothing received → `empty` (`200`), no start; a received message →
+  `started`, with depth = max(approximate depth, 1) (slice 3 D4). The start names no
+  `DestinationArn`, so each message returns to its original source queue. Its own error propagates
+  unchanged (`internal_error`), never mapped to `redrive_in_progress`.
+- **The `TaskHandle` is dropped**: it embeds the DLQ's ARN and account id (AWS-61), so no output
+  carries it; `started` reports the depth instead.
 - **Redriven messages get a new `messageId`**; the worker dedupes on `svix_id`, so nothing applies
   twice. Never an automatic redrive after recovery (ADR-015's rejected option).
-- Locally, both run against the dead rows of `local_queue_messages` through the same port (slice 2B).
+- Locally, the in-process queue's dead list implements the same port (slice 3 D3); slice 2B moves
+  it to the dead rows of `local_queue_messages`.

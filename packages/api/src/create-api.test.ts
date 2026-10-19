@@ -182,7 +182,7 @@ describe('the OpenAPI document', () => {
     await inert.pool.end();
   });
 
-  it('holds the eight operations, each requiring bearerAuth and listing a 401, and token.create documents 201', () => {
+  it('holds the ten operations, each requiring bearerAuth and listing a 401, token.create documents 201, and dlq.startRedrive 202 and 200', () => {
     type Operation = {
       operationId?: string;
       security?: Record<string, string[]>[];
@@ -198,6 +198,8 @@ describe('the OpenAPI document', () => {
 
     expect(operations.map((operation) => operation.operationId).sort()).toEqual(
       [
+        'dlq.listMessages',
+        'dlq.startRedrive',
         'email.get',
         'health.get',
         'recipient.get',
@@ -215,5 +217,7 @@ describe('the OpenAPI document', () => {
     }
     const create = operations.find((operation) => operation.operationId === 'token.create');
     expect(Object.keys(create?.responses ?? {})).toContain('201');
+    const redrive = operations.find((operation) => operation.operationId === 'dlq.startRedrive');
+    expect(Object.keys(redrive?.responses ?? {})).toEqual(expect.arrayContaining(['202', '200']));
   });
 });
