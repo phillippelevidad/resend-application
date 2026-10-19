@@ -366,7 +366,9 @@ describe('the alert address and the drill budget', () => {
     expect(owner.toJSON().Outputs.KillSwitchArmed.Value).toBe('true');
   }, 60_000);
 
-  it('holds the drill budget only with its flag: ACTUAL above USD 0.01 to the trip topic (D28, D36, C14)', () => {
+  it('holds the drill budget only with its flag: ACTUAL above USD 0.1 to the trip topic (D28, D36, C14)', () => {
+    // CloudFormation refuses a notification threshold below 0.1 (WALKTHROUGH-RUN F3).
+    expect(DRILL_THRESHOLD_USD).toBeGreaterThanOrEqual(0.1);
     disarmed.resourceCountIs('AWS::Budgets::Budget', 1);
     armed.resourceCountIs('AWS::Budgets::Budget', 2);
     armed.hasResourceProperties('AWS::Budgets::Budget', {

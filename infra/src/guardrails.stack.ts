@@ -31,8 +31,10 @@ export const BUDGET_NOTIFICATIONS = [
 export const MAX_BUDGET_NOTIFICATIONS = 5;
 
 // D28, C14: the drill budget's absolute threshold, in USD, low enough that the next budget refresh
-// notifies (AWS-34). The real budget keeps its once-a-month ACTUAL alert untouched.
-export const DRILL_THRESHOLD_USD = 0.01;
+// notifies (AWS-34). The real budget keeps its once-a-month ACTUAL alert untouched. CloudFormation's
+// validation refuses a notification threshold below 0.1 (measured: `aws:deploy --budget-drill`
+// failed synth at 0.01, WALKTHROUGH-RUN F3), so the drill uses that minimum.
+export const DRILL_THRESHOLD_USD = 0.1;
 
 // D28: the kill switch's size. It makes a few dozen AWS calls in sequence, well under a minute.
 export const KILL_SWITCH_MEMORY_MB = 256;

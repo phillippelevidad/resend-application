@@ -534,7 +534,7 @@ Every value a named constant commented with its `AWS-NN`.
   ACTUAL 80 %, FORECASTED 100 % → alert topic; ACTUAL 100 % → trip topic (C17: one SNS subscriber per
   notification, so the address reaches both through the topics).
 - **Drill budget** `LedgerGuardrails-drill`, only with `ledger:budgetDrill`: ACTUAL, `ABSOLUTE_VALUE`
-  `0.01` → trip topic. The real budget keeps its once-a-month alert (AWS-34, C14).
+  `0.1` (CloudFormation's minimum; 0.01 failed synth, WALKTHROUGH-RUN F3) → trip topic. The real budget keeps its once-a-month alert (AWS-34, C14).
 - **Kill switch:** `LedgerGuardrails-kill-switch`, through `LedgerFunction`, 256 MB, 60 s, always
   deployed. With `ledger:killSwitch=on`, the trip topic's Lambda subscription exists; otherwise none.
   Output `KillSwitchArmed` (`true` / `false`) is what CBL-16 reads.
