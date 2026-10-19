@@ -453,6 +453,9 @@ importers:
 
   sim:
     dependencies:
+      '@ledger/aws':
+        specifier: workspace:*
+        version: link:../packages/aws
       '@ledger/core':
         specifier: workspace:*
         version: link:../packages/core
