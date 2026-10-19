@@ -5,11 +5,17 @@
 // (https://docs.aws.amazon.com/lambda/latest/api/API_PutFunctionConcurrency.html#API_PutFunctionConcurrency_Errors)
 // and UpdateStage (https://docs.aws.amazon.com/apigatewayv2/latest/api-reference/apis-apiid-stages-stagename.html).
 import { type ApiGatewayV2Client, BadRequestException } from '@aws-sdk/client-apigatewayv2';
-import { type LambdaClient, TooManyRequestsException } from '@aws-sdk/client-lambda';
+import {
+  type LambdaClient,
+  ResourceInUseException,
+  TooManyRequestsException,
+} from '@aws-sdk/client-lambda';
 import type { SNSClient } from '@aws-sdk/client-sns';
 import { LedgerError } from '@ledger/shared';
+import { FakeClock } from '@ledger/shared/testing';
 import { describe, expect, it } from 'vitest';
 import {
+  KILL_SWITCH_SETTLE_TIMEOUT_MS,
   type KillSwitchNames,
   readKillSwitchState,
   restoreFromTrip,
@@ -195,6 +201,46 @@ const harness = (account: AccountState) => {
   return { account, apiGateway, clients, lambda, log, sns, updates };
 };
 
+// D29 (owner: "Wait, then cap"): the worker's mapping in `transition`, settling at `settlesTo` once
+// `settlesAfterMs` has passed on the clock (never, when undefined). Until then every
+// `UpdateEventSourceMapping` is refused with `ResourceInUseException`, as the API Reference's Errors
+// section describes (lambda/API_UpdateEventSourceMapping).
+const inTransition = (
+  { account, lambda }: ReturnType<typeof harness>,
+  clock: FakeClock,
+  transition: string,
+  settlesTo: string | undefined,
+  settlesAfterMs = 0,
+) => {
+  const settlesAt = clock.now().getTime() + settlesAfterMs;
+  account.mappingState = transition;
+  const state = () => {
+    if (
+      account.mappingState === transition &&
+      settlesTo !== undefined &&
+      clock.now().getTime() >= settlesAt
+    ) {
+      account.mappingState = settlesTo;
+    }
+    return account.mappingState;
+  };
+  lambda
+    .answer('GetEventSourceMapping', () => ({ UUID: mappingUuid, State: state(), ...metadata }))
+    .answer('UpdateEventSourceMapping', (input) => {
+      if (!['Enabled', 'Disabled'].includes(state())) {
+        throw new ResourceInUseException({ message: 'in transition', ...metadata });
+      }
+      account.mappingState = input.Enabled === true ? 'Enabled' : 'Disabled';
+      return { UUID: mappingUuid, ...metadata };
+    });
+};
+
+// The trip's settle wait on a fake clock whose sleep advances it, so no test sleeps.
+const fakeTime = (clock: FakeClock) => ({
+  clock,
+  sleep: async (ms: number) => clock.advance(ms),
+});
+
 const appFunctions = [
   'LedgerApp-ingest',
   'LedgerApp-worker',
@@ -339,6 +385,86 @@ describe('tripKillSwitch', () => {
     const failure = await tripKillSwitch(clients, names).catch((caught: unknown) => caught);
 
     expect((failure as Error).name).toBe('TooManyRequestsException');
+  });
+
+  it('waits out a mapping in transition, then disables it before any cap and runs every step in D29 order', async () => {
+    const h = harness(steadyAccount());
+    const clock = new FakeClock();
+    const started = clock.now().getTime();
+    inTransition(h, clock, 'Enabling', 'Enabled', 2_500);
+
+    const report = await tripKillSwitch(h.clients, names, fakeTime(clock));
+
+    expect(h.account.mappingState).toBe('Disabled');
+    const lastMappingUpdate = h.log.lastIndexOf('UpdateEventSourceMapping');
+    expect(lastMappingUpdate).toBeLessThan(h.log.indexOf('PutFunctionConcurrency'));
+    expect(h.log.lastIndexOf('PutFunctionConcurrency')).toBeLessThan(h.log.indexOf('UpdateStage'));
+    expect(h.log.at(-1)).toBe('Publish');
+    expect(clock.now().getTime() - started).toBe(3_000);
+    expect(report.changed).toEqual([
+      'event_source',
+      ...appFunctions.map((name) => `concurrency:${name}`),
+      'default_throttle',
+      'route_throttle:POST /webhooks/resend',
+    ]);
+    expect(h.account.published).toHaveLength(1);
+  });
+
+  it('caps concurrency and every throttle when the mapping never settles, then rejects with ResourceInUseException and publishes nothing', async () => {
+    const h = harness(steadyAccount());
+    const clock = new FakeClock();
+    const started = clock.now().getTime();
+    inTransition(h, clock, 'Updating', undefined);
+
+    const failure = await tripKillSwitch(h.clients, names, fakeTime(clock)).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect((failure as Error).name).toBe('ResourceInUseException');
+    expect(clock.now().getTime() - started).toBe(KILL_SWITCH_SETTLE_TIMEOUT_MS);
+    expect(h.account.mappingState).toBe('Updating');
+    for (const name of appFunctions) expect(h.account.functions.get(name)).toBe(0);
+    expect(h.account.defaultSettings).toMatchObject({
+      ThrottlingRateLimit: 0,
+      ThrottlingBurstLimit: 0,
+    });
+    expect(h.account.routeSettings).toEqual({
+      'POST /webhooks/resend': { ThrottlingRateLimit: 0, ThrottlingBurstLimit: 0 },
+    });
+    expect(h.account.published).toEqual([]);
+  });
+
+  it("Lambda's retry after a failed step 1 disables the settled mapping and changes nothing else", async () => {
+    const h = harness(steadyAccount());
+    const clock = new FakeClock();
+    inTransition(h, clock, 'Updating', undefined);
+    await tripKillSwitch(h.clients, names, fakeTime(clock)).catch(() => undefined);
+    // By the retry the transition has ended where it was heading.
+    h.account.mappingState = 'Enabled';
+    const settled = harness(h.account);
+
+    const report = await tripKillSwitch(settled.clients, names, fakeTime(clock));
+
+    expect(h.account.mappingState).toBe('Disabled');
+    expect(report.changed).toEqual(['event_source']);
+    expect(h.account.published).toHaveLength(1);
+  });
+
+  it('caps concurrency and every throttle when the mapping cannot be read, then rejects with the SDK error', async () => {
+    const { account, clients, lambda } = harness(steadyAccount());
+    lambda.answer('ListEventSourceMappings', () => {
+      throw new TooManyRequestsException({ message: 'slow', ...metadata });
+    });
+
+    const failure = await tripKillSwitch(clients, names).catch((caught: unknown) => caught);
+
+    expect((failure as Error).name).toBe('TooManyRequestsException');
+    for (const name of appFunctions) expect(account.functions.get(name)).toBe(0);
+    expect(account.defaultSettings).toMatchObject({
+      ThrottlingRateLimit: 0,
+      ThrottlingBurstLimit: 0,
+    });
+    expect(account.published).toEqual([]);
   });
 
   it('rejects with the SDK error unchanged when the stage rejects the stop values (BadRequestException, AWS-U02)', async () => {

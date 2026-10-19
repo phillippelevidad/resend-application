@@ -352,7 +352,8 @@ in order:
 1. `eventSource.getState()`. `enabled` → `already_enabled`, no database connection.
 2. Otherwise probe with `storageBytes` (D11), which connects and reads storage. A connection-class
    error, or storage at the threshold → `probe_failed`, state unchanged.
-3. Success → `eventSource.enable()`, then `getState()` → `resumed`.
+3. Success → `eventSource.enable()`, then `getState()` → `resumed`. A `changing` mapping (the
+   worker just paused itself) is waited out by `enable()`, below.
 
 `LambdaEventSourceControlAdapter` is constructed with a function name; it calls
 `ListEventSourceMappings({ FunctionName })` once per container, requires exactly one mapping (else a
@@ -360,6 +361,16 @@ constant error), caches its UUID, and reads and updates it with `GetEventSourceM
 `UpdateEventSourceMapping({ Enabled })`. The worker passes its own name; the read API, kill switch,
 re-arm and deploy command pass `LedgerApp-worker`. A function cannot carry its own mapping's UUID as
 a variable: that reference would be a CloudFormation cycle (C5).
+
+A mapping mid-transition refuses the update with `ResourceInUseException` (or
+`ResourceConflictException`, "another operation is in progress"; lambda/API_UpdateEventSourceMapping,
+Errors). `enable()` and `disable()` wait it out: on either error they poll once a second
+(`EVENT_SOURCE_SETTLE_POLL_MS`), return once the mapping settled at the target, update once it
+settled elsewhere, and rethrow the SDK error unchanged when the budget runs out. The budget is
+`EVENT_SOURCE_SETTLE_TIMEOUT_MS`, 10 s, unless the caller passes its own: it fits the worker's
+outage pause after D27's 40 s inside the 60 s timeout, and a resume behind the read API's 25 s
+synchronous invoke (D20). Evidence: `lambda-event-source-control.adapter.test.ts` → "on a mapping in
+transition".
 
 #### D17 — `apps/worker`
 
@@ -585,13 +596,23 @@ SNS event (any message on the trip topic trips; a non-SNS payload throws a const
 uses) and calls `tripKillSwitch` from `packages/aws`. In order, each step reading the current state
 first so a re-run is safe:
 
-1. Disable the worker's mapping (through `LedgerApp-worker`, D16).
+1. Disable the worker's mapping (through `LedgerApp-worker`, D16). A mapping in transition is
+   waited out for up to `KILL_SWITCH_SETTLE_TIMEOUT_MS`, 30 s: half the 60 s timeout (D28), so
+   steps 2 and 3 still run inside it.
 2. `PutFunctionConcurrency` `0` on every function whose name starts `LedgerApp-` (`ListFunctions`),
    so later slices' functions are covered with no edit (C18).
 3. On `LedgerApp-http`'s `$default` stage: `DefaultRouteSettings` throttle `0` / `0`, and every
    existing `RouteSettings` entry `0` / `0`.
 4. Publish what it changed (function names, states, throttle values; no id, URL or account) to the
    alert topic.
+
+If step 1 still fails (the mapping never settled, or could not be read), steps 2 and 3 run anyway,
+then step 1's error is rethrown before step 4, so Lambda's async retry runs the trip again and the
+`Errors` alarm fires (owner, "Wait, then cap": a budget-alarm gap is a spend-anyway item). Until that
+retry pauses it, the mapping still polls into a throttled worker, the risk step 1's order exists to
+avoid, now bounded by the retry instead of left uncapped. Evidence: `kill-switch.test.ts` → "waits out a mapping in
+transition", "caps concurrency and every throttle when the mapping never settles", "caps … when the
+mapping cannot be read", "Lambda's retry after a failed step 1".
 
 IAM: `lambda:ListFunctions` (`*`); concurrency calls on `function:LedgerApp-*`; mapping calls as D27
 (condition on the worker's ARN); `apigateway:GET` on `arn:aws:apigateway:<region>::/apis` and

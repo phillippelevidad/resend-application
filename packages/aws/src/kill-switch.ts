@@ -16,7 +16,10 @@ import {
 import { PublishCommand, type SNSClient } from '@aws-sdk/client-sns';
 import type { EventSourceState } from '@ledger/core';
 import { LedgerError } from '@ledger/shared';
-import { LambdaEventSourceControlAdapter } from './lambda-event-source-control.adapter.ts';
+import {
+  type EventSourceSettle,
+  LambdaEventSourceControlAdapter,
+} from './lambda-event-source-control.adapter.ts';
 
 export type KillSwitchClients = {
   lambda: LambdaClient;
@@ -36,6 +39,10 @@ export type DeclaredThrottle = { rateLimit: number; burstLimit: number };
 // D30: the stop values. AWS-U02 is open: if the trip drill finds `UpdateStage` rejects `0`, the lowest
 // accepted value replaces it here, recorded with its worst-case spend.
 export const KILL_SWITCH_STOP_THROTTLE: DeclaredThrottle = { rateLimit: 0, burstLimit: 0 };
+
+// D29 step 1: how long the trip waits out a mapping in transition before it caps anyway. Half the
+// kill switch's 60 s timeout (D28), so the caps' few dozen calls and the rethrow still run inside it.
+export const KILL_SWITCH_SETTLE_TIMEOUT_MS = 30_000;
 
 type Throttle = { rateLimit: number | null; burstLimit: number | null };
 
@@ -65,27 +72,38 @@ const functionPrefix = (appStackName: string): string => `${appStackName}-`;
 
 // D29: trip, in order, each step reading the current state first so a re-run changes nothing:
 // 1. disable the worker's event source mapping (AWS-18), so queued events wait in SQS instead of
-//    being throttled toward the DLQ;
+//    being throttled toward the DLQ; a mapping in transition is waited out for up to
+//    `KILL_SWITCH_SETTLE_TIMEOUT_MS`;
 // 2. reserved concurrency `0` (AWS-16) on every function carrying the app stack's prefix, found by
 //    `ListFunctions`, so a later slice's function is covered with no edit (C18);
 // 3. the `$default` stage's default-route throttle and every route-level throttle to the stop
 //    values, because a route setting overrides the default (AWS-14);
 // 4. publish the report to the alert topic.
+// A step 1 that still fails does not stop the trip: steps 2 and 3 cap the spend anyway, then its
+// error is rethrown before step 4, so Lambda's async retry runs the trip again (owner: "Wait, then
+// cap"). `settle` is the test's clock and sleep; the budget stays the kill switch's own.
 export async function tripKillSwitch(
   clients: KillSwitchClients,
   names: KillSwitchNames,
+  settle: Partial<Omit<EventSourceSettle, 'timeoutMs'>> = {},
 ): Promise<KillSwitchReport> {
   const changed: string[] = [];
 
   const eventSource = new LambdaEventSourceControlAdapter({
     client: clients.lambda,
     functionName: workerName(names.appStackName),
+    settle: { ...settle, timeoutMs: KILL_SWITCH_SETTLE_TIMEOUT_MS },
   });
-  let eventSourceState = await eventSource.getState();
-  if (eventSourceState !== 'paused') {
-    await eventSource.disable();
-    eventSourceState = 'paused';
-    changed.push('event_source');
+  // What a successful step 1 leaves; a failed one never reaches the report.
+  const eventSourceState: EventSourceState = 'paused';
+  let eventSourceFailure: { error: unknown } | undefined;
+  try {
+    if ((await eventSource.getState()) !== 'paused') {
+      await eventSource.disable();
+      changed.push('event_source');
+    }
+  } catch (error) {
+    eventSourceFailure = { error };
   }
 
   const functions: { name: string; reservedConcurrency: number | null }[] = [];
@@ -128,6 +146,9 @@ export async function tripKillSwitch(
     if (!defaultAtStop) changed.push('default_throttle');
     for (const [routeKey] of routesToStop) changed.push(`route_throttle:${routeKey}`);
   }
+
+  // Compute and traffic are capped; the mapping is not yet paused, so the trip fails for its retry.
+  if (eventSourceFailure !== undefined) throw eventSourceFailure.error;
 
   const report: KillSwitchReport = {
     action: 'trip',
