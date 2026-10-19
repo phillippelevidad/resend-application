@@ -490,6 +490,13 @@ CBL-21's lone cold delivery stays separate.
 
 #### D27 — The two faults
 
+Every bounded wait below (db-outage steps 5, 6 and 8; poison step 4) treats an AWS read that throws
+as "not yet" and polls again at the next interval, so a transient error (a lost route to the region,
+a throttled call) never ends the run early, where its `finally` would drop the fault or restore the
+secret before the evidence is in. The run fails only at the bound: with the wait's own timeout line
+when the last read returned, or with `sim: the … run failed (<ErrorName>)` when the read at the bound
+threw (`sim/src/wait-until.ts`; walk finding F2).
+
 **`--chaos db-outage`** (`db-outage-run.ts`) repoints the database without touching Neon:
 
 1. D23's guard, plus a refusal when the worker's event source is already paused. As built, three

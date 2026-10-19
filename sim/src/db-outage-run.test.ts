@@ -23,6 +23,26 @@ const ORIGINAL = JSON.stringify({
 
 const minute = 60_000;
 
+// What `world()` prints end to end, in the order Surfaces prints.
+const completedLines = [
+  'chaos db-outage: database repointed, worker and api recycled',
+  'sent requests=24 accepted=24 first_attempt_200=24',
+  'worker paused after 40s',
+  'queue-age alarm ALARM after 6m; dlq depth 0',
+  'chaos db-outage: database restored, worker and api recycled',
+  'resume: pnpm -s ledger worker resume, or wait for the hourly resume',
+  'worker enabled after 3m',
+  'settled stored=20/20 after 4s',
+  'invariant 1 pass stored=20/20',
+  'invariant 2 pass emails=7 recipients=9',
+  'invariant 3 not checked (slice 6)',
+  'invariant 4 pass (dlq holds exactly the 0 poisoned)',
+];
+
+// An SDK timeout whose text names a host, as a lost route to the region throws it.
+const timeoutError = (): Error =>
+  Object.assign(new Error(`connect ETIMEDOUT ${HOST}`), { name: 'TimeoutError' });
+
 type World = {
   run: DbOutageRunInput;
   clock: FakeClock;
@@ -149,20 +169,7 @@ describe('dbOutageRun', () => {
 
     expect(await dbOutageRun(run)).toBe(0);
 
-    expect(stdout).toEqual([
-      'chaos db-outage: database repointed, worker and api recycled',
-      'sent requests=24 accepted=24 first_attempt_200=24',
-      'worker paused after 40s',
-      'queue-age alarm ALARM after 6m; dlq depth 0',
-      'chaos db-outage: database restored, worker and api recycled',
-      'resume: pnpm -s ledger worker resume, or wait for the hourly resume',
-      'worker enabled after 3m',
-      'settled stored=20/20 after 4s',
-      'invariant 1 pass stored=20/20',
-      'invariant 2 pass emails=7 recipients=9',
-      'invariant 3 not checked (slice 6)',
-      'invariant 4 pass (dlq holds exactly the 0 poisoned)',
-    ]);
+    expect(stdout).toEqual(completedLines);
     expect(stderr).toEqual([]);
     // The fault, then the original back; each function recycled into the outage and out of it.
     expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
@@ -176,12 +183,10 @@ describe('dbOutageRun', () => {
 
   it('restores the secret and recycles both functions when a step fails after the fault, then exits 1', async () => {
     const { run, stdout, stderr, secret, descriptions } = world();
-    // The pre-fault read succeeds; the hold's read, with the fault in place, fails.
-    run.queueAgeAlarmState = async () => {
-      if (!holdsOutageHost(secret.value)) return 'OK';
-      throw Object.assign(new Error(`arn:aws:cloudwatch:… ${HOST}`), {
-        name: 'ThrottlingException',
-      });
+    // The send, with the fault in place, fails outside any bounded wait (a read inside one is "not
+    // yet", next tests).
+    run.send = async () => {
+      throw Object.assign(new Error(`connect ECONNREFUSED ${HOST}`), { name: 'TypeError' });
     };
 
     expect(await dbOutageRun(run)).toBe(1);
@@ -189,9 +194,101 @@ describe('dbOutageRun', () => {
     expect(secret.value).toBe(ORIGINAL);
     expect(descriptions.worker).toEqual(['ledger-sim db-outage walk', '']);
     expect(descriptions.api).toEqual(['ledger-sim db-outage walk', '']);
-    expect(stderr).toEqual(['sim: the db-outage run failed (ThrottlingException)']);
+    expect(stderr).toEqual(['sim: the db-outage run failed (TypeError)']);
     expect(stdout).toContain('chaos db-outage: database restored, worker and api recycled');
     expect(stdout).not.toContain('worker enabled after 3m');
+    expectNoSecretOrUrl([...stdout, ...stderr]);
+  });
+
+  // The walk's lost route to us-east-2 (F2): one AWS read throws inside a bounded wait. Each run must
+  // still complete as `world()` does, the secret written back once, after the hold.
+  it('keeps the outage when an event-source read throws TimeoutError 10 s into the pause wait, instead of failing the run and restoring the secret early', async () => {
+    const { run, stdout, stderr, secret } = world();
+    const read = run.eventSourceState;
+    let faultReads = 0;
+    run.eventSourceState = async () => {
+      if (secret.writes.length === 1 && ++faultReads === 2) throw timeoutError();
+      return read();
+    };
+
+    expect(await dbOutageRun(run)).toBe(0);
+
+    expect(faultReads).toBeGreaterThan(2);
+    expect(stdout).toEqual(completedLines);
+    expect(stderr).toEqual([]);
+    expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
+  });
+
+  it('keeps the outage when a DLQ depth read and an alarm read each throw TimeoutError in the queue-age wait, instead of failing the run and restoring the secret early', async () => {
+    const { run, stdout, stderr, secret } = world();
+    const depth = run.dlqDepth;
+    const alarm = run.queueAgeAlarmState;
+    let depthReads = 0;
+    let alarmReads = 0;
+    run.dlqDepth = async () => {
+      if (++depthReads === 1) throw timeoutError();
+      return depth();
+    };
+    run.queueAgeAlarmState = async () => {
+      if (secret.writes.length === 1 && ++alarmReads === 2) throw timeoutError();
+      return alarm();
+    };
+
+    expect(await dbOutageRun(run)).toBe(0);
+
+    expect(alarmReads).toBeGreaterThan(2);
+    expect(stdout).toEqual(completedLines);
+    expect(stderr).toEqual([]);
+    expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
+  });
+
+  it('still drains and checks the invariants when an event-source read throws TimeoutError in the enabled wait, instead of failing the run', async () => {
+    const { run, stdout, stderr, secret } = world();
+    const read = run.eventSourceState;
+    let restoredReads = 0;
+    run.eventSourceState = async () => {
+      if (secret.writes.length === 2 && ++restoredReads === 1) throw timeoutError();
+      return read();
+    };
+
+    expect(await dbOutageRun(run)).toBe(0);
+
+    expect(restoredReads).toBeGreaterThan(1);
+    expect(stdout).toEqual(completedLines);
+    expect(stderr).toEqual([]);
+    expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
+  });
+
+  it('keeps the outage for the whole 10 min pause bound when every event-source read throws, then restores and fails naming the error, not AWS-U15', async () => {
+    const { run, stdout, stderr, secret, descriptions } = world();
+    const read = run.eventSourceState;
+    const restoreRecycledAt: number[] = [];
+    let sentAt = 0;
+    const send = run.send;
+    run.send = async () => {
+      sentAt = run.clock.now().getTime();
+      return send();
+    };
+    run.eventSourceState = async () => {
+      if (secret.writes.length === 1) throw timeoutError();
+      return read();
+    };
+    const recycle = run.recycle;
+    run.recycle = async (fn, description) => {
+      if (description === '') restoreRecycledAt.push(run.clock.now().getTime());
+      await recycle(fn, description);
+    };
+
+    expect(await dbOutageRun(run)).toBe(1);
+
+    expect(stderr).toEqual(['sim: the db-outage run failed (TimeoutError)']);
+    expect(stdout).toContain('chaos db-outage: database restored, worker and api recycled');
+    expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
+    expect(descriptions).toEqual({
+      worker: ['ledger-sim db-outage walk', ''],
+      api: ['ledger-sim db-outage walk', ''],
+    });
+    expect((restoreRecycledAt[0] ?? 0) - sentAt).toBeGreaterThanOrEqual(10 * minute);
     expectNoSecretOrUrl([...stdout, ...stderr]);
   });
 

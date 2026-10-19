@@ -143,6 +143,9 @@ async function poisoned(run: PoisonRunInput): Promise<boolean> {
     return false;
   }
 
+  // A depth read that throws before the bound is "not yet" (`waitUntil`), so the fault stays through
+  // the sixth receive. A wait that ends at the bound without a throw ended on a read that returned,
+  // so `depth` is what the DLQ held then.
   let depth = 0;
   const reached = await waitUntil(run, DLQ_BOUND, async () => {
     depth = await run.dlqDepth();

@@ -193,6 +193,88 @@ describe('poisonRun', () => {
     expect(fault.present).toBe(false);
   });
 
+  it('keeps the fault and keeps polling when a DLQ depth read throws TimeoutError 9 min in, instead of failing the run and dropping the fault before the sixth receive', async () => {
+    const { run, stdout, stderr, fault } = world(1);
+    const log: string[] = [];
+    const readDepth = run.dlqDepth;
+    const add = run.addFault;
+    const remove = run.removeFault;
+    let reads = 0;
+    run.dlqDepth = async () => {
+      reads += 1;
+      // The 19th read, 9 min after the settle at the 30 s interval: the walk's lost route to us-east-2.
+      if (reads === 19) {
+        log.push('read threw');
+        throw Object.assign(new Error('connect ETIMEDOUT https://sqs.us-east-2.amazonaws.com'), {
+          name: 'TimeoutError',
+        });
+      }
+      const depth = await readDepth();
+      log.push(`depth ${depth}`);
+      return depth;
+    };
+    run.addFault = async () => {
+      log.push('add');
+      await add();
+    };
+    run.removeFault = async () => {
+      log.push('remove');
+      await remove();
+    };
+    const others = generatedSvixIds(run.pick.history).length - 1;
+
+    expect(await poisonRun(run)).toBe(0);
+
+    expect(stdout).toEqual([
+      `poison count=1 svix_ids=${run.pick.svixIds.join(',')} email_ids=${run.pick.emailIds.join(',')}`,
+      'sent requests=24 accepted=24',
+      `others stored ${others}/${others} exactly once (1 poisoned wait in the DLQ)`,
+      'invariant 1 not checked (1 poisoned events wait in the DLQ)',
+      'invariant 2 not checked (1 poisoned events wait in the DLQ)',
+      'invariant 4 pass (dlq holds exactly the 1 poisoned)',
+      'poison fixed; next: pnpm -s ledger dlq inspect, then pnpm -s ledger dlq redrive; the depth returns to 0 in pnpm -s ledger health',
+    ]);
+    expect(stderr).toEqual([]);
+    // The fault stayed through the throw and was removed once, after the DLQ held the poisoned.
+    const afterAdd = log.slice(log.indexOf('add') + 1);
+    expect(afterAdd.indexOf('read threw')).toBeGreaterThan(-1);
+    expect(afterAdd.filter((entry) => entry === 'remove')).toEqual(['remove']);
+    expect(afterAdd.slice(-2)).toEqual(['depth 1', 'remove']);
+    expect(afterAdd.indexOf('read threw')).toBeLessThan(afterAdd.indexOf('depth 1'));
+    expect(fault.present).toBe(false);
+  });
+
+  it('keeps the fault for the whole 40 min bound when every DLQ depth read throws, then fails naming the error, not a depth it never read', async () => {
+    const { run, stderr, fault } = world(1, {
+      dlqDepth: async () => {
+        throw Object.assign(new Error('connect ETIMEDOUT https://sqs.us-east-2.amazonaws.com'), {
+          name: 'TimeoutError',
+        });
+      },
+    });
+    const settle = run.settle;
+    const remove = run.removeFault;
+    let settledAt = 0;
+    const removedAt: number[] = [];
+    run.settle = async (ids, generatedEvents) => {
+      const settled = await settle(ids, generatedEvents);
+      settledAt = run.clock.now().getTime();
+      return settled;
+    };
+    run.removeFault = async () => {
+      removedAt.push(run.clock.now().getTime());
+      await remove();
+    };
+
+    expect(await poisonRun(run)).toBe(1);
+
+    expect(stderr).toEqual(['sim: the poison run failed (TimeoutError)']);
+    expect(fault.events).toEqual(['remove', 'add', 'remove']);
+    expect(fault.present).toBe(false);
+    expect((removedAt.at(-1) ?? 0) - settledAt).toBeGreaterThanOrEqual(40 * minute);
+    expectNoAddressOrUrl(stderr);
+  });
+
   it('fails the run like an invariant when the others are short', async () => {
     const { run, stdout } = world(1, {
       settle: async (ids, generatedEvents) => ({

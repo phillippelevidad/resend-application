@@ -190,6 +190,8 @@ async function holdOutage(run: DbOutageRunInput): Promise<boolean> {
   const allAccepted = sent.accepted === sent.requests;
 
   // Both durations count from the end of the send, when the queue holds the history.
+  // A read that throws before either bound is "not yet" (`waitUntil`), so a transient AWS error never
+  // sends `dbOutageRun` to its restore early.
   const sentAt = run.clock.now().getTime();
   const paused = await waitUntil(run, PAUSE_BOUND, async () => {
     return (await run.eventSourceState()) === 'paused';
@@ -228,6 +230,8 @@ async function holdOutage(run: DbOutageRunInput): Promise<boolean> {
 // D27 step 8: after the restore, wait for the resume (the hourly one needs no human), settle, and
 // check that the outage lost nothing.
 async function drain(run: DbOutageRunInput): Promise<boolean> {
+  // A read that throws before the bound is "not yet" (`waitUntil`): a throw here would skip the drain
+  // and its invariants.
   const enabled = await waitUntil(run, ENABLED_BOUND, async () => {
     return (await run.eventSourceState()) === 'enabled';
   });
