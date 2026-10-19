@@ -12,7 +12,7 @@
 | Earlier pre-proposal | None for this slice |
 | Branch | `worktree-slice-3-operations-evidence` (at `8e37a70`, clean) |
 | Owner round | 2026-10-19: one decision (PG-U07, D30) and the itemized Ask-first approvals (§7), all approved |
-| Checked | Not yet |
+| Checked | 2026-10-19: 12 repaired, 0 for the owner (owner round verified against its recorded answers) |
 
 ## 1. Why now
 
@@ -95,11 +95,11 @@ Checked against `8e37a70` (clean).
 | --- | --- | --- | --- |
 | 1 | **partial** | Two alarms exist: `LedgerApp-usage-trip` → trip topic (`infra/src/app.stack.ts:247-258`) and `LedgerGuardrails-kill-switch-errors` → alert topic (`infra/src/guardrails.stack.ts:170-181`). Neither has an `AlarmDescription`. There is no queue-age, DLQ-depth or 5xx alarm. No `docs/runbook.md` exists (`ls docs` → `idea.md` only). `packages/core/src/error-codes.ts:31-33`: "Its entries are slice 3's, so these links 404 until then" | Three alarms (D17), descriptions on all five (D18), the runbook (D19), and the link check (D20) |
 | 2 | **absent** | No DLQ port (`packages/shared/src` has no `dlq.port.ts`), no SQS DLQ adapter (`packages/aws/src`), no route (`packages/api/src`), no SDK method (`packages/sdk/src/create-ledger-client.ts:34-36`: `health`, `worker`, `tokens` only) and no CLI command (`apps/cli/src/commands`). Present: the read API already carries `DLQ_URL` and `sqs:GetQueueAttributes` on the DLQ (`infra/src/app.stack.ts:183,190-195`); `redrive_in_progress` is registered and mirrored (`packages/core/src/error-codes.ts:15,105`); the in-process queue keeps a dead list (`packages/shared/src/in-process-queue.adapter.ts:58,106,175`) | Port, two implementations, routes, SDK, CLI, tests (D1–D10) |
-| 3 | **partial** | Ingest already verifies the simulator secret after the Resend set and stamps `simulated` (`packages/ingest/src/create-ingest.ts:79-89`). The stamping test exists (`packages/ingest/src/create-ingest.test.ts:283`). On AWS the secret is wired as `undefined` (`apps/ingest/src/main.ts:29-30`: "no simulator secret on AWS until slice 3"). No CDK secret, no flag, no deploy write | The flag (D11), the CDK secret and its assertions (D12), the read through the port (D13), and the absent-secret rejection test (D13) |
+| 3 | **partial** | Ingest already verifies the simulator secret after the Resend set and stamps `simulated` (`packages/ingest/src/create-ingest.ts:79-92`). The stamping test exists (`packages/ingest/src/create-ingest.test.ts:283`). On AWS the secret is wired as `undefined` (`apps/ingest/src/main.ts:29-30`: "no simulator secret on AWS until slice 3"). No CDK secret, no flag, no deploy write | The flag (D11), the CDK secret and its assertions (D12), the read through the port (D13), and the absent-secret rejection test (D13) |
 | 4 | **absent** | `sim/src/read-sim-flags.ts:12-17`: four flags, no `--burst`. `sim/src/live-run.ts:41`: sends one request at a time; `:26`: a 30 s settle bound. No throttle raise in `packages/aws` (the kill switch only lowers and restores, `packages/aws/src/kill-switch.ts:85,177`). `ledgerHistory` draws small shared-pool histories (`packages/core/src/testing/ledger-history.ts:212-219`), not a 10k broadcast. PG-U07 `[Unverified]` ([integrations.md](../integrations.md#unverified)); RS-U08 `[Unverified]` ([resend.md](../resend.md#unverified)) | The burst generator, sender, preflight and throttle steps, the storage reading, PG-U07, RS-U08 (D21–D26, D30) |
 | 5 | **absent** | No `--chaos`. The ADR-015 machinery exists and is proven on Testcontainers (`packages/worker/src/database-outage.int.test.ts`), and the deployed pause/resume path exists (slice 2) | The chaos mechanism, the alarm wait and the run (D27, D28) |
 | 6 | **partial** | The SQS redrive policy (`maxReceiveCount` 5, `infra/src/app.stack.ts:43,133`) and per-message failure (`packages/worker/src/create-worker.int.test.ts`) exist. `sim/src/live-run.ts:112` prints "invariant 4 not checked (slice 3)". No invariant-4 checker, no poison fault, no redrive surface | Invariant 4 (D24), the poison fault (D27), the isolation integration test (§20), and the redrive (D1–D10) |
-| 7 | **partial** | `pnpm sim --duplicates 0.2 --shuffle` already runs live against any `LEDGER_URL` (`sim/src/sim.config.ts:155-178`) and checks invariants 1 and 2 through `DATABASE_URL`. It has never run against the deployed queue, and its 30 s settle bound (`sim/src/live-run.ts:26`) is local-sized | The settle bound (D22) and the recorded run against the deployed stack (§21 P6). No new flag |
+| 7 | **partial** | `pnpm sim --duplicates 0.2 --shuffle` already runs live against any `LEDGER_URL` (`sim/src/sim.config.ts:21,48-67`) and checks invariants 1 and 2 through `DATABASE_URL`. It has never run against the deployed queue, and its 30 s settle bound (`sim/src/live-run.ts:26`) is local-sized | The settle bound (D22) and the recorded run against the deployed stack (§21 P6). No new flag |
 
 `openspec/specs/` holds `read-api`, `sdk`, `cli`, `simulator`, `aws-stacks`, `webhook-ingest`,
 `deploy-and-teardown` and `local-stack`, so each of those deltas is `MODIFIED` (§23). There is no
@@ -172,7 +172,11 @@ port per call, or an adapter that parses payloads.
 **D2 — Stack names move to `@ledger/aws`.** `APP_STACK_NAME`, `GUARDRAILS_STACK_NAME`,
 `appOutputKeys`, `guardrailsOutputKeys`, `USAGE_TRIP_ALARM_NAME` and `KILL_SWITCH_ERRORS_ALARM_NAME`
 move from `infra/scripts/ledger-stacks.ts` to `packages/aws/src/ledger-stacks.ts`. They are
-re-exported, and `infra/scripts` imports them from there, adding the three new alarm names (D17).
+re-exported, and `infra/scripts` imports them from there, adding the three new alarm names (D17)
+and `API_FUNCTION_NAME = \`${APP_STACK_NAME}-api\``, the read API's physical name exactly as the
+app stack derives it (`infra/src/app.stack.ts:92-97`). D27 recycles the read API, and no stack
+output names it (only `WorkerFunctionName`, `infra/src/app.stack.ts:267`); a derived constant
+beside the stack name costs no template change.
 The sim needs them, and it must not import `infra` ([module boundaries](../../AGENTS.md#module-boundaries);
 [pp-infra → scripts.md → Shape](../../.agents/skills/pp-infra/references/scripts.md#shape): "Logic
 a script shares lives in its package"). `PROJECT_TAG` and the log-group helpers stay in `infra/scripts`.
@@ -255,7 +259,9 @@ when it writes). Authority: [api-contract.md → `dlq.startRedrive`](../api-cont
 
 **D8 — Errors.** No new code. `redrive_in_progress` uses the registry's message and hint verbatim
 (`packages/core/src/error-codes.ts:105`). The `docs` link stays the AWS redrive page, as the
-registry fixes it. The codes each route raises are listed in §12.
+registry fixes it. The codes each route raises are listed in §12. Authority:
+[api-contract.md → Error codes](../api-contract.md#error-codes) ("the only place error codes are
+listed"; `redrive_in_progress`'s Docs column is the AWS Redrive page).
 
 **D9 — Composition.** `ApiDeps` gains `dlq: DlqPort`. `apps/api/src/main.ts` builds
 `SqsDlqAdapter` from `apiEnv.DLQ_URL` and `apiEnv.QUEUE_URL` (both already set, no new variable).
@@ -264,7 +270,13 @@ registry fixes it. The codes each route raises are listed in §12.
 `sqs:ListMessageMoveTasks` on the DLQ ARN, and `sqs:SendMessage` on the source queue ARN, the
 documented minimum for a redrive to the source queue (AWS-60). `sqs:GetQueueAttributes` on both
 already exists. `DeleteMessage` is in that minimum because SQS moves the messages on the caller's
-permissions; the API's own code never calls it (D4), and a test pins that.
+permissions; the API's own code never calls it (D4), and a test pins that. Authority:
+[Configuring queue permissions for dead-letter queue redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html#sqs-configure-dead-letter-queue-redrive-permissions)
+(re-read 2026-10-19: "`sqs:StartMessageMoveTask`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, and
+`sqs:GetQueueAttributes` of the dead-letter queue" and "`sqs:SendMessage` of the destination
+queue"; "To show a message move status", `sqs:ListMessageMoveTasks`; its `kms:*` lines apply to
+KMS keys, and both queues are SSE-SQS, `infra/src/app.stack.ts:128`, AWS-25), the owner's
+Template resources approval (§7), and [pp-backend → composition.md → Ports](../../.agents/skills/pp-backend/references/composition.md#ports).
 
 ### SDK and CLI
 
@@ -311,7 +323,11 @@ infrastructure fault Resend retries. `StaticSecretReaderAdapter` takes a record 
 `apps/local` serves both ids from its parsed config (it still rejects an unknown id). Tests
 (`create-ingest.test.ts`): with `simulatorSecretId` absent, a simulator-signed request answers `401`
 and nothing is enqueued (the Ships 3 test); present, it is stamped `simulated` (the existing test,
-rewired); and an unreadable simulator secret answers `503` with nothing enqueued.
+rewired); and an unreadable simulator secret answers `503` with nothing enqueued. Authority:
+[ADR-016](../architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)
+("read by ingest only. Ingest verifies against it after the Resend set"),
+[integrations.md → Secrets layout](../integrations.md#secrets-layout), and the existing read path
+(`packages/ingest/src/create-ingest.ts:79-92`: one cached read, a failed read never served).
 
 ### Infra
 
@@ -331,7 +347,7 @@ delivering metrics after six hours (AWS-22, [Constraint 7](../aws.md#constraints
 
 | Name | Metric | Statistic, period, evaluation | Threshold | Why |
 | --- | --- | --- | --- | --- |
-| `LedgerApp-queue-age` | SQS `ApproximateAgeOfOldestMessage`, source queue | `Maximum`, 300 s, 1 period | `> 900` s | A paused worker fires it ([ADR-015](../architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage): "fires the queue-age alarm (AWS-22)"). 15 minutes is far above a 10k burst's drain (≈ 100 s at ≈ 100 msg/s, §16) and fires within ≈ 20 min of a pause, inside the card's hour. Poison messages are excluded from the metric (AWS-22) |
+| `LedgerApp-queue-age` | SQS `ApproximateAgeOfOldestMessage`, source queue | `Maximum`, 300 s, 1 period | `> 900` s | A paused worker fires it ([ADR-015](../architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage): "A paused worker shows in the health read and fires the queue-age alarm (AWS-22)"). It fires within ≈ 20 min of a pause, inside the card's hour. A 10k burst's drain is unmeasured: the cost model's assumed 50 ms per event ([Budget alarms](../aws.md#budget-alarms) item 7) at `MaximumConcurrency` 5 and batch 10 gives ≈ 100 msg/s, ≈ 100 s, but that is an assumption, not a reading. The burst's `settled … after <s>s` line measures it. A drain past 15 min fires the alarm once, which the runbook entry names as expected after a burst. Poison messages are excluded from the metric (AWS-22) |
 | `LedgerApp-dlq-depth` | SQS `ApproximateNumberOfMessagesVisible`, DLQ | `Maximum`, 300 s, 1 period | `> 0` | AWS-22; J4's trigger ([features.md → J4](../features.md#j4--poison-message--redrive)) |
 | `LedgerApp-api-5xx` | HTTP API `5xx` (`metricServerError`) | `Sum`, 300 s, 1 period | `> 0` | A `5xx` to Resend is a failed delivery that Resend retries and that can auto-disable the endpoint (RS-10, RS-11). It is also how a throttled ingest Lambda surfaces. Vended, free (AWS-30). A read-API `503` during an outage fires it too, which the runbook explains |
 
@@ -373,6 +389,9 @@ punctuation but `-` and `_` dropped). It asserts:
 
 `node scripts/check-links.mjs docs/runbook.md` (relative links and anchors inside the runbook)
 runs from the same test through `spawnSync(process.execPath, …)`, with exit `0` expected.
+Authority: the card's Ships 1 evidence ("the alarm-to-runbook link check"),
+[api-contract.md → Error codes](../api-contract.md#error-codes) (runbook entries "owed by slice 3"),
+and lens clause 5: a unit test is a check a reviewer runs, and it needs no CI change (Ask-first).
 
 ### Deploy command
 
@@ -381,7 +400,11 @@ after `cdk deploy`, next to the signing secrets, from the `SimulatorSecretArn` o
 `LEDGER_SIMULATOR=on`. Its printed lines gain `aws:deploy: simulator on` or `aws:deploy: simulator off`
 after `KillSwitchArmed`, and never the value. Tests (`run-deploy.test.ts`, fake steps): `on` without
 `LEDGER_SIMULATOR_SECRET` refuses before any AWS call, naming the variable; `on` passes
-`-c ledger:simulator=true` and writes the secret; `off` passes `false` and writes none.
+`-c ledger:simulator=true` and writes the secret; `off` passes `false` and writes none. Authority:
+[pp-infra → env-and-inputs.md → Deploy inputs](../../.agents/skills/pp-infra/references/env-and-inputs.md#deploy-inputs),
+[pp-infra → scripts.md → Shape](../../.agents/skills/pp-infra/references/scripts.md#shape), and
+CBL-01 ([check-before-launch.md](../check-before-launch.md#deploy-configuration)): a secret value
+reaches Secrets Manager from the deploy script, never through CDK.
 
 ### Simulator
 
@@ -417,7 +440,10 @@ collecting distinct `svix_id`s from the parsed envelopes, until it has `depth` o
 collected. Its line is `invariant 4 pass (dlq holds exactly the <n> poisoned)`, or a fail line
 naming the depth, the counts and any stray `svix_id`s (ids only). The sim builds an `SqsDlqAdapter`
 from the stack's `DlqUrl` and `QueueUrl`. `invariant-4.test.ts` covers it against the in-process
-adapter (D3).
+adapter (D3). Authority: [architecture.md → Simulator invariants](../architecture.md#simulator-invariants)
+("4. The DLQ contains only the deliberately poisoned messages"),
+[pp-testing → simulator.md → Invariant checkers](../../.agents/skills/pp-testing/references/simulator.md#invariant-checkers)
+("One checker per number"; "how invariant 4 reads the DLQ are slices 6 and 3's"; counts and ids only).
 
 **D25 — `--burst <events>/<seconds>s`.** It parses `^(\d+)\/(\d+)s$` with
 `1 ≤ events ≤ 10000` (the ceiling, [Platform scale assumptions](../about.md#platform-scale-assumptions))
@@ -428,9 +454,13 @@ and `1 ≤ seconds ≤ 600`; anything else exits `2`. Order:
    with `sim: the account's Lambda concurrency quota is <q>; the burst needs at least 1000 (AWS-U05): request an increase in Service Quotas`.
    Why 1,000: it is the default regional quota (AWS-16); 1,000 rps × up to 1 s for a cold ingest
    invocation, plus `MaximumConcurrency` 5 and the read API, needs headroom on that order.
-3. **Usage-trip headroom:** `GetMetricStatistics` of the HTTP API's `Count`, `Sum` over the last
-   900 s, plus the burst's events, must not exceed the usage-trip alarm's own `Threshold`, read with
-   `DescribeAlarms` (never a copied constant). Otherwise refuse with
+3. **Usage-trip headroom:** one `DescribeAlarms` of `LedgerApp-usage-trip` (`USAGE_TRIP_ALARM_NAME`,
+   D2) gives its `Namespace`, `MetricName`, `Dimensions`, `Period` and `Threshold`, so the sim never
+   derives the HTTP API's id and never copies a constant. `GetMetricStatistics` of that metric,
+   `Sum` over the last `Period` seconds (900 today), plus the burst's events, must not exceed
+   `Threshold` (15,000 today, `infra/src/app.stack.ts:62-63`). Any window of one `Period` that holds
+   the burst holds at most the last `Period` seconds of earlier traffic, so the bound is
+   conservative. Otherwise refuse with
    `sim: <n> requests in the last 15 minutes plus the burst would trip LedgerApp-usage-trip; wait and retry`.
 4. **Raise the throttle** to `BURST_THROTTLE = { rateLimit: 1200, burstLimit: 2400 }` through new
    `packages/aws` steps, `raiseDefaultThrottle` and `restoreDefaultThrottleIf`, which share the kill
@@ -475,9 +505,11 @@ under 15 s, from the burst run").
 2. Read `ledger/database` (`DatabaseSecretArn` output) through the reader adapter. Write the same
    JSON with `pooledUrl`'s host replaced by **`ledger-sim-db-outage.invalid`**. `.invalid` never
    resolves (RFC 2606), so every connect fails with `ENOTFOUND` under a pg origin, which the
-   classifier pauses on (`packages/db/src/classify-database-error.ts:28-37`). Port, user and
+   classifier pauses on (`packages/db/src/classify-database-error.ts:24-36`, `SOCKET_CODES`, counted
+   only with a pg origin, `:69`). Port, user and
    database are unchanged. The value is held in memory only, never printed or written to disk.
-3. **Recycle** the worker and the read API: `UpdateFunctionConfiguration` with `Description`
+3. **Recycle** the worker (`WorkerFunctionName` output) and the read API (`API_FUNCTION_NAME`, D2):
+   `UpdateFunctionConfiguration` with `Description`
    `ledger-sim db-outage <namespace>`, then wait for `LastUpdateStatus: Successful`. The template
    sets no description, so this is cosmetic drift (AWS-U15, C10).
 4. Send the history, then report how many first attempts were `200`. Ships 5 requires all of
@@ -511,14 +543,30 @@ entering through ingest (C6):
    `23514`, which is not connection-class, so it follows ADR-008 per message while the others
    commit. This is the technique ADR-004's evidence already uses (`CHECK (false) NOT VALID`).
    The function lives in `@ledger/db/testing` (`addPoisonFault`, `removePoisonFault`), so `sim`
-   still reaches Postgres only through `packages/db`. A `42501` →
+   still reaches Postgres only through `packages/db`. `sim` MAY import `/testing`
+   ([pp-general → boundaries.md](../../.agents/skills/pp-general/references/boundaries.md) rule 12),
+   but this is its first runtime import of `@ledger/db/testing`, whose `testing.ts` imports `vitest`
+   and the Testcontainers harness at module load (`packages/db/src/testing.ts:7-15`). `pnpm sim` is
+   plain `node` (`package.json:31`), so the helpers MUST be importable outside Vitest.
+   `sim/src/main.e2e.test.ts` spawns `node` on `main.ts` (`:39`), so every existing e2e case fails
+   on an import that only works under the runner. That is the test that catches it.
+   A `42501` →
    `sim: --poison needs DATABASE_URL to own webhook_events (the owner's pooled URL, not the runtime role's)`,
    exit `1`, nothing sent. Any leftover `ledger_sim_poison_%` constraint is dropped first.
 4. Send; settle every non-poisoned event (D22); then wait, bounded 40 min, for the DLQ depth to
-   reach `n`. Each failed receive waits out the 360 s visibility timeout (AWS-08), so 5 receives
-   take ≈ 24 min.
-5. Report `invariant 1 pass (<n> poisoned excluded: in the DLQ)`,
-   `invariant 2 not checked (<n> poisoned events wait in the DLQ)`, and invariant 4.
+   reach `n`. Each failed receive waits out the 360 s visibility timeout (AWS-08), and SQS moves a
+   message once its receive count **exceeds** `maxReceiveCount` (AWS-09), so the move comes on the
+   sixth receive, after five timeouts: ≈ 30 min.
+5. Report `others stored <k>/<k> exactly once (<n> poisoned wait in the DLQ)`, which fails the run
+   like an invariant (D28) when short, then
+   `invariant 1 not checked (<n> poisoned events wait in the DLQ)`,
+   `invariant 2 not checked (<n> poisoned events wait in the DLQ)`, and invariant 4. Invariant 1 is
+   "Every generated event is in `webhook_events` exactly once"
+   ([Simulator invariants](../architecture.md#simulator-invariants)), and the poisoned events are
+   not stored yet. A pass over a subset would be a pass the run did not earn:
+   "An invariant the run did not check is reported as not checked, never as passed"
+   ([simulator.md → Invariant checkers](../../.agents/skills/pp-testing/references/simulator.md#invariant-checkers)).
+   The poisoned event's commit after the redrive is P4's `ledger email` step.
 6. **The fix:** drop the constraint (`finally` drops it on any failure too), then print
    `poison fixed; next: pnpm -s ledger dlq inspect, then pnpm -s ledger dlq redrive; the depth returns to 0 in pnpm -s ledger health`.
 
@@ -527,7 +575,8 @@ automatic redrive. Rejected: a fault seam in the worker (the evidence would be f
 send of a malformed envelope (ADR-016 rejects bypassing ingest, and it could never be "fixed").
 
 **D28 — Exit codes and output.** These are unchanged: `0` iff every request sent was accepted and
-every checked invariant passed, `1` otherwise or on a refusal, `2` on a flag or configuration error.
+every checked invariant passed (the poison run's `others stored` line counts as one), `1` otherwise
+or on a refusal, `2` on a flag or configuration error.
 Every line is ids, counts, durations, and throttle or quota numbers only, never an address, URL,
 ARN, secret or payload ([simulator.md → Invariant checkers](../../.agents/skills/pp-testing/references/simulator.md#invariant-checkers)).
 
@@ -552,10 +601,17 @@ is widened per §22.
 all servers, sample in D4; **AWS-60** the redrive's minimum IAM permissions and
 `ListMessageMoveTasks` (most recent ≤ 10, `Status` `RUNNING` and the rest, `TaskHandle` on a running
 task); **AWS-61** a `TaskHandle` embeds the source queue ARN, account id included (C1); **AWS-U14**
-the error a racing second `StartMessageMoveTask` raises (C9, owed by slice 3, safe either way);
-**AWS-U15** a configuration update sends later invocations to new execution environments (C10,
-owed by slice 3, settled by the db-outage run, safe either way). Each fact carries its page and the
-date 2026-10-19 ([aws.md → Rules](../aws.md)).
+the error a racing second `StartMessageMoveTask` raises (C9). It lands in slice 3 and is proved safe
+under any answer by `sqs-dlq.adapter.test.ts` (§20): a `RUNNING` task refuses before any start,
+and a scripted start error propagates unchanged as `internal_error`, never as a second task, which
+SQS forbids (AWS-21). **AWS-U15** a configuration update sends later invocations to new execution
+environments (C10). It lands in slice 3 and is settled by the P3 run's `worker paused after <s>s`
+line. If the update does not recycle, the run fails at D27 step 5's bound and restores, and no
+event is lost. Each fact carries its page and the date 2026-10-19. Authority:
+[architecture.md → Open questions owed by slice](../architecture.md#open-questions-owed-by-slice)
+("Every `[Unverified]` row lands in a slice, which MUST settle it, or prove the design safe under
+either answer, before it is done"), and [aws.md → Facts](../aws.md#facts) (one row per fact, with its
+source and date).
 
 ## 8. Data model
 
@@ -676,7 +732,10 @@ The lines an AWS run prints, in order (D25, D27), each with ids, counts, duratio
   `queue-age alarm ALARM after <m>m; dlq depth 0` · `chaos db-outage: database restored, worker and api recycled` ·
   `resume: pnpm -s ledger worker resume, or wait for the hourly resume` · `worker enabled after <m>m` ·
   `settled …` · invariants 1, 2, 4.
-- **Poison:** D27 steps 2–6.
+- **Poison:** `poison count=<n> svix_ids=<…> email_ids=<…>` · `sent requests=<k> accepted=<k>` ·
+  `others stored <k>/<k> exactly once (<n> poisoned wait in the DLQ)` · `invariant 1 not checked (…)` ·
+  `invariant 2 not checked (…)` · `invariant 4 pass (dlq holds exactly the <n> poisoned)` ·
+  `poison fixed; next: …` (D27 steps 2–6).
 
 Refusals print `sim: <reason>` on stderr (D23, D25, D27).
 
@@ -841,7 +900,7 @@ stages this slice touches:
 
 | Requirement (§14) | Tier and test | Fails if removed |
 | --- | --- | --- |
-| 1, 4, 5 | Unit, `packages/aws/src/sqs-dlq.adapter.test.ts` (stubbed client): `ReceiveMessage` with `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, `MaxNumberOfMessages: limit`, never `DeleteMessage`; `RUNNING` → `redrive_in_progress`, no start sent; depth 0 → `empty`, no start; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no `DestinationArn`; no `TaskHandle` in the result. Plus the shared `dlq-port.contract.ts` suite, run by this test and by the in-process one | the visibility, the `RUNNING` check, the empty check |
+| 1, 4, 5 | Unit, `packages/aws/src/sqs-dlq.adapter.test.ts` (stubbed client): `ReceiveMessage` with `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, `MaxNumberOfMessages: limit`, never `DeleteMessage`; `RUNNING` → `redrive_in_progress`, no start sent; depth 0 → `empty`, no start; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no `DestinationArn`; no `TaskHandle` in the result; a scripted `StartMessageMoveTask` error propagates unchanged, and no second start is sent (AWS-U14's proof, D31). The `RUNNING` status and the error names are the ones `ListMessageMoveTasks` and `StartMessageMoveTask`'s API Reference pages list, cited in the test ([fakes-and-doubles.md](../../.agents/skills/pp-testing/references/fakes-and-doubles.md#dlq-redrive)). Plus the shared `dlq-port.contract.ts` suite, run by this test and by the in-process one | the visibility, the `RUNNING` check, the empty check |
 | 2, 3 | Integration, `packages/api/src/list-dlq-messages.route.int.test.ts`: **redaction test**: a dead message whose raw body names `delivered@resend.dev` (in `to` and `from`) and a subject → the response body (as text) contains neither, and no other key exists on an item; a malformed body → `null` fields with a `receive_count`; `limit` 0 and 11 → `400` with D6's message; `has_more` and `depth` | the reader's path restriction, the null fallback |
 | 4, 5, 7 | Integration, `packages/api/src/start-dlq-redrive.route.int.test.ts`, through the real auth middleware: `401`, `403` with a `read` token, `202 started`, `200 empty`, `409 redrive_in_progress` in the error shape | the scope check, the status mapping |
 | 6 | Integration, existing: a copy under a new `messageId` leaves one row ([record-event.command.int.test.ts](../../packages/worker/src/record-event.command.int.test.ts)). New: `packages/worker/src/poison-isolation.int.test.ts`. Real Postgres, the in-process queue, `addPoisonFault` on one `svix_id`: after `maxReceiveCount` receives, that message is on the dead list while every other message committed ([features.md → operate](../features.md#adopter-lifecycle) "poison isolated after N attempts, others unaffected"); after `removePoisonFault` and the in-process redrive, it commits once | the per-message failure list, the fault helpers |
@@ -886,14 +945,16 @@ reaching this slice: **operator** (alarms, DLQ, health, resume), **application d
   `pnpm sim --burst 10000/10s`. Before the quota increase, expect
   `sim: the account's Lambda concurrency quota is 50; …`, exit `1`, nothing sent (this step is
   marked blocked until §25's increase). After it, expect §12's burst lines and exit `0`; record
-  p50/p99, bytes per event and bursts left. `pnpm -s ledger health` afterwards → queue 0, dlq 0.
-  `LedgerApp-usage-trip` stays OK (no trip email).
+  p50/p99, bytes per event, bursts left and the `settled … after <s>s` drain time.
+  `pnpm -s ledger health` afterwards → queue 0, dlq 0. `LedgerApp-usage-trip` stays OK (no trip
+  email). A `LedgerApp-queue-age` email is expected only if the drain passed 15 min (D17); record it.
 - **P3 — Operator: database outage.** **Ask-first:** `pnpm sim --chaos db-outage`. While it holds:
   `pnpm -s ledger health` → `worker      paused`, `database    unreachable`, dlq 0. The owner
   records the `ALARM: "LedgerApp-queue-age"` email time. After `database restored`:
   `pnpm -s ledger worker resume` → `worker      enabled`. Expect the run to end with invariants
   1, 2 and 4 passing, exit `0`. AWS-U15 is settled by `worker paused after <s>s` appearing.
-- **P4 — Operator: poison and redrive (J4).** **Ask-first:** `pnpm sim --poison 1` → D27's lines,
+- **P4 — Operator: poison and redrive (J4).** **Ask-first:** `pnpm sim --poison 1` (≈ 30 min, D27
+  step 4) → D27's lines, `others stored <k>/<k> exactly once (1 poisoned wait in the DLQ)`,
   `invariant 4 pass (dlq holds exactly the 1 poisoned)`, `poison fixed; next: …`, exit `0`. The
   owner records the `ALARM: "LedgerApp-dlq-depth"` email. Then:
   `pnpm -s ledger dlq inspect` → `dlq         1 message(s), showing 1` and the printed `svix_id`,
@@ -945,8 +1006,9 @@ At apply time, in the change:
   faults, run under the owner's credentials through `@ledger/aws`; every event still enters
   through ingest", and the flag's name `LEDGER_SIMULATOR`, C6). [Reliability core](../architecture.md#reliability-core):
   the No-loss row's "Pending — `--chaos db-outage` on AWS" → evidence.
-  [Open questions owed by slice](../architecture.md#open-questions-owed-by-slice): slice 3 adds
-  AWS-U14 and AWS-U15 (MAY close safe either way) and AWS-U05's burst half.
+  [Open questions owed by slice](../architecture.md#open-questions-owed-by-slice): slice 3's
+  second column adds AWS-U14 and AWS-U15, each closed in this change (D31: U14 proved safe by the
+  adapter test, U15 settled by the P3 run), and AWS-U05's burst half (D29).
   [Simulator invariants](../architecture.md#simulator-invariants) unchanged.
 - **about.md:** [What this project must demonstrate](../about.md#what-this-project-must-demonstrate)
   rows "Queues and workers…" (sim burst and chaos runs) and "Operate what you build…" (alarms,
@@ -963,7 +1025,8 @@ At apply time, in the change:
 - **`.env.example`:** `LEDGER_SIMULATOR=`.
 - **Skills (fact updates for mechanisms this slice owns; none loosens a rule):**
   [pp-testing → simulator.md](../../.agents/skills/pp-testing/references/simulator.md) (the settle
-  bound, D22; each knob's mechanism, D25 and D27; invariant 4's reading, D24; the AWS-run guard, D23).
+  bound, D22; each knob's mechanism, D25 and D27; invariant 4's reading, D24; the AWS-run guard, D23;
+  the poison run reporting invariants 1 and 2 as not checked, D27 step 5).
   [fakes-and-doubles.md → DLQ redrive](../../.agents/skills/pp-testing/references/fakes-and-doubles.md#dlq-redrive)
   (the adapter's test and the contract suite).
   [pp-backend → composition.md → Ports](../../.agents/skills/pp-backend/references/composition.md#ports)
