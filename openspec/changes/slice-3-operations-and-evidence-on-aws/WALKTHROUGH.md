@@ -40,15 +40,18 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
   `.env.deployed.local` (git-ignored, the owner's): `LEDGER_URL` (the deployed `ApiUrl`),
   `LEDGER_TOKEN` (the bootstrap `operate` token), `DATABASE_URL` (the Neon pooled URL with owner
   credentials, which `--poison` needs to own `webhook_events`), and `LEDGER_ADDRESS_HASH_KEY` (the
-  deployed hashes' key). `LEDGER_SIMULATOR_SECRET` comes from `.env.local`: the value the deploy
-  wrote.
+  deployed hashes' key; `.env.local`'s is the local key). `LEDGER_SIMULATOR_SECRET` comes from
+  `.env.local`: the value the deploy wrote.
 - **Loading the deployed values.** Nothing loads `.env.deployed.local` by itself, and a shell value
   wins over `.env.local`. Bash: `set -a; . ./.env.deployed.local; set +a`. An agent, whose Bash
   guard rejects `.` (K1): `Get-Content .env.deployed.local | Where-Object { $_ -match '^[A-Z_]+=' } | ForEach-Object { $k,$v = $_ -split '=',2; Set-Item "env:$k" $v }`
   in the same PowerShell command as the `pnpm` call, with `$env:AWS_PROFILE='ledger'; $env:AWS_REGION='us-east-2'`
-  (K2). Never print the file. Every step from C to G and in the Teardown's T1–T2 runs with the
-  deployed values loaded in its terminal: C2, D2, E1 and G1 show the load as their first command;
-  repeat it in any new terminal (D3, D4). Before any local step,
+  (K2). Never print the file. A deploy (A2, and D2's restore hint) needs only the deployed
+  `LEDGER_ADDRESS_HASH_KEY` in the shell, else it refuses with
+  `aws:deploy: refused: LEDGER_ADDRESS_HASH_KEY's key_id differs from the stored address hashes' key_id; …`;
+  A2 shows the load of that one variable. Every step from C to G and in the Teardown's T1–T2 runs
+  with all the deployed values loaded in its terminal: C2, D2, E1 and G1 show the load as their
+  first command; repeat it in any new terminal (D3, D4). Before any local step,
   `unset LEDGER_URL LEDGER_TOKEN DATABASE_URL LEDGER_ADDRESS_HASH_KEY`: a leftover `DATABASE_URL`
   would point local mode at Neon, and a leftover `LEDGER_ADDRESS_HASH_KEY` would hash local
   addresses with the deployed key.
@@ -89,8 +92,15 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 2. **Deploy with the simulator on.**
 
    ```bash
+   export LEDGER_ADDRESS_HASH_KEY="$(grep '^LEDGER_ADDRESS_HASH_KEY=' .env.deployed.local | cut -d= -f2-)"
    pnpm aws:deploy; echo "exit=$?"
    ```
+
+   The first line puts only `.env.deployed.local`'s `LEDGER_ADDRESS_HASH_KEY` in the shell and
+   prints nothing: `.env.local`'s is the local key, and the deploy refuses a key unlike the stored
+   hashes' (`infra/scripts/run-deploy.ts`, step 7). An agent (K1 and K4 reject the computed value):
+   `$env:LEDGER_ADDRESS_HASH_KEY = ((Get-Content .env.deployed.local | Where-Object { $_ -match '^LEDGER_ADDRESS_HASH_KEY=' }) -split '=',2)[1]; $env:AWS_PROFILE='ledger'; $env:AWS_REGION='us-east-2'; pnpm aws:deploy; "exit=$LASTEXITCODE"`
+   in one PowerShell command.
 
    Expect: exactly these lines, then `exit=0`:
 
@@ -316,7 +326,8 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
    restore line, and exits `1`. A paused source at the start refuses with
    `sim: the worker's event source reads paused; resume it with pnpm -s ledger worker resume first`.
    If the restore fails it prints `sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it`:
-   run `pnpm aws:deploy` (Ask-first) before anything else.
+   run `pnpm aws:deploy` (Ask-first) before anything else, with the deployed
+   `LEDGER_ADDRESS_HASH_KEY` in the shell (D2's load carries it; in a new terminal, A2's first line).
    **Ask-first:** repoints the deployed database secret, recycles the worker and API functions, and
    sends the history to the deployed stack.
 

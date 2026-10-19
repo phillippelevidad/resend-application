@@ -277,7 +277,9 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # written into the simulator secret).
                    # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
                    # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
-                   # an address-hash key_id mismatch; migrates, deploys
+                   # an address-hash key_id mismatch (the owner's kept stack: put only
+                   # .env.deployed.local's LEDGER_ADDRESS_HASH_KEY in the shell, since
+                   # .env.local's is the local key); migrates, deploys
                    # LedgerGuardrails then LedgerApp, writes the secrets, prints the bootstrap token
                    # once, restores a recorded pause, prints the API and ingest URLs and KillSwitchArmed,
                    # then `simulator on` or `simulator off`, never the value
