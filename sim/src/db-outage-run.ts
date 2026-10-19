@@ -90,6 +90,8 @@ const repointedLine = 'chaos db-outage: database repointed, worker and api recyc
 const restoredLine = 'chaos db-outage: database restored, worker and api recycled';
 const notRestoredLine =
   'sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it';
+const notRecycledLine = (functions: readonly RecycledFunction[]): string =>
+  `sim: the database secret is restored, but recycling the ${functions.join(' and ')} failed; its containers that read the outage host keep it until recycled`;
 const resumeLine = 'resume: pnpm -s ledger worker resume, or wait for the hourly resume';
 const alreadyRepointedLine = `sim: the database secret already points at ${OUTAGE_HOST} (a crashed run?); run pnpm aws:deploy, which rewrites it`;
 const noPooledUrlLine = 'sim: the database secret holds no Postgres pooledUrl';
@@ -138,20 +140,38 @@ export function holdsOutageHost(value: string): boolean {
 }
 
 // D27 step 7: write the original back if the fault is still there, then recycle both functions so
-// they read it. Any failure is the one restore-failed line.
+// they read it. Each step is attempted whatever the others did: the worker and the read API read the
+// secret once per container (`apps/worker/src/main.ts`, `apps/api/src/main.ts`), so a function left
+// unrecycled keeps the outage host even after the secret is back, and a deploy that finds the secret
+// unchanged recycles nothing.
 async function restore(run: DbOutageRunInput, original: string): Promise<boolean> {
+  let secretBack = false;
   try {
     if (holdsOutageHost(await run.readDatabaseSecret())) {
       await run.writeDatabaseSecret(original);
     }
-    await run.recycle('worker', '');
-    await run.recycle('api', '');
-    run.out(restoredLine);
-    return true;
+    secretBack = true;
   } catch {
+    // Reported below, after both recycles were attempted.
+  }
+  const notRecycled: RecycledFunction[] = [];
+  for (const fn of ['worker', 'api'] as const) {
+    try {
+      await run.recycle(fn, '');
+    } catch {
+      notRecycled.push(fn);
+    }
+  }
+  if (!secretBack) {
     run.err(notRestoredLine);
     return false;
   }
+  if (notRecycled.length > 0) {
+    run.err(notRecycledLine(notRecycled));
+    return false;
+  }
+  run.out(restoredLine);
+  return true;
 }
 
 // D27 steps 4 to 6, with the fault in place. `true` iff every request was accepted, the worker paused

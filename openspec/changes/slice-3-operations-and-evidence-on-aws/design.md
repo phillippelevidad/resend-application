@@ -505,8 +505,13 @@ CBL-21's lone cold delivery stays separate.
    checking DLQ depth 0 during the hold; print `queue-age alarm ALARM after <m>m; dlq depth 0`.
 7. `finally`, also on failure: write the original value back if the secret still holds the
    `.invalid` host, then recycle both functions with `Description` `""`; print
-   `chaos db-outage: database restored, worker and api recycled`. If the restore fails, print
-   `sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it` and exit `1`.
+   `chaos db-outage: database restored, worker and api recycled`. Each of the three steps is
+   attempted whatever the others did, because both functions read the secret once per container. If
+   the write back fails, print
+   `sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it` and exit `1`;
+   if only a recycle fails, print
+   `sim: the database secret is restored, but recycling the <worker|api> failed; its containers that read the outage host keep it until recycled`
+   and exit `1` (a deploy that finds the secret unchanged recycles nothing).
 8. Print `resume: pnpm -s ledger worker resume, or wait for the hourly resume`. Wait, bounded 65 min,
    for `enabled` (the hourly cron needs no human); print `worker enabled after <m>m`; settle (D22);
    invariants 1, 2 and 4 (DLQ 0).

@@ -253,6 +253,48 @@ describe('dbOutageRun', () => {
     expectNoSecretOrUrl([...stdout, ...stderr]);
   });
 
+  // Each function reads the secret once per container, so a recycle skipped after another step
+  // failed would leave it on the outage host.
+  it('still recycles the api when the restore recycle of the worker fails, and names the worker', async () => {
+    const { run, stdout, stderr, secret, descriptions } = world();
+    const recycle = run.recycle;
+    run.recycle = async (fn, description) => {
+      if (fn === 'worker' && description === '') throw new Error('ResourceConflictException');
+      await recycle(fn, description);
+    };
+
+    expect(await dbOutageRun(run)).toBe(1);
+
+    expect(secret.value).toBe(ORIGINAL);
+    expect(descriptions.api).toEqual(['ledger-sim db-outage walk', '']);
+    expect(stderr).toEqual([
+      'sim: the database secret is restored, but recycling the worker failed; its containers that read the outage host keep it until recycled',
+    ]);
+    expect(stdout).not.toContain('chaos db-outage: database restored, worker and api recycled');
+    expectNoSecretOrUrl([...stdout, ...stderr]);
+  });
+
+  it('attempts both restore recycles when the write back fails', async () => {
+    const { run, stderr, descriptions } = world();
+    const write = run.writeDatabaseSecret;
+    let writes = 0;
+    run.writeDatabaseSecret = async (value) => {
+      writes += 1;
+      if (writes > 1) throw new Error('write failed');
+      await write(value);
+    };
+
+    expect(await dbOutageRun(run)).toBe(1);
+
+    expect(descriptions).toEqual({
+      worker: ['ledger-sim db-outage walk', ''],
+      api: ['ledger-sim db-outage walk', ''],
+    });
+    expect(stderr).toEqual([
+      'sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it',
+    ]);
+  });
+
   it('leaves a secret someone else rewrote during the run, and still recycles both functions', async () => {
     const rewritten = JSON.stringify({ pooledUrl: postgresUrl('u:p@other.example.test/ledger') });
     const { run, secret, descriptions } = world({

@@ -80,6 +80,10 @@ A burst SHALL send request `i` at `i × seconds/events` after its start, with at
 - **WHEN** a db-outage run fails after repointing the secret
 - **THEN** the original secret value is written back and both functions recycled; if that restore fails, it prints `sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it` and exits `1`
 
+#### Scenario: One restore step fails
+- **WHEN** the restore's recycle of one function fails
+- **THEN** the secret is still written back and the other function still recycled, and it prints `sim: the database secret is restored, but recycling the <function> failed; its containers that read the outage host keep it until recycled` and exits `1`
+
 #### Scenario: Already paused
 - **WHEN** `--chaos db-outage` starts while the worker's event source is paused
 - **THEN** it exits `1` and sends nothing
