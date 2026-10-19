@@ -45,5 +45,15 @@ export const databaseUnavailable = (message = 'The database is unreachable.'): S
     'The queue holds events meanwhile (ADR-015); retry, then `ledger worker resume`. `ledger health` shows storage used.',
   );
 
+// Its `docs` is the AWS redrive page, not the runbook (api-contract → Error codes).
+export const redriveInProgress: SdkError = {
+  ...fixture(
+    'redrive_in_progress',
+    'A DLQ redrive task is already running; SQS allows one per queue.',
+    'Wait for the DLQ depth in `ledger health` to fall.',
+  ),
+  docs: 'https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html',
+};
+
 // A code the CLI has never heard of: printed as received, exit 1.
 export const unknownCode = fixture('not_in_registry', 'm', 'h');

@@ -298,6 +298,15 @@ pnpm sim --seed <uint32> --namespace <[a-z0-9-]{1,32}> --duplicates <0..1> --shu
                    # Live when LEDGER_URL is non-empty (the default once pnpm db:setup has written
                    # .env.local): sends signed events to apps/local, prints `sent requests=… accepted=…`,
                    # settles, then checks invariants 1 and 2. `LEDGER_URL= pnpm sim` runs offline
+pnpm sim --burst <events>/<seconds>s     # AWS runs (Ask-first): each needs the deployed LEDGER_URL and
+pnpm sim --chaos db-outage               # the owner's DATABASE_URL from .env.deployed.local in the shell
+pnpm sim --poison <1-10>                 # (without LEDGER_URL: exit 2), AWS credentials too. They exclude
+                   # each other and --duplicates (--shuffle combines); each refuses (exit 1) unless the
+                   # target is the armed, untripped LedgerApp with an empty DLQ and LEDGER_SIMULATOR=on.
+                   # Burst: 1-10000 events paced over 1-600 s, quota and usage-trip preflights, raised
+                   # throttle restored in finally, p50/p99 and bytes per event. db-outage: repoints the
+                   # database secret, proves the pause and queue-age alarm, restores, drains. Poison:
+                   # n events fail their insert and reach the DLQ; invariant 4 checks it
 
 # CLI (no `bin` until slice 8; loads .env.local, written by pnpm db:setup)
 pnpm -s ledger --help                    # -s keeps pnpm's banner off stdout, so --json stays one document
@@ -310,6 +319,9 @@ pnpm -s ledger token create --name <name> --scope <read|operate> [--json]   # op
 pnpm -s ledger token list [--json]       # operate; the newest 100, a stderr notice when more exist
 pnpm -s ledger token revoke <token_id> [--json]   # operate; never the last active operate token
 pnpm -s ledger token current [--json]    # the token LEDGER_TOKEN holds: id, name, scope
+pnpm -s ledger dlq inspect [--limit <1-10>] [--json]   # dead messages, ids and counts only, and the
+                   # DLQ depth; a stderr notice pointing at the worker logs when the DLQ is not empty
+pnpm -s ledger dlq redrive [--json]      # operate; moves every dead message back to the queue, returns at once
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
                    # without -s (pnpm's banner then precedes the output)

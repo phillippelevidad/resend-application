@@ -262,6 +262,115 @@ describe('createLedgerClient', () => {
     });
   });
 
+  describe('dlq methods (slice 3 D10)', () => {
+    const list = {
+      object: 'list',
+      has_more: true,
+      depth: 3,
+      data: [
+        {
+          object: 'dlq_message',
+          svix_id: 'msg_dlq_sdk',
+          type: 'email.delivered',
+          email_id: 'em_dlq_sdk',
+          event_created_at: '2026-10-19T12:00:00.000Z',
+          enqueued_at: '2026-10-19T12:00:01.000Z',
+          receive_count: 6,
+        },
+      ],
+    };
+    const redriveInProgress = {
+      code: 'redrive_in_progress',
+      message: 'A DLQ redrive task is already running; SQS allows one per queue.',
+      hint: 'Wait for the DLQ depth in `ledger health` to fall.',
+      docs: 'https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html',
+    };
+
+    type Case = [string, (ledger: LedgerClient) => Promise<unknown>, string, string];
+    const cases: Case[] = [
+      ['dlq.listMessages()', (ledger) => ledger.dlq.listMessages(), 'GET', '/dlq/messages'],
+      [
+        'dlq.listMessages({ limit })',
+        (ledger) => ledger.dlq.listMessages({ limit: 5 }),
+        'GET',
+        '/dlq/messages?limit=5',
+      ],
+      ['dlq.startRedrive', (ledger) => ledger.dlq.startRedrive(), 'POST', '/dlq/redrive'],
+    ];
+
+    it.each(cases)(
+      '%s sends its method and path with the bearer header and no body, and returns the body as data',
+      async (_name, call, method, url) => {
+        const { baseUrl, received } = await serve(json(200, list));
+        const ledger = createLedgerClient({ baseUrl, token: 'ldg_contract' });
+
+        const result = await call(ledger);
+
+        expect(result).toEqual({ data: list, error: null });
+        expect(received).toHaveLength(1);
+        expect(received[0]?.method).toBe(method);
+        expect(received[0]?.url).toBe(url);
+        expect(received[0]?.headers.authorization).toBe('Bearer ldg_contract');
+        expect(received[0]?.body).toBe('');
+      },
+    );
+
+    it.each(cases)('%s returns a registry error as a value and does not throw', async (...c) => {
+      const { baseUrl } = await serve(json(409, { error: redriveInProgress }));
+      const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+      await expect(c[1](ledger)).resolves.toEqual({ data: null, error: redriveInProgress });
+    });
+
+    it.each(cases)('%s maps a closed port to api_unavailable without throwing', async (...c) => {
+      const ledger = createLedgerClient({ baseUrl: await closedPort(), token: 't' });
+
+      await expect(c[1](ledger)).resolves.toEqual({ data: null, error: apiUnavailable });
+    });
+
+    it('dlq.startRedrive returns a 202 started body as data', async () => {
+      const started = { object: 'dlq_redrive', status: 'started', depth: 3 };
+      const { baseUrl } = await serve(json(202, started));
+      const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+      expect(await ledger.dlq.startRedrive()).toEqual({ data: started, error: null });
+    });
+
+    it.each(cases)(
+      '%s sends exactly one request when the response is lost, and retries nothing',
+      async (_name, call, method, url) => {
+        const received: string[] = [];
+        const server = createServer((request) => {
+          received.push(`${request.method} ${request.url}`);
+          // The request arrived; its answer never does.
+          request.socket.destroy();
+        });
+        servers.push(server);
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const { port } = server.address() as AddressInfo;
+        const ledger = createLedgerClient({ baseUrl: `http://127.0.0.1:${port}`, token: 't' });
+
+        expect(await call(ledger)).toEqual({ data: null, error: apiUnavailable });
+        expect(received).toEqual([`${method} ${url}`]);
+      },
+    );
+
+    it.each(cases)(
+      '%s sends exactly one request on a shapeless 503, and retries nothing',
+      async (_name, call) => {
+        const { baseUrl, received } = await serve({
+          status: 503,
+          contentType: 'text/plain',
+          body: 'Service Unavailable',
+        });
+        const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+        expect(await call(ledger)).toEqual({ data: null, error: apiUnavailable });
+        expect(received).toHaveLength(1);
+      },
+    );
+  });
+
   it('exports api_unavailable with its registry message, hint and docs', () => {
     expect(apiUnavailable).toEqual({
       code: 'api_unavailable',

@@ -12,7 +12,16 @@ describe('ledger program', () => {
     expect(result.stdout).toMatch(/^ {2}health \[options\]/m);
     expect(result.stdout).toMatch(/^ {2}worker /m);
     expect(result.stdout).toMatch(/^ {2}token /m);
+    expect(result.stdout).toMatch(/^ {2}dlq /m);
     expect(result.stderr).toBe('');
+  });
+
+  it('lists inspect and redrive for dlq --help', async () => {
+    const dlq = await runCli(['dlq', '--help'], new FakeLedgerClient());
+
+    expect(dlq.exitCode).toBe(0);
+    expect(dlq.stdout).toMatch(/^ {2}inspect /m);
+    expect(dlq.stdout).toMatch(/^ {2}redrive /m);
   });
 
   it('lists the token group commands for token --help and the worker one for worker --help', async () => {

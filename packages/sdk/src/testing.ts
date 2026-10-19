@@ -2,6 +2,8 @@
 // cli-tests). Never imported by runtime code.
 import type {
   CreatedToken,
+  DlqMessageList,
+  DlqRedrive,
   Email,
   EventSource,
   Health,
@@ -14,6 +16,7 @@ import type {
 
 type TokensListParams = Parameters<LedgerClient['tokens']['list']>[0];
 type TokensCreateInput = Parameters<LedgerClient['tokens']['create']>[0];
+type DlqListMessagesParams = Parameters<LedgerClient['dlq']['listMessages']>[0];
 
 // One entry per call, in order: the method and what it was called with (absent for a method that
 // takes nothing).
@@ -23,10 +26,15 @@ export type FakeCall =
       readonly argument: string;
     }
   | {
-      readonly method: 'health.get' | 'worker.resumeEventSource' | 'tokens.getCurrent';
+      readonly method:
+        | 'health.get'
+        | 'worker.resumeEventSource'
+        | 'tokens.getCurrent'
+        | 'dlq.startRedrive';
     }
   | { readonly method: 'tokens.list'; readonly argument: TokensListParams }
-  | { readonly method: 'tokens.create'; readonly argument: TokensCreateInput };
+  | { readonly method: 'tokens.create'; readonly argument: TokensCreateInput }
+  | { readonly method: 'dlq.listMessages'; readonly argument: DlqListMessagesParams };
 
 // Each answer is a result, or a function that may throw to stand in for a defect.
 type Answer<T, A = undefined> =
@@ -42,6 +50,8 @@ export type FakeAnswers = {
   readonly tokensList?: Answer<TokenList, TokensListParams>;
   readonly tokensCreate?: Answer<CreatedToken, TokensCreateInput>;
   readonly tokensRevoke?: Answer<Token, string>;
+  readonly dlqListMessages?: Answer<DlqMessageList, DlqListMessagesParams>;
+  readonly dlqStartRedrive?: Answer<DlqRedrive>;
 };
 
 async function answer<T, A>(answerFor: Answer<T, A> | undefined, argument: A) {
@@ -57,6 +67,7 @@ export class FakeLedgerClient implements LedgerClient {
   readonly health: LedgerClient['health'];
   readonly worker: LedgerClient['worker'];
   readonly tokens: LedgerClient['tokens'];
+  readonly dlq: LedgerClient['dlq'];
 
   constructor(answers: FakeAnswers = {}) {
     this.emails = {
@@ -99,6 +110,16 @@ export class FakeLedgerClient implements LedgerClient {
       revoke: (tokenId) => {
         this.calls.push({ method: 'tokens.revoke', argument: tokenId });
         return answer(answers.tokensRevoke, tokenId);
+      },
+    };
+    this.dlq = {
+      listMessages: (params) => {
+        this.calls.push({ method: 'dlq.listMessages', argument: params });
+        return answer(answers.dlqListMessages, params);
+      },
+      startRedrive: () => {
+        this.calls.push({ method: 'dlq.startRedrive' });
+        return answer(answers.dlqStartRedrive, undefined);
       },
     };
   }

@@ -9,7 +9,14 @@ import {
 import { STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
 import { createLedgerClient, type LedgerClient, type SdkError } from '@ledger/sdk';
-import { mintApiToken } from '@ledger/shared';
+import {
+  type DlqPort,
+  type DlqRawMessage,
+  type DlqSample,
+  LedgerError,
+  mintApiToken,
+  type RedriveStart,
+} from '@ledger/shared';
 import { FakeClock, FakeFunctionInvoke, RecordingMetrics } from '@ledger/shared/testing';
 import { RecordEventCommand } from '@ledger/worker';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -67,6 +74,24 @@ const ALREADY_ENABLED = { outcome: 'already_enabled', state: 'enabled' } as cons
 
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
+// The DLQ port double (slice 3 D1): a dead store holding `messages` behind `depth`, whose
+// `startRedrive` answers what the case scripts, or throws it, and counts the starts.
+class ScriptedDlq implements DlqPort {
+  messages: readonly DlqRawMessage[] = [];
+  depth = 0;
+  redrive: () => RedriveStart = () => ({ status: 'empty', depth: 0 });
+  starts = 0;
+
+  async sample(limit: number): Promise<DlqSample> {
+    return { depth: this.depth, messages: this.messages.slice(0, limit) };
+  }
+
+  async startRedrive(): Promise<RedriveStart> {
+    this.starts += 1;
+    return this.redrive();
+  }
+}
+
 // Neither a raw address, the raw from or subject, nor the bounce diagnostics, anywhere in the body.
 function expectMasksOnly(data: unknown): void {
   const text = JSON.stringify(data);
@@ -104,6 +129,8 @@ export function readApiContract(
     let operatorTokenId: number;
     // The worker's answer to the resume invoke, set per case (D20).
     let workerInvoke: FakeFunctionInvoke;
+    // The dead store and redrive answer, set per case (slice 3 D1).
+    let dlq: ScriptedDlq;
 
     beforeAll(async () => {
       t = await createTestDatabase();
@@ -132,7 +159,8 @@ export function readApiContract(
       const operate = await issueTestToken(t.db, { scope: 'operate', name: 'contract-operator' });
       operatorTokenId = operate.tokenId;
       workerInvoke = new FakeFunctionInvoke(ALREADY_ENABLED);
-      served = await make(testApiDeps(t.db, { addressHashKey, workerInvoke }));
+      dlq = new ScriptedDlq();
+      served = await make(testApiDeps(t.db, { addressHashKey, workerInvoke, dlq }));
       client = createLedgerClient({ baseUrl: served.baseUrl, token });
       operator = createLedgerClient({ baseUrl: served.baseUrl, token: operate.token });
     });
@@ -509,6 +537,120 @@ export function readApiContract(
         error: registryError('last_operate_token'),
       });
       expect((await operator.tokens.getCurrent()).data?.revoked_at).toBeNull();
+    });
+
+    // Slice 3's two operations (D10): each success and each error its entry names.
+
+    it('dlq.listMessages answers a read token with the sample, the depth and has_more, ids and counts only', async () => {
+      dlq.messages = [
+        {
+          body: message('msg_contract_dead_1', 'email.delivered', 4, [DELIVERED]),
+          receiveCount: 6,
+        },
+        { body: 'not an envelope', receiveCount: 7 },
+        { body: message('msg_contract_dead_3', 'email.sent', 5, [BOUNCED]), receiveCount: 5 },
+      ];
+      dlq.depth = 3;
+      try {
+        const { data, error } = await client.dlq.listMessages({ limit: 2 });
+
+        expect(error).toBeNull();
+        expect(data).toEqual({
+          object: 'list',
+          has_more: true,
+          depth: 3,
+          data: [
+            {
+              object: 'dlq_message',
+              svix_id: 'msg_contract_dead_1',
+              type: 'email.delivered',
+              email_id: EMAIL_ID,
+              event_created_at: at(4),
+              enqueued_at: '2026-10-17T12:01:00.000Z',
+              receive_count: 6,
+            },
+            {
+              object: 'dlq_message',
+              svix_id: null,
+              type: null,
+              email_id: null,
+              event_created_at: null,
+              enqueued_at: null,
+              receive_count: 7,
+            },
+          ],
+        });
+        expectMasksOnly(data);
+
+        const all = await client.dlq.listMessages();
+        expect(all.data?.has_more).toBe(false);
+        expect(all.data?.data).toHaveLength(3);
+        expectMasksOnly(all.data);
+      } finally {
+        dlq.messages = [];
+        dlq.depth = 0;
+      }
+    });
+
+    it('dlq.listMessages with a limit outside 1 to 10 comes back as validation_failed naming the field', async () => {
+      const outOfRange = {
+        data: null,
+        error: validationFailed('limit must be an integer from 1 to 10.'),
+      };
+
+      expect(await client.dlq.listMessages({ limit: 11 })).toEqual(outOfRange);
+      expect(await client.dlq.listMessages({ limit: 0 })).toEqual(outOfRange);
+    });
+
+    it('dlq.startRedrive answers started with the depth on a dead store, and empty on none', async () => {
+      dlq.redrive = () => ({ status: 'started', depth: 3 });
+      try {
+        expect(await operator.dlq.startRedrive()).toEqual({
+          data: { object: 'dlq_redrive', status: 'started', depth: 3 },
+          error: null,
+        });
+      } finally {
+        dlq.redrive = () => ({ status: 'empty', depth: 0 });
+      }
+      expect(await operator.dlq.startRedrive()).toEqual({
+        data: { object: 'dlq_redrive', status: 'empty', depth: 0 },
+        error: null,
+      });
+    });
+
+    it('dlq.startRedrive while a redrive runs comes back as error redrive_in_progress, data null', async () => {
+      dlq.redrive = () => {
+        throw new LedgerError('redrive_in_progress', errorRegistry.redrive_in_progress.message);
+      };
+      try {
+        expect(await operator.dlq.startRedrive()).toEqual({
+          data: null,
+          error: registryError('redrive_in_progress'),
+        });
+      } finally {
+        dlq.redrive = () => ({ status: 'empty', depth: 0 });
+      }
+    });
+
+    it('dlq.startRedrive with a read token comes back as error forbidden and starts no redrive', async () => {
+      const before = dlq.starts;
+
+      expect(await client.dlq.startRedrive()).toEqual({
+        data: null,
+        error: registryError('forbidden'),
+      });
+      expect(dlq.starts).toBe(before);
+    });
+
+    it('both dlq methods with a token no row holds come back as error unauthorized, data null', async () => {
+      const stranger = createLedgerClient({
+        baseUrl: served.baseUrl,
+        token: mintApiToken(TEST_TOKEN_TAG_KEY).token,
+      });
+      const unauthorized = { data: null, error: registryError('unauthorized') };
+
+      expect(await stranger.dlq.listMessages()).toEqual(unauthorized);
+      expect(await stranger.dlq.startRedrive()).toEqual(unauthorized);
     });
   });
 }

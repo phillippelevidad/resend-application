@@ -10,6 +10,9 @@ export type EventSource = components['schemas']['EventSource'];
 export type Token = components['schemas']['Token'];
 export type CreatedToken = components['schemas']['CreatedToken'];
 export type TokenList = components['schemas']['TokenList'];
+export type DlqMessage = components['schemas']['DlqMessage'];
+export type DlqMessageList = components['schemas']['DlqMessageList'];
+export type DlqRedrive = components['schemas']['DlqRedrive'];
 
 type TokenScope = Token['scope'];
 
@@ -45,6 +48,11 @@ export type LedgerClient = {
     }): Promise<SdkResult<CreatedToken>>;
     // A string, as the CLI receives it: the API validates the id (D21, D24).
     revoke(tokenId: string): Promise<SdkResult<Token>>;
+  };
+  // Slice 3 D10: neither retries (slice 5's); `limit`'s 1 to 10 range is the API's to check (D6).
+  readonly dlq: {
+    listMessages(params?: { readonly limit?: number }): Promise<SdkResult<DlqMessageList>>;
+    startRedrive(): Promise<SdkResult<DlqRedrive>>;
   };
 };
 
@@ -164,6 +172,23 @@ export function createLedgerClient(config: LedgerClientConfig): LedgerClient {
             params: { path: { token_id: tokenId } },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           }),
+        ),
+    },
+    dlq: {
+      listMessages: (params = {}) =>
+        settle<DlqMessageList>(() =>
+          client.GET('/dlq/messages', {
+            params: {
+              query: params.limit === undefined ? {} : { limit: String(params.limit) },
+            },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+        ),
+      // One request per call, never retried (slice 3 D10): `202` started and `200` empty are both
+      // `data`; a running task is `redrive_in_progress`.
+      startRedrive: () =>
+        settle<DlqRedrive>(() =>
+          client.POST('/dlq/redrive', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
         ),
     },
   };

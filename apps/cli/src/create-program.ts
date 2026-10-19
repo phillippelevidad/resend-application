@@ -1,5 +1,7 @@
 import { Command } from '@commander-js/extra-typings';
 import type { LedgerClient } from '@ledger/sdk';
+import { dlqListMessagesCli } from './commands/dlq-list-messages.cli.ts';
+import { dlqStartRedriveCli } from './commands/dlq-start-redrive.cli.ts';
 import { emailGetCli } from './commands/email-get.cli.ts';
 import { healthGetCli } from './commands/health-get.cli.ts';
 import { recipientGetCli } from './commands/recipient-get.cli.ts';
@@ -39,5 +41,8 @@ export function createProgram(deps: CliDeps) {
   tokenListCli(token, deps);
   tokenRevokeCli(token, deps);
   tokenGetCurrentCli(token, deps);
+  const dlq = program.command('dlq').description('inspect and redrive the dead-letter queue');
+  dlqListMessagesCli(dlq, deps);
+  dlqStartRedriveCli(dlq, deps);
   return program;
 }
