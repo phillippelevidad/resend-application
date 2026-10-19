@@ -134,7 +134,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 3 — Operations and evidence on AWS
 
-- **Status:** `[~]` Ships 5: awaiting the owner's email time (the queue-age alarm email from the db-outage run).
+- **Status:** `[~]` every Ships box ticked; awaiting the walk (`rsa-manual-test`).
 - **Goal:** The deployed stack is operable and its reliability claims are measured: alarms reach the owner with runbook entries, poison messages are inspected and redriven from the CLI, and burst, outage and poison runs prove invariants 1, 2 and 4 on AWS.
 - **Depends on:** 2.
 - **Refs:** [ADR-002](architecture.md#adr-002--sqs-standard-not-fifo) · [ADR-008](architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq) · [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) · [ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret) · [aws.md → CloudWatch and SNS](aws.md#cloudwatch-and-sns) · [dlq.listMessages](api-contract.md#dlqlistmessages) · [dlq.startRedrive](api-contract.md#dlqstartredrive) · [features.md → operate](features.md#adopter-lifecycle) · [J4](features.md#j4--poison-message--redrive) · [J7](features.md#j7--burst)
@@ -143,7 +143,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
   - [x] `ledger dlq inspect` returns a sample with no address, subject or payload, and `ledger dlq redrive` refuses a second concurrent task; evidence: API and CLI tests, plus a redaction test on the inspect output.
   - [x] Off-by-default simulator secret (ADR-016); evidence: CDK assertion test (without the flag, no secret and no ingest reference), a unit test rejecting a simulator-signed request when the secret is absent, and a unit test that a simulator-signed event is stamped `simulated`.
   - [x] `pnpm sim --burst 10000/10s` on the deployed stack, recipients spread over `+label` test addresses, passes invariants 1 and 2 and records the ingest p99, closing RS-U08, and the bytes per event that set the [storage budget](integrations.md#cadence-and-the-database), with PG-U07 settled from Neon's docs, source or support, or a write over the limit, by that measurement; evidence: a test where the throttle changes mid-burst and `finally` leaves it.
-  - [ ] `pnpm sim --chaos db-outage` on AWS keeps ingest at `200` and the DLQ at 0, and the queue drains after resume, with invariants 1 and 2; the queue-age alarm email reaches the owner within the hour, recorded with the run.
+  - [x] `pnpm sim --chaos db-outage` on AWS keeps ingest at `200` and the DLQ at 0, and the queue drains after resume, with invariants 1 and 2; the queue-age alarm email reaches the owner within the hour, recorded with the run.
   - [x] A poison message reaches the DLQ after `maxReceiveCount` while the others commit (invariant 4), and a redrive after the fix returns the depth to 0.
   - [x] `pnpm sim --duplicates 0.2 --shuffle` passes invariants 1 and 2 through the deployed queue (ADR-002).
 - **UI surfaces:** `pnpm sim --burst 10000/10s` · `pnpm sim --chaos db-outage` · `pnpm sim` poison run · `ledger dlq inspect` · `ledger dlq redrive` · `ledger health` · alarm email.
