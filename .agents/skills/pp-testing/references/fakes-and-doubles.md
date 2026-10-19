@@ -108,10 +108,11 @@ through every receive. Its evidence:
    `WaitTimeSeconds: 1` and `MaxNumberOfMessages: limit`, and never `DeleteMessage` (AWS-59); a
    second sample still sees every message; a `RUNNING` task from `ListMessageMoveTasks` answers
    `redrive_in_progress` ([Error codes](../../../../.ai/api-contract.md#error-codes)) with no start
-   sent, while `COMPLETED`, `CANCELLED`, `FAILED` and `CANCELLING` do not refuse; depth 0 answers
-   `empty` with no start; a depth above 0 whose confirming receive (`MaxNumberOfMessages: 1`,
-   visibility 0, `WaitTimeSeconds: 1`) returns nothing answers `empty` with no start, the lag
-   measured on the deployed stack; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no
+   sent, while `COMPLETED`, `CANCELLED`, `FAILED` and `CANCELLING` do not refuse; whatever the depth
+   reads, a confirming receive (`MaxNumberOfMessages: 1`, visibility 0, `WaitTimeSeconds: 1`) that
+   returns nothing answers `empty` with no start, and a depth of 0 beside a received message starts
+   the task and answers `depth` 1 (AWS-62; the stale-depth lag measured on the deployed stack, F3's
+   branch `[Unverified]`); otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no
    `DestinationArn`, and no `TaskHandle` in the result (AWS-61); a scripted start error (each name
    the API Reference lists) propagates unchanged with no second start, because "one active task per
    queue" (AWS-21) has no named error (AWS-U14). The status and error names are cited from the API

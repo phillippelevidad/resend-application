@@ -29,12 +29,14 @@ const SAMPLE_WAIT_SECONDS = 1;
 //   (AWS-59), and never deletes one. Each receive still adds to the receive count (AWS-50).
 // - `startRedrive` lists the DLQ's most recent move task first: a `RUNNING` one refuses with
 //   `redrive_in_progress` and sends no start, because SQS runs one task per queue (AWS-21) and names
-//   no "task already running" error (AWS-60, AWS-U14). An empty DLQ starts nothing. An approximate
-//   depth above 0 is confirmed by a 1 s long-poll receive at visibility 0 (AWS-59). The attributes
-//   lag a just-completed move, so a receive that returns nothing answers `empty` and starts nothing.
-//   The start's `TaskHandle` embeds the DLQ's ARN and account id (AWS-61), so it is dropped. Any SDK
-//   error propagates unchanged: a start that still loses the race surfaces as `internal_error`, never
-//   as a second task.
+//   no "task already running" error (AWS-60, AWS-U14). No depth reading decides alone, because the
+//   attributes lag both ways (AWS-62): every answer is confirmed by a 1 s long-poll receive at
+//   visibility 0 (AWS-59). A receive that returns nothing answers `empty` and starts nothing, though
+//   the depth still counts messages a just-completed move took; one that returns a message starts
+//   the task, though the depth reads 0, and reports at least the message seen, as
+//   `dlq.listMessages` does. The start's `TaskHandle` embeds the DLQ's ARN and account id (AWS-61),
+//   so it is dropped. Any SDK error propagates unchanged: a start that still loses the race surfaces
+//   as `internal_error`, never as a second task.
 // The DLQ's ARN, which both move-task calls take, is read once with `GetQueueAttributes` and cached
 // for the instance's life; a failed read is not cached, so the next call retries.
 export class SqsDlqAdapter implements DlqPort {
@@ -70,9 +72,10 @@ export class SqsDlqAdapter implements DlqPort {
       throw new LedgerError('redrive_in_progress', errorRegistry.redrive_in_progress.message);
     }
     const depth = await this.#depth();
-    if (depth === 0 || (await this.#receive(1)).length === 0) return { status: 'empty', depth: 0 };
+    const received = await this.#receive(1);
+    if (received.length === 0) return { status: 'empty', depth: 0 };
     await this.#sqs.send(new StartMessageMoveTaskCommand({ SourceArn: dlqArn }));
-    return { status: 'started', depth };
+    return { status: 'started', depth: Math.max(depth, received.length) };
   }
 
   // Up to `limit` messages, with visibility 0 and the long poll (AWS-59), never deleted.

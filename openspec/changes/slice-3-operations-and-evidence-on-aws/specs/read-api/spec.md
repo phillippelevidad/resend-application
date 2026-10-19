@@ -65,6 +65,10 @@ A dead message whose body is not a valid ingest envelope SHALL be listed with ev
 - **WHEN** the DLQ is empty
 - **THEN** it answers `200` with `status: "empty"` and `depth: 0`, and no redrive task starts
 
+#### Scenario: A lagging depth never answers empty over a dead message
+- **WHEN** the approximate depth reads 0 while a receive returns one dead message (AWS-62)
+- **THEN** it answers `202` with `status: "started"` and `depth: 1`, and one redrive task starts
+
 ### Requirement: One redrive at a time
 While a redrive task runs on the DLQ, `dlq.startRedrive` SHALL answer `409 redrive_in_progress` in the error shape with the registry's message and hint, and SHALL start nothing (AWS-21).
 

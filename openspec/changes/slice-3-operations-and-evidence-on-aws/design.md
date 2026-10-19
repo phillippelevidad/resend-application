@@ -160,15 +160,21 @@ each queue's ARN once with `GetQueueAttributes` (`QueueArn`) and caches it per i
   nothing from a small queue (AWS-59, AWS-50).
 - `startRedrive()`: `ListMessageMoveTasks` (`SourceArn`: the DLQ ARN, `MaxResults: 1`). A `RUNNING`
   result → `throw new LedgerError('redrive_in_progress')`, no start sent (AWS-60). Otherwise read the
-  depth; at `0` → `empty`, no start. Above `0`, confirm it with one `ReceiveMessage`
-  (`MaxNumberOfMessages: 1`, `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, as `sample` receives,
-  AWS-59; it adds to the receive count, AWS-50): no message → `empty`, no start. The approximate
-  attributes lag a just-completed move: measured on the deployed stack (2026-10-19), a second
-  redrive 1.5 s after the first found its task `COMPLETED` while the depth still read 1, and started
-  a second task that moved nothing. Otherwise `StartMessageMoveTask` with the DLQ ARN as `SourceArn`
-  and no `DestinationArn`, which redrives to each message's original source queue → `started` with
-  the depth. The `TaskHandle` is dropped: it embeds the source queue ARN and the account id (AWS-61).
-  Any SDK error propagates unchanged, so a racing second start's error (AWS-U14) surfaces as
+  depth, then confirm every answer with one `ReceiveMessage` (`MaxNumberOfMessages: 1`,
+  `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, as `sample` receives, AWS-59; it adds to the
+  receive count, AWS-50), whatever the depth reads. No message → `empty`, no start. The approximate
+  attributes lag (AWS-62): measured on the deployed stack (2026-10-19), a second redrive 1.5 s after
+  the first found its task `COMPLETED` while the depth still read 1, and started a second task that
+  moved nothing. The walk also saw `empty` over a message `dlq inspect` had just listed
+  (WALKTHROUGH-RUN.md F3); which branch fired is `[Unverified]` (no log of the depth read). This
+  removes the depth-only branch, the likely one under AWS-62. The residual case, a confirming receive
+  that returns nothing over a visible message (AWS-59), is settled by re-walking E3 → E4 on the
+  deployed stack after the next deploy. A received message → `StartMessageMoveTask` with the DLQ ARN
+  as `SourceArn` and no `DestinationArn`, which redrives to each message's original source queue →
+  `started` with `depth = max(approximate depth, messages received)`, as `dlq.listMessages` answers.
+  A truly empty DLQ therefore waits out the 1 s long poll on every redrive. The `TaskHandle` is
+  dropped: it embeds the source queue ARN and the account id (AWS-61). Any SDK error propagates
+  unchanged, so a racing second start's error (AWS-U14) surfaces as
   `internal_error`, never as a second task, which SQS forbids (AWS-21).
 
 Rejected: mapping a `StartMessageMoveTask` error to `redrive_in_progress`. The API Reference names no
@@ -635,7 +641,7 @@ RS-U08's number), which the walk records.
 
 | Claim | Test (tier) | Fails if removed |
 | --- | --- | --- |
-| Inspect never removes or hides; one redrive at a time; empty starts nothing (Ships 2) | `packages/aws/src/sqs-dlq.adapter.test.ts` (unit, stubbed client): `ReceiveMessage` with `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, `MaxNumberOfMessages: limit`, never `DeleteMessage`; `RUNNING` → `redrive_in_progress`, no start sent; depth 0 → `empty`, no start; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no `DestinationArn`; no `TaskHandle` in the result; a scripted start error propagates unchanged and no second start is sent (AWS-U14). Status and error names cited from the API Reference. Plus `dlqPortContract` run here and by `in-process-queue.adapter.test.ts` | The visibility; the `RUNNING` check; the empty check |
+| Inspect never removes or hides; one redrive at a time; empty starts nothing (Ships 2) | `packages/aws/src/sqs-dlq.adapter.test.ts` (unit, stubbed client): `ReceiveMessage` with `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, `MaxNumberOfMessages: limit`, never `DeleteMessage`; `RUNNING` → `redrive_in_progress`, no start sent; a confirming receive that returns nothing → `empty`, no start, whatever the depth reads; a depth of 0 beside a received message → `started`, depth 1 (F3, AWS-62); otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no `DestinationArn`; no `TaskHandle` in the result; a scripted start error propagates unchanged and no second start is sent (AWS-U14). Status and error names cited from the API Reference. Plus `dlqPortContract` run here and by `in-process-queue.adapter.test.ts` | The visibility; the `RUNNING` check; the empty check; the confirming receive |
 | Redaction; unreadable message listed; `limit` (Ships 2) | `packages/api/src/list-dlq-messages.route.int.test.ts` (int): a dead message whose raw body names `delivered@resend.dev` in `to` and `from` and carries a subject → the response text holds neither, and no item holds another key; a malformed body → `null` fields with a `receive_count`; `limit` 0 and 11 → `400` with D6's message; `has_more` and `depth`; a duplicate `svix_id` collapses | The path restriction; the `null` fallback |
 | Scope; status mapping (Ships 2) | `packages/api/src/start-dlq-redrive.route.int.test.ts` (int, real auth middleware): `401`, `403` with `read`, `202 started`, `200 empty`, `409 redrive_in_progress` in the error shape | The scope check; the mapping |
 | A redriven event applies once (Ships 6) | Existing `packages/worker/src/record-event.command.int.test.ts` (a copy under a new `messageId` leaves one row). New `packages/worker/src/poison-isolation.int.test.ts` (int, real Postgres, in-process queue, `addPoisonFault` with one event's `svix_id` marked `simpoison_`): after `maxReceiveCount` receives that message is dead-listed while every other committed; after `removePoisonFault` and the in-process redrive it commits once | Per-message failure; the fault helpers |

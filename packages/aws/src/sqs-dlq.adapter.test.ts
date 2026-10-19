@@ -216,7 +216,7 @@ describe('SqsDlqAdapter.startRedrive', () => {
     },
   );
 
-  it('an empty DLQ answers empty and sends no start', async () => {
+  it('an empty DLQ answers empty only after a confirming receive returns nothing, and sends no start', async () => {
     const sqs = sqsHolding(emptyDlq());
 
     expect(await adapter(sqs).startRedrive()).toEqual({ status: 'empty', depth: 0 });
@@ -224,7 +224,31 @@ describe('SqsDlqAdapter.startRedrive', () => {
       'GetQueueAttributes',
       'ListMessageMoveTasks',
       'GetQueueAttributes',
+      'ReceiveMessage',
     ]);
+  });
+
+  // F3, observed on the deployed stack (2026-10-19): seconds after `dlq.listMessages` returned a dead
+  // message, `dlq.startRedrive` answered `empty` over it. Which branch fired is unverified (no log of
+  // the depth read); this locks out the depth-only one, the likely one under AWS-62's lag.
+  it('a depth reading 0 while a receive returns a message starts the redrive and answers started with depth 1 (F3, AWS-62)', async () => {
+    const state = holding('a');
+    const answer = attributesOf(state);
+    const sqs = sqsHolding(state).answer('GetQueueAttributes', (input) =>
+      asksForArn(input)
+        ? answer(input)
+        : {
+            Attributes: {
+              ApproximateNumberOfMessages: '0',
+              ApproximateNumberOfMessagesNotVisible: '0',
+            },
+            ...metadata,
+          },
+    );
+
+    expect(await adapter(sqs).startRedrive()).toEqual({ status: 'started', depth: 1 });
+    expect(sqs.inputs('StartMessageMoveTask')).toEqual([{ SourceArn: dlqArn }]);
+    expect(state.visible).toEqual([]);
   });
 
   // Measured on the deployed stack (2026-10-19): a second redrive 1.5 s after the first found its task
