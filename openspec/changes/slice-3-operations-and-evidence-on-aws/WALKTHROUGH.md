@@ -39,17 +39,19 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
   to `on` (the owner's deployment only, [ADR-016](../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)).
   `.env.deployed.local` (git-ignored, the owner's): `LEDGER_URL` (the deployed `ApiUrl`),
   `LEDGER_TOKEN` (the bootstrap `operate` token), `DATABASE_URL` (the Neon pooled URL with owner
-  credentials, which `--poison` needs to own `webhook_events`), and optionally
-  `LEDGER_ADDRESS_HASH_KEY`. `LEDGER_SIMULATOR_SECRET` and `LEDGER_ADDRESS_HASH_KEY` come from
-  `.env.local`: the values the deploy wrote.
+  credentials, which `--poison` needs to own `webhook_events`), and `LEDGER_ADDRESS_HASH_KEY` (the
+  deployed hashes' key). `LEDGER_SIMULATOR_SECRET` comes from `.env.local`: the value the deploy
+  wrote.
 - **Loading the deployed values.** Nothing loads `.env.deployed.local` by itself, and a shell value
   wins over `.env.local`. Bash: `set -a; . ./.env.deployed.local; set +a`. An agent, whose Bash
   guard rejects `.` (K1): `Get-Content .env.deployed.local | Where-Object { $_ -match '^[A-Z_]+=' } | ForEach-Object { $k,$v = $_ -split '=',2; Set-Item "env:$k" $v }`
   in the same PowerShell command as the `pnpm` call, with `$env:AWS_PROFILE='ledger'; $env:AWS_REGION='us-east-2'`
   (K2). Never print the file. Every step from C to G and in the Teardown's T1–T2 runs with the
   deployed values loaded in its terminal: C2, D2, E1 and G1 show the load as their first command;
-  repeat it in any new terminal (D3, D4). Before any local step, `unset LEDGER_URL LEDGER_TOKEN DATABASE_URL`:
-  a leftover `DATABASE_URL` would point local mode at Neon.
+  repeat it in any new terminal (D3, D4). Before any local step,
+  `unset LEDGER_URL LEDGER_TOKEN DATABASE_URL LEDGER_ADDRESS_HASH_KEY`: a leftover `DATABASE_URL`
+  would point local mode at Neon, and a leftover `LEDGER_ADDRESS_HASH_KEY` would hash local
+  addresses with the deployed key.
 - **AWS session:** the SSO session must outlast the next run, because each long run restores in its
   `finally` (D2 about 2 hours, E1 about 45 minutes, C2 about 20 minutes). Run
   `aws sso login --profile ledger` before C, D and E when it is close to expiring.
@@ -276,8 +278,10 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
    pnpm -s ledger health; echo "exit=$?"
    ```
 
-   Expect: exactly `OK` (after C, wait until it returns to `OK`: an `ALARM` left by the burst would
-   end D2's hold at once), then C3's four lines with `worker      enabled`, `exit=0`.
+   Expect: exactly `OK` (after C, wait until it returns to `OK`: D2 refuses an `ALARM` left by the
+   burst, before any fault, with
+   `sim: LedgerApp-queue-age already reads ALARM; wait for it to return to OK, then rerun` and
+   `exit=1`, nothing changed), then C3's four lines with `worker      enabled`, `exit=0`.
    **Ask-first:** an AWS read.
 
 2. **Run the outage, in its own terminal.**
@@ -622,7 +626,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 1. **Point the shell back at local mode and start the local stack.**
 
    ```bash
-   unset LEDGER_URL LEDGER_TOKEN DATABASE_URL
+   unset LEDGER_URL LEDGER_TOKEN DATABASE_URL LEDGER_ADDRESS_HASH_KEY
    pnpm dev:full
    ```
 
@@ -754,7 +758,7 @@ run restored what it changed in its own `finally`.
 3. **Clear the shell and stop the local stack.**
 
    ```bash
-   unset LEDGER_URL LEDGER_TOKEN DATABASE_URL REVIEW_TOKEN
+   unset LEDGER_URL LEDGER_TOKEN DATABASE_URL LEDGER_ADDRESS_HASH_KEY REVIEW_TOKEN
    pnpm dev:stop; echo "exit=$?"
    ```
 

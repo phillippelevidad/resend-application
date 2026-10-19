@@ -89,6 +89,7 @@ const notRestoredLine =
 const resumeLine = 'resume: pnpm -s ledger worker resume, or wait for the hourly resume';
 const alreadyRepointedLine = `sim: the database secret already points at ${OUTAGE_HOST} (a crashed run?); run pnpm aws:deploy, which rewrites it`;
 const noPooledUrlLine = 'sim: the database secret holds no Postgres pooledUrl';
+const alarmAlreadyLine = `sim: ${QUEUE_AGE_ALARM_NAME} already reads ALARM; wait for it to return to OK, then rerun`;
 
 // A constant line: an SDK or driver error's text can quote an ARN, a URL or a row (pp-general → errors).
 const failedLine = (error: unknown): string =>
@@ -250,6 +251,13 @@ export async function dbOutageRun(run: DbOutageRunInput): Promise<number> {
       run.err(
         `sim: the worker's event source reads ${state}; resume it with pnpm -s ledger worker resume first`,
       );
+      return 1;
+    }
+    // D27 step 6 holds until the alarm reads `ALARM`; one that already does would end the hold at 0m
+    // without the outage having aged the queue, a false pass. `OK`, `INSUFFICIENT_DATA` and an absent
+    // alarm proceed.
+    if ((await run.queueAgeAlarmState()) === 'ALARM') {
+      run.err(alarmAlreadyLine);
       return 1;
     }
     const original = await run.readDatabaseSecret();

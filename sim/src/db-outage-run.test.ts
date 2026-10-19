@@ -171,13 +171,14 @@ describe('dbOutageRun', () => {
   });
 
   it('restores the secret and recycles both functions when a step fails after the fault, then exits 1', async () => {
-    const { run, stdout, stderr, secret, descriptions } = world({
-      queueAgeAlarmState: async () => {
-        throw Object.assign(new Error(`arn:aws:cloudwatch:… ${HOST}`), {
-          name: 'ThrottlingException',
-        });
-      },
-    });
+    const { run, stdout, stderr, secret, descriptions } = world();
+    // The pre-fault read succeeds; the hold's read, with the fault in place, fails.
+    run.queueAgeAlarmState = async () => {
+      if (!holdsOutageHost(secret.value)) return 'OK';
+      throw Object.assign(new Error(`arn:aws:cloudwatch:… ${HOST}`), {
+        name: 'ThrottlingException',
+      });
+    };
 
     expect(await dbOutageRun(run)).toBe(1);
 
@@ -279,6 +280,37 @@ describe('dbOutageRun', () => {
     expect(secret.writes).toEqual([]);
     expect(sent.count).toBe(0);
     expect(descriptions).toEqual({ worker: [], api: [] });
+  });
+
+  it('refuses before any write or recycle when the queue-age alarm already reads ALARM, so a stale alarm never passes as the outage', async () => {
+    const { run, stdout, stderr, secret, sent, descriptions } = world({
+      queueAgeAlarmState: async () => 'ALARM',
+    });
+
+    expect(await dbOutageRun(run)).toBe(1);
+
+    expect(stderr).toEqual([
+      'sim: LedgerApp-queue-age already reads ALARM; wait for it to return to OK, then rerun',
+    ]);
+    expect(stdout).toEqual([]);
+    expect(secret.writes).toEqual([]);
+    expect(sent.count).toBe(0);
+    expect(descriptions).toEqual({ worker: [], api: [] });
+  });
+
+  it('proceeds when the queue-age alarm reads INSUFFICIENT_DATA before the run, and holds until it reads ALARM', async () => {
+    const { run, stdout, stderr, secret } = world();
+    const held = run.queueAgeAlarmState;
+    // Before the fault the alarm has no data yet; with the fault in place it ages as the world says.
+    run.queueAgeAlarmState = async () =>
+      holdsOutageHost(secret.value) ? held() : 'INSUFFICIENT_DATA';
+
+    expect(await dbOutageRun(run)).toBe(0);
+
+    expect(stderr).toEqual([]);
+    expect(stdout).toContain('chaos db-outage: database repointed, worker and api recycled');
+    expect(stdout).toContain('queue-age alarm ALARM after 6m; dlq depth 0');
+    expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
   });
 
   it("prints the guard's refusal and changes nothing", async () => {

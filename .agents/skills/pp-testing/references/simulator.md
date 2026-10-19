@@ -132,7 +132,10 @@ fake clock; `main.ts` composes the real steps with `@ledger/aws`'s client factor
   answer every simulator-signed request `401`). A plain `--duplicates`/`--shuffle` run takes no
   guard and works against any `LEDGER_URL`, deployed included.
 - **`--chaos db-outage`** ([db-outage-run.ts](../../../../sim/src/db-outage-run.ts)) also refuses an
-  event source not `enabled`. It repoints the deployed database secret's `pooledUrl` host to
+  event source not `enabled`, and a `LedgerApp-queue-age` that already reads `ALARM` before any
+  fault (`sim: LedgerApp-queue-age already reads ALARM; wait for it to return to OK, then rerun`,
+  exit `1`, nothing changed), because the hold below would end at `0m` on a stale alarm, a false
+  pass; `OK` and `INSUFFICIENT_DATA` proceed. It repoints the deployed database secret's `pooledUrl` host to
   `ledger-sim-db-outage.invalid` (RFC 2606: every connect fails `ENOTFOUND` under a pg origin,
   which the classifier counts as connection-class), recycles the worker and the read API with a
   `Description` update (AWS-U15), sends the history, waits (bounded 10 min) for the event source to
