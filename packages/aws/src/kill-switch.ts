@@ -1,7 +1,6 @@
 import {
   type ApiGatewayV2Client,
   DeleteRouteSettingsCommand,
-  type RouteSettings,
   UpdateStageCommand,
 } from '@aws-sdk/client-apigatewayv2';
 import {
@@ -13,7 +12,15 @@ import {
 } from '@aws-sdk/client-lambda';
 import { PublishCommand, type SNSClient } from '@aws-sdk/client-sns';
 import type { EventSourceState } from '@ledger/core';
-import { type DeclaredThrottle, readStage, STAGE_NAME, withThrottle } from './http-api-stage.ts';
+import {
+  type DeclaredThrottle,
+  hasThrottle,
+  type ReadThrottle,
+  readStage,
+  STAGE_NAME,
+  throttleOf,
+  withThrottle,
+} from './http-api-stage.ts';
 import {
   type EventSourceSettle,
   LambdaEventSourceControlAdapter,
@@ -40,7 +47,7 @@ export const KILL_SWITCH_STOP_THROTTLE: DeclaredThrottle = { rateLimit: 0, burst
 // kill switch's 60 s timeout (D28), so the caps' few dozen calls and the rethrow still run inside it.
 export const KILL_SWITCH_SETTLE_TIMEOUT_MS = 30_000;
 
-type Throttle = { rateLimit: number | null; burstLimit: number | null };
+type Throttle = ReadThrottle;
 
 // What a trip or a restore leaves, as names and numbers only: function names, the event source's
 // state and the throttle values. No ARN, id, URL or account (D29 step 4).
@@ -284,12 +291,3 @@ async function reservedConcurrency(
   );
   return output.ReservedConcurrentExecutions ?? null;
 }
-
-const throttleOf = (settings: RouteSettings | undefined): Throttle => ({
-  rateLimit: settings?.ThrottlingRateLimit ?? null,
-  burstLimit: settings?.ThrottlingBurstLimit ?? null,
-});
-
-const hasThrottle = (settings: RouteSettings | undefined, throttle: DeclaredThrottle): boolean =>
-  settings?.ThrottlingRateLimit === throttle.rateLimit &&
-  settings?.ThrottlingBurstLimit === throttle.burstLimit;

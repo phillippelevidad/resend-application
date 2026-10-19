@@ -53,6 +53,21 @@ export async function readStage(
   };
 }
 
+// A route setting's throttle as read; `null` where the stage sets none.
+export type ReadThrottle = { rateLimit: number | null; burstLimit: number | null };
+
+export const throttleOf = (settings: RouteSettings | undefined): ReadThrottle => ({
+  rateLimit: settings?.ThrottlingRateLimit ?? null,
+  burstLimit: settings?.ThrottlingBurstLimit ?? null,
+});
+
+export const hasThrottle = (
+  settings: RouteSettings | undefined,
+  throttle: DeclaredThrottle,
+): boolean =>
+  settings?.ThrottlingRateLimit === throttle.rateLimit &&
+  settings?.ThrottlingBurstLimit === throttle.burstLimit;
+
 // The throttle replaced, the one other HTTP API route setting (detailed metrics) carried over; the
 // logging and data-trace settings apply to WebSocket APIs only.
 export const withThrottle = (

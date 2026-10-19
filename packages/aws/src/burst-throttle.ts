@@ -1,18 +1,22 @@
-import {
-  type ApiGatewayV2Client,
-  type RouteSettings,
-  UpdateStageCommand,
-} from '@aws-sdk/client-apigatewayv2';
+import { type ApiGatewayV2Client, UpdateStageCommand } from '@aws-sdk/client-apigatewayv2';
 import { LedgerError } from '@ledger/shared';
-import { type DeclaredThrottle, readStage, STAGE_NAME, withThrottle } from './http-api-stage.ts';
+import {
+  type DeclaredThrottle,
+  hasThrottle,
+  type ReadThrottle,
+  readStage,
+  STAGE_NAME,
+  throttleOf,
+  withThrottle,
+} from './http-api-stage.ts';
 import { KILL_SWITCH_STOP_THROTTLE } from './kill-switch.ts';
+
+// The stage's default-route throttle as read; `null` where the stage sets none.
+export type { ReadThrottle } from './http-api-stage.ts';
 
 // D25 step 4: the burst's `$default` throttle. 1.2× the ceiling burst's mean rate of 1,000 rps, and
 // two seconds of tokens, so a best-effort throttle (AWS-14) does not reject a paced burst.
 export const BURST_THROTTLE: DeclaredThrottle = { rateLimit: 1200, burstLimit: 2400 };
-
-// The stage's default-route throttle as read; `null` where the stage sets none.
-export type ReadThrottle = { rateLimit: number | null; burstLimit: number | null };
 
 // What the burst's `finally` did: restored the declared throttle, or left the stage as it read,
 // because something else changed it during the burst (a kill-switch trip sets the stop values).
@@ -59,13 +63,7 @@ export async function restoreDefaultThrottleIf(
 ): Promise<ThrottleRestore> {
   const stage = await readStage(apiGateway, names.appStackName);
   if (!hasThrottle(stage.defaultSettings, raised)) {
-    return {
-      status: 'left',
-      throttle: {
-        rateLimit: stage.defaultSettings?.ThrottlingRateLimit ?? null,
-        burstLimit: stage.defaultSettings?.ThrottlingBurstLimit ?? null,
-      },
-    };
+    return { status: 'left', throttle: throttleOf(stage.defaultSettings) };
   }
   await apiGateway.send(
     new UpdateStageCommand({
@@ -76,7 +74,3 @@ export async function restoreDefaultThrottleIf(
   );
   return { status: 'restored', throttle: { ...declared } };
 }
-
-const hasThrottle = (settings: RouteSettings | undefined, throttle: DeclaredThrottle): boolean =>
-  settings?.ThrottlingRateLimit === throttle.rateLimit &&
-  settings?.ThrottlingBurstLimit === throttle.burstLimit;
