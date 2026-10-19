@@ -25,11 +25,15 @@
 - **THEN** each list answers `depth: 2`, and the redrive answers `202` with `depth: 2`
 
 ### Requirement: An unreadable dead message is still listed
-A dead message whose body is not a valid ingest envelope, or whose payload is not JSON, SHALL be listed with every field `null` except `receive_count`, and SHALL never make the response fail. A field whose payload value is not a string SHALL be `null`.
+A dead message whose body is not a valid ingest envelope SHALL be listed with every field `null` except `receive_count`. One whose envelope is valid but whose payload is not JSON SHALL keep `svix_id` and `enqueued_at` from the envelope and have `type`, `email_id` and `event_created_at` `null`. Neither SHALL make the response fail. A field whose payload value is not a string SHALL be `null`.
 
 #### Scenario: Malformed body
 - **WHEN** the DLQ holds a message whose body is not an ingest envelope
 - **THEN** its item has `svix_id`, `type`, `email_id`, `event_created_at` and `enqueued_at` all `null`, and a `receive_count`
+
+#### Scenario: Payload not JSON
+- **WHEN** the DLQ holds a message whose body is a valid ingest envelope but whose raw payload is not JSON
+- **THEN** its item keeps the envelope's `svix_id` and `enqueued_at`, has `type`, `email_id` and `event_created_at` `null`, and a `receive_count`
 
 ### Requirement: dlq.listMessages errors
 `dlq.listMessages` SHALL answer `400 validation_failed` with the message `limit must be an integer from 1 to 10.` for a `limit` outside 1–10 or not an integer, `401 unauthorized` and `503 database_unavailable` per the token lookup, and `500 internal_error` when reading the queue fails.
