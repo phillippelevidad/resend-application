@@ -6,18 +6,25 @@
 // `main.ts` is never imported.
 import { errorRegistry } from '@ledger/core';
 import { createLogger, LedgerError, type QueueMessage } from '@ledger/shared';
-import type { ResumeResult, Worker } from '@ledger/worker';
+import type { BatchDeadline, ResumeResult, Worker } from '@ledger/worker';
 import { describe, expect, it } from 'vitest';
-import { createWorkerHandler, type InvocationFields } from './create-worker-handler.ts';
+import {
+  createWorkerHandler,
+  type InvocationFields,
+  type LambdaContext,
+} from './create-worker-handler.ts';
 
-// A worker that fails the messages whose body is `fail`, or throws on every batch.
+// A worker that fails the messages whose body is `fail`, or throws on every batch. It reads the
+// deadline's remaining time when the batch starts, as `createWorker` does.
 class FakeWorker implements Worker {
   readonly received: QueueMessage[][] = [];
+  readonly remainingAtStart: (number | undefined)[] = [];
   throwOnBatch = false;
   resumeResult: ResumeResult = { outcome: 'resumed', state: 'enabled' };
 
-  async processBatch(messages: readonly QueueMessage[]) {
+  async processBatch(messages: readonly QueueMessage[], deadline?: BatchDeadline) {
     this.received.push([...messages]);
+    this.remainingAtStart.push(deadline?.getRemainingTimeInMillis());
     if (this.throwOnBatch) {
       throw new RangeError('driver said: delivered@resend.dev');
     }
@@ -33,10 +40,24 @@ class FakeWorker implements Worker {
   }
 }
 
+// The runtime's context reads its own fields through `this`, so a detached method would throw.
+class FakeLambdaContext implements LambdaContext {
+  readonly awsRequestId: string;
+  remainingMs = 60_000;
+
+  constructor(awsRequestId: string) {
+    this.awsRequestId = awsRequestId;
+  }
+
+  getRemainingTimeInMillis(): number {
+    return this.remainingMs;
+  }
+}
+
 let lastRequest = 0;
 const lambdaContext = () => {
   lastRequest += 1;
-  return { awsRequestId: `req-${lastRequest}` };
+  return new FakeLambdaContext(`req-${lastRequest}`);
 };
 
 const record = (messageId: string, body: string) => ({
@@ -89,6 +110,16 @@ describe('createWorkerHandler', () => {
         { messageId: 'm-3', body: 'ok' },
       ],
     ]);
+  });
+
+  it('passes the batch the context’s remaining time, read when the batch starts, as its deadline (D15)', async () => {
+    const { worker, handler } = harness();
+    const context = lambdaContext();
+    context.remainingMs = 41_250;
+
+    await handler({ Records: [record('m-1', 'ok')] }, context);
+
+    expect(worker.remainingAtStart).toEqual([41_250]);
   });
 
   it('a throwing processBatch is rethrown as a constant internal_error with no cause, logged by name only', async () => {

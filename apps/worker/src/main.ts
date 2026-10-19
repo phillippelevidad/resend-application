@@ -62,6 +62,6 @@ const workerOnce = (): Promise<Worker> => {
 };
 
 export const worker: Worker = {
-  processBatch: async (messages) => (await workerOnce()).processBatch(messages),
+  processBatch: async (messages, deadline) => (await workerOnce()).processBatch(messages, deadline),
   resume: async () => (await workerOnce()).resume(),
 };

@@ -1,6 +1,7 @@
 // @ledger/worker: the ledger transaction and the projections it commits (ADR-004). The package's
 // one public surface.
 export {
+  type BatchDeadline,
   createWorker,
   type ResumeOutcome,
   type ResumeResult,

@@ -314,11 +314,33 @@ in order:
    client **with** the error (`client.release(err)`, so pg-pool removes it) and issues no
    `ROLLBACK` (the server rolls back when the connection closes). On any other error it rolls back
    and releases normally. The retry therefore costs at most one connect (5 s) and one query timeout
-   (15 s), which is D27's 35 s bound. Rules out: relying on the pool to notice a hung socket, and
-   ending the whole pool, which waits on that socket.
-3. The retry matches too → list **every** message of the batch in `batchItemFailures` (a message
-   already committed in this batch is redelivered as a duplicate, absorbed on `svix_id`), log
-   `worker.database_unavailable`, call `eventSource.disable()`. A failing `disable` logs
+   (15 s), and the cold outage path, the first attempt's own connect included, is at most 5 + 15 +
+   5 + 15 = 40 s. Rules out: relying on the pool to notice a hung socket, and ending the whole pool,
+   which waits on that socket.
+
+   **The batch deadline.** The 40 s bounds an unreachable server only: a database that is slow but
+   still answering (each statement under the 15 s query timeout) is never classified, and one
+   message's transaction runs several statements, so it can outlast the 60 s timeout and drain to
+   the DLQ like the stock path above. So `processBatch(messages, deadline?)` takes the Lambda
+   context's `getRemainingTimeInMillis` (`apps/worker` passes it; local mode passes none, because
+   its in-process consumer has no timeout that kills it mid-batch). When the batch starts, the
+   worker reads it against the clock port and sets the deadline that far ahead, less
+   `BATCH_DEADLINE_RESERVE_MS = CONNECTION_TIMEOUT_MS + 5_000` (10 s): a `pool.connect()` already
+   under way when the deadline passes cannot be cut short (≤ 5 s), and the pause gets 5 s for
+   `UpdateEventSourceMapping` plus a container's first `ListEventSourceMappings` (D16). A passed
+   deadline is an outage (step 3), checked before each attempt, the retry included. It also bounds
+   the one transaction in flight: `runTransaction(database, fn, { signal })` destroys its
+   checked-out client's socket when the signal aborts, so pg rejects the pending statement on the
+   next tick, the client is discarded as on a classified failure, and the server rolls back when it
+   sees the closed connection. The caller sees `database_unavailable`. A message whose `COMMIT` was
+   cut may have committed and comes back as a duplicate, absorbed on `svix_id`. A slow database
+   therefore pauses the worker, and the hourly resume probe (D16) re-enables it. Rules out: a check
+   between messages alone, which never stops a transaction already running; and a server-side
+   `statement_timeout` or `transaction_timeout`, which the server enforces only while it is
+   answering, so the client-side bound would be needed anyway.
+3. The retry matches too, or the deadline passed → list **every** message of the batch in
+   `batchItemFailures` (a message already committed in this batch is redelivered as a duplicate,
+   absorbed on `svix_id`), log `worker.database_unavailable`, call `eventSource.disable()`. A failing `disable` logs
    `worker.pause_failed` with `error_name`; the response is unchanged. Stop processing.
 4. Any other error: that message alone is listed (ADR-008).
 
@@ -498,7 +520,7 @@ Every value a named constant commented with its `AWS-NN`.
   | Function | Name | Memory | Timeout | Why the timeout |
   | --- | --- | --- | --- | --- |
   | ingest | `LedgerApp-ingest` | 256 MB | 10 s | Under Svix's 15 s delivery timeout (RS-10) and API Gateway's 30 s (AWS-02) |
-  | worker | `LedgerApp-worker` | 512 MB | 60 s | The outage path fits: one query timeout (15 s), a fresh connection (≤ 5 s) and the retry's query timeout (15 s) is 35 s, with no rollback wait on the failed client (D15's `runTransaction`), so D15 step 3's pause always runs. A slow, not down, database that times out the function fails the whole batch, redelivered and absorbed on `svix_id` (AWS-05). Feeds the visibility timeout (AWS-08) |
+  | worker | `LedgerApp-worker` | 512 MB | 60 s | The outage path fits: the first attempt's connect (≤ 5 s) and query timeout (15 s), a fresh connection (≤ 5 s) and the retry's query timeout (15 s) is 40 s, with no rollback wait on the failed client (D15's `runTransaction`), so D15 step 3's pause always runs. A slow, not down, database meets D15's batch deadline 10 s before the timeout and takes the same pause. Feeds the visibility timeout (AWS-08) |
   | read API | `LedgerApp-api` | 256 MB | 25 s | Under the 30 s integration cap (AWS-02); one connect (5 s) plus one query (15 s) is the worst case (D18, D19) |
 
 - **Queues:** source retention 13 days, DLQ 14 days (AWS-07, AWS-09), SSE-SQS (no key, AWS-25),

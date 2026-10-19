@@ -30,8 +30,9 @@ export type RecordEventDeps = {
   addressHashKey: Uint8Array;
 };
 
-// One queue message: the envelope serialized as SQS holds it (D8).
-export type RecordEventInput = { body: string };
+// One queue message: the envelope serialized as SQS holds it (D8). `signal` is the batch deadline
+// (D15): aborting it ends the message's transaction wherever it is, as `database_unavailable`.
+export type RecordEventInput = { body: string; signal?: AbortSignal | undefined };
 
 // What the message's transaction committed.
 export type RecordEventOutcome = 'projected' | 'duplicate' | 'unprojectable';
@@ -72,7 +73,7 @@ export class RecordEventCommand {
     this.#addressHashKey = addressHashKey;
   }
 
-  async execute({ body }: RecordEventInput): Promise<RecordEventOutcome> {
+  async execute({ body, signal }: RecordEventInput): Promise<RecordEventOutcome> {
     // Step 1: a body that is not an envelope, or a raw body that is not JSON, is a defect (ingest
     // verified it), so the message fails and is redelivered.
     const envelope = ingestEnvelopeSchema.parse(JSON.parse(body));
@@ -96,6 +97,7 @@ export class RecordEventCommand {
         await project(tx, ledgerRow);
         return 'projected';
       },
+      { signal },
     );
 
     // Step 9 and D16, after the commit.

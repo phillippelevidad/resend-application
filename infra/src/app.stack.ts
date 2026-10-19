@@ -27,8 +27,9 @@ import { LedgerFunction } from './ledger-function.construct.ts';
 // Ingest answers well under Svix's 15 s delivery timeout (RS-10) and API Gateway's 30 s (AWS-02).
 export const INGEST_MEMORY_MB = 256;
 export const INGEST_TIMEOUT_SECONDS = 10;
-// D15, D27: one query timeout (15 s), a fresh connection (≤ 5 s) and the retry's query timeout (15 s)
-// is 35 s, so the ADR-015 pause always runs inside the timeout. Feeds the visibility timeout (AWS-08).
+// D15, D27: the first attempt's connect (≤ 5 s) and query timeout (15 s), a fresh connection (≤ 5 s)
+// and the retry's query timeout (15 s) is 40 s, and the batch deadline keeps a slow database inside
+// the timeout too, so the ADR-015 pause always runs. Feeds the visibility timeout (AWS-08).
 export const WORKER_MEMORY_MB = 512;
 export const WORKER_TIMEOUT_SECONDS = 60;
 // AWS-02: under the 30 s integration cap; one connect (5 s) plus one query (15 s) is the worst case.

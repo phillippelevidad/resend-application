@@ -15,8 +15,12 @@ const sqsEventSchema = z.object({
 // API's `worker.resumeEventSource` (D20).
 const resumeEventSchema = z.object({ ledger: z.literal(RESUME_EVENT.ledger) });
 
-// The one field of the Lambda context object the adapter reads (D6).
-export type LambdaContext = { readonly awsRequestId: string };
+// The two members of the Lambda context object the adapter reads: the request id for the log lines
+// (D6), and the time left, from which `processBatch` sets its deadline (D15).
+export type LambdaContext = {
+  readonly awsRequestId: string;
+  getRemainingTimeInMillis(): number;
+};
 
 // D6: the per-container holder the logger's `context` reads on every line. One invocation runs per
 // container at a time, so the handler overwrites it at the start of each one and lines never mix.
@@ -42,9 +46,11 @@ export function createWorkerHandler({ worker, logger, invocation }: WorkerHandle
       const batch = sqsEventSchema.safeParse(event);
       if (batch.success) {
         // ADR-008, AWS-05: the failure list exactly as `processBatch` built it from each message's
-        // own result, never assumed or emptied here.
+        // own result, never assumed or emptied here. D15: the context's clock bounds the batch, read
+        // through a closure so the runtime's method keeps its receiver.
         return await worker.processBatch(
           batch.data.Records.map(({ messageId, body }) => ({ messageId, body })),
+          { getRemainingTimeInMillis: () => context.getRemainingTimeInMillis() },
         );
       }
       if (resumeEventSchema.safeParse(event).success) {

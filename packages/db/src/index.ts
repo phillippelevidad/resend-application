@@ -7,6 +7,7 @@ export {
 } from './api-tokens.repository.ts';
 export { classifyDatabaseError } from './classify-database-error.ts';
 export {
+  CONNECTION_TIMEOUT_MS,
   type CreateDatabaseOptions,
   createDatabase,
   type Database,
