@@ -56,9 +56,9 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
   `finally` (D2 about 2 hours, E1 about 45 minutes, C2 about 20 minutes). Run
   `aws sso login --profile ledger` before C, D and E when it is close to expiring.
 - **Quota prerequisite (owner op).** The burst needs an account Lambda concurrency quota of at
-  least 1,000 (AWS-U05). The account reads `10` today; an increase to 1,000 is requested in
-  Service Quotas and pending. Until it is granted, C2 refuses before it sends anything, and C stays
-  blocked on the owner op (C1).
+  least 1,000 (AWS-U05). It read `10` before this slice; an increase to 1,000 was requested in
+  Service Quotas and granted on 2026-10-19 ([aws.md → AWS-U05](../../../.ai/aws.md#unverified)), so
+  the account now reads `1000`. Below 1,000, C2 refuses before it sends anything (C1).
 - **This walk creates:** on AWS, the simulator secret (A2, kept: `LEDGER_SIMULATOR` stays `on`),
   the three new alarms (A2, kept), a raised throttle restored in C2's `finally`, the database secret
   repointed and restored in D2's `finally`, a `Description` on the worker and API functions set and
@@ -189,15 +189,15 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 **Walked as:** [Application developer](../../../.ai/about.md#target-personas)
 ([J7](../../../.ai/features.md#j7--burst))
 
-1. **Read the account's Lambda concurrency quota → owner op: the increase to 1,000 in Service Quotas.**
+1. **Read the account's Lambda concurrency quota.**
 
    ```bash
    aws lambda get-account-settings --query 'AccountLimit.ConcurrentExecutions'
    ```
 
-   Expect: one integer. Today it reads `10`. Below `1000`, the owner requests the increase in
-   Service Quotas (us-east-2, Lambda, Concurrent executions) and C2 to C4 wait for the grant
-   (blocked, owner op). Record the number only, never the account id.
+   Expect: one integer, `1000` since the increase granted on 2026-10-19. Below `1000`, the owner
+   requests the increase in Service Quotas (us-east-2, Lambda, Concurrent executions) and C2 to C4
+   wait for the grant (blocked, owner op). Record the number only, never the account id.
    **Ask-first:** an AWS read.
 
 2. **Run the burst against the deployed stack.**
@@ -227,9 +227,9 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
    ```
 
    Record `<d>`, `<x>`, `<y>` (p99 under 5,000 ms closes RS-U08, D26), `<s>` (the drain),
-   `<c>` and `<k>`. With the quota below 1,000 (today: `10`) it instead prints the first three
-   lines, then on stderr exactly
-   `sim: the account's Lambda concurrency quota is 10; the burst needs at least 1000 (AWS-U05): request an increase in Service Quotas`,
+   `<c>` and `<k>`. With the quota below 1,000 it instead prints the first three lines, then on
+   stderr exactly
+   `sim: the account's Lambda concurrency quota is <q>; the burst needs at least 1000 (AWS-U05): request an increase in Service Quotas`,
    and `exit=1`, before any `throttle` line: no request sent, no throttle changed. Other refusals
    (stderr, exit `1`, before the `throttle raised` line):
    `sim: <n> requests in the last 15 minutes plus the burst would trip LedgerApp-usage-trip; wait and retry`,
