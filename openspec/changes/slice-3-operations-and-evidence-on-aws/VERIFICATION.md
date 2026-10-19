@@ -3,7 +3,10 @@
 **Verdict:** code verified, ready for `rsa-manual-test`; the slice is not done until the owner records Ships 5's queue-age alarm email time (12.4) and the walk passes, then `opsx:archive`.
 **Gate:** `pnpm verify` exit 0, every stage run (`VERIFY PASSED`), before and after the repairs.
 **Read:** `8e37a70...HEAD` — 153 files, +13,232 / −464 · the four change artifacts, `REVIEW.md`, `WALKTHROUGH.md` · the slice 3 card, the `.ai/` diffs (about, api-contract, architecture, aws, integrations, resend, data-modeling, check-before-launch) · pp-workflow, pp-general; four read-only surface reviews (backend+schema, infra, sdk-cli, sim) against pp-backend, pp-infra, pp-cli, pp-testing, pp-database checklists.
-**Fixed:** 4, one commit each — `090cda8` `9c011a1` `0bf5a2f` `78ff400`.
+**Fixed:** 5, one commit each — `090cda8` `9c011a1` `0bf5a2f` `78ff400` `cea0ddb`.
+
+## Ships 5's alarm email
+The owner's two emails (16:08 and 16:22 UTC) match `LedgerApp-queue-age` → `ALARM` at 16:08:34 UTC and `LedgerApp-dlq-depth` → `ALARM` at 16:22:12 UTC, both from the second `--poison 1` run (its message aged the queue to 1,038 s; `cea0ddb` corrects AWS-22). The db-outage run's own queue-age transition was 14:54:34 UTC; Ships 5 stays open until that email's arrival is recorded.
 
 ## Judgement calls the owner should know about
 - `dlq.listMessages` now answers `depth = max(approximate depth, items returned)` (AWS-62). The contract's shape is unchanged; only a self-contradicting `depth: 0` beside an item is gone. Reopen if `depth` must stay the raw attribute sum.
