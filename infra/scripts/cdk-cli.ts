@@ -24,6 +24,18 @@ function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   );
 }
 
+// The command line as the log shows it: the alert address is left out together with the `-c` that
+// introduces it, so the line never reads `-c -c …`.
+export function loggedArgs(args: readonly string[]): string[] {
+  const shown: string[] = [];
+  for (const [index, arg] of args.entries()) {
+    if (arg.startsWith('ledger:alertEmail=')) continue;
+    if (arg === '-c' && args[index + 1]?.startsWith('ledger:alertEmail=')) continue;
+    shown.push(arg);
+  }
+  return shown;
+}
+
 // Runs one CDK CLI command and resolves its exit code. Its output goes to `logFile`, never to the
 // terminal: `cdk deploy` prints stack ARNs, which carry the account id no script line may show
 // (deploy-and-teardown spec → Script output carries no secret). The caller names the file on failure.
@@ -35,7 +47,7 @@ export function runCdk(
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     const log = createWriteStream(logFile, { flags: 'a' });
-    log.write(`\n$ cdk ${args.filter((arg) => !arg.startsWith('ledger:alertEmail=')).join(' ')}\n`);
+    log.write(`\n$ cdk ${loggedArgs(args).join(' ')}\n`);
     const child = spawn(process.execPath, [CDK_ENTRY, ...args], {
       cwd: INFRA_DIR,
       env: childEnv(env),
