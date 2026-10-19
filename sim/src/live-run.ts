@@ -25,15 +25,18 @@ export type LiveRunInput = {
 // A Ledger that accepts the connection but never answers is treated as no Ledger.
 const requestTimeoutMs = 10_000;
 
-const notListening =
+export const notListening =
   'sim: no Ledger answered at LEDGER_URL; start it with pnpm dev:full, or run LEDGER_URL= pnpm sim for an offline run';
 
-type SendResult = { requests: number; accepted: number } | 'not-listening';
+export type SendResult = { requests: number; accepted: number } | 'not-listening';
+
+export type SignedSendInput = Pick<LiveRunInput, 'ingestUrl' | 'simulatorSecret' | 'events'>;
 
 // One request at a time, so the order sent is the order arranged. The body is sent byte for byte as
 // signed (RS-01), and `svix-timestamp` is the wall clock, because ingest rejects one more than
-// 5 minutes off (RS-02): the run's one wall-clock read (simulator.md → Signing).
-async function send(input: LiveRunInput): Promise<SendResult> {
+// 5 minutes off (RS-02): the run's one wall-clock read (simulator.md → Signing). The db-outage and
+// poison runs send through it too (D27).
+export async function sendSigned(input: SignedSendInput): Promise<SendResult> {
   let requests = 0;
   let accepted = 0;
   for (const { event } of input.events) {
@@ -119,7 +122,7 @@ export function notSettledLine(result: SettleResult): string {
 
 // Exit status: `0` iff every request was accepted and both checked invariants pass, `1` otherwise.
 export async function liveRun(input: LiveRunInput): Promise<number> {
-  const sent = await send(input);
+  const sent = await sendSigned(input);
   if (sent === 'not-listening') {
     input.err(notListening);
     return 1;
