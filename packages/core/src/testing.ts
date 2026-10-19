@@ -1,6 +1,7 @@
 // @ledger/core/testing: the arbitraries core's properties and `sim` share, so the simulator checks
 // the model the properties check (D15), and the Svix signer ingest's tests and `sim` sign with.
 // Never imported by runtime code.
+export { type BurstHistoryOptions, burstHistory } from './testing/burst-history.ts';
 export {
   type LedgerHistory,
   type LedgerHistoryOptions,

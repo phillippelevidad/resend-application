@@ -22,8 +22,6 @@ export type LiveRunInput = {
   err: (line: string) => void;
 };
 
-const settleIntervalMs = 250;
-const settleBoundMs = 30_000;
 // A Ledger that accepts the connection but never answers is treated as no Ledger.
 const requestTimeoutMs = 10_000;
 
@@ -73,18 +71,50 @@ async function send(input: LiveRunInput): Promise<SendResult> {
   return { requests, accepted };
 }
 
-// Settled when every generated `svix_id` is in `webhook_events`. Each message commits its
-// projections in the same transaction as its ledger row (ADR-004), so stored means projected.
-// Returns the last count read.
-async function settle(db: Executor, generated: readonly string[]): Promise<number> {
-  const deadline = performance.now() + settleBoundMs;
+export type SettleBound = { boundMs: number; intervalMs: number };
+
+// D22: the settle bound scales with the run, `30 s + 100 ms × generated events`, polled every
+// 250 ms, or every 2 s once the bound passes 60 s, so a 10,000-event burst's 1,030 s wait is about
+// 500 `countPresent` calls, not 4,000.
+export function settleBound(generatedEvents: number): SettleBound {
+  const boundMs = 30_000 + 100 * generatedEvents;
+  return { boundMs, intervalMs: boundMs > 60_000 ? 2_000 : 250 };
+}
+
+export type SettleResult = {
+  // The ids the run waited for, and how many of them were stored at the last poll.
+  expected: number;
+  present: number;
+  settled: boolean;
+  bound: SettleBound;
+  elapsedMs: number;
+};
+
+// Settled when every id waited for is in `webhook_events`. Each message commits its projections in
+// the same transaction as its ledger row (ADR-004), so stored means projected. `ids` is every
+// generated `svix_id`, or a subset of them: a poison run waits for the non-poisoned ids only (D27),
+// while its bound still counts every generated event (D22).
+export async function settle(
+  db: Executor,
+  ids: readonly string[],
+  generatedEvents: number = ids.length,
+): Promise<SettleResult> {
+  const bound = settleBound(generatedEvents);
+  const started = performance.now();
   for (;;) {
-    const present = await webhookEventsRepository.countPresent(db, generated);
-    if (present === generated.length || performance.now() >= deadline) {
-      return present;
+    const present = await webhookEventsRepository.countPresent(db, ids);
+    const elapsedMs = performance.now() - started;
+    const settled = present === ids.length;
+    if (settled || elapsedMs >= bound.boundMs) {
+      return { expected: ids.length, present, settled, bound, elapsedMs };
     }
-    await sleep(settleIntervalMs);
+    await sleep(bound.intervalMs);
   }
+}
+
+// D22's failure line, the bound in whole or decimal seconds as `settleBound` gives it.
+export function notSettledLine(result: SettleResult): string {
+  return `sim: not settled after ${result.bound.boundMs / 1000}s (${result.present}/${result.expected} stored)`;
 }
 
 // Exit status: `0` iff every request was accepted and both checked invariants pass, `1` otherwise.
@@ -97,9 +127,9 @@ export async function liveRun(input: LiveRunInput): Promise<number> {
   input.out(`sent requests=${sent.requests} accepted=${sent.accepted}`);
 
   const generated = generatedSvixIds(input.history);
-  const present = await settle(input.db, generated);
-  if (present !== generated.length) {
-    input.err(`sim: not settled after 30s (${present}/${generated.length} stored)`);
+  const settled = await settle(input.db, generated);
+  if (!settled.settled) {
+    input.err(notSettledLine(settled));
     return 1;
   }
 
@@ -109,6 +139,7 @@ export async function liveRun(input: LiveRunInput): Promise<number> {
   input.out(second.line);
   // Report honesty: an invariant this run cannot check is named as not checked, never as passed.
   input.out('invariant 3 not checked (slice 6)');
-  input.out('invariant 4 not checked (slice 3)');
+  // D23: this run is not an AWS run, which is the only kind that reads the DLQ.
+  input.out('invariant 4 not checked (AWS runs check it: --burst, --chaos or --poison)');
   return first.pass && second.pass && sent.accepted === sent.requests ? 0 : 1;
 }
