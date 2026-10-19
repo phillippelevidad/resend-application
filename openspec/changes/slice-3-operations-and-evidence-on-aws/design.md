@@ -404,7 +404,7 @@ before sending anything:
   `sim: the deployed stack has no simulator secret; set LEDGER_SIMULATOR=on and run pnpm aws:deploy`.
   Without it ingest answers every simulator-signed request `401` (D13), so a burst would raise the
   throttle and spend 10,000 requests to fail. The output is already read for `ApiUrl`, so the check
-  costs nothing (lens clause 1: the run scripts its own preconditions).
+  costs nothing (lens clause 1: the run scripts its own preconditions). Kept, owner-ruled 2026-10-19.
 
 The three knobs exclude each other and `--duplicates`; a combination exits `2` naming the pair.
 `--shuffle` combines with any. The plain `--duplicates 0.2 --shuffle` run is unchanged, works against
@@ -525,7 +525,8 @@ unexpected error that enters through ingest:
    Only the sim mints a `simpoison_` id: Resend's ids are `msg_…`, and the sim's others are
    `<namespace>-svix-…`, whose namespace (`[a-z0-9-]`) holds no `_`. Rejected: the PP's
    `CHECK (svix_id NOT IN (<ids>))` with a per-run constraint name, which inlines escaped runtime
-   values into DDL and would need an exception to that rule. A poisoned insert fails `23514`, not
+   values into DDL and would need an exception to that rule (owner-ruled 2026-10-19: keep the
+   marker). A poisoned insert fails `23514`, not
    connection-class, so it follows ADR-008 per message while the others commit. A `42501` →
    `sim: --poison needs DATABASE_URL to own webhook_events (the owner's pooled URL, not the runtime role's)`,
    exit `1`, nothing sent.
@@ -852,7 +853,8 @@ reach this slice (MCP DLQ tools are slice 5's).
    `LEDGER_SIMULATOR=on` in `.env.local`; add `DATABASE_URL` to `.env.deployed.local`.
 3. **Ask-first:** `pnpm aws:deploy` adds the three alarms, the descriptions, the DLQ IAM and the
    simulator secret. The existing alert subscription receives the new alarms; no new confirmation.
-4. Walk P0–P8, each AWS step approved when it runs.
+4. Apply runs group 12 unattended (owner-ruled 2026-10-19: pre-approved, guarded by the AWS session's
+   remaining time before each long run); then walk P0–P8.
 
 Rollback: a redeploy of the previous commit removes the alarms, the IAM and the secret (`DESTROY`).
 `LEDGER_SIMULATOR=off` and a redeploy removes only the simulator secret. Nothing to roll back in the

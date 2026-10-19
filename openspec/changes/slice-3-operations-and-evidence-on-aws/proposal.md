@@ -131,15 +131,16 @@ only to the simulator although its evidence is the worker's integration test.
   `environment.md`, plus `WALKTHROUGH.md` in this folder. None loosens a rule.
 
 **Ask-first items** ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions)). Every row was
-approved by the owner on 2026-10-19 in one itemized round (PP §7, approvals table). The AWS runs are
-held and approved one at a time, when each runs:
+approved by the owner on 2026-10-19 in one itemized round (PP §7, approvals table). A second owner
+round the same day pre-approved the AWS runs, so apply runs them unattended:
 
 | Item | Exact scope approved | PP §7 row |
 | --- | --- | --- |
 | DLQ contract | `dlq.listMessages` → `GET /dlq/messages?limit=1…10` (default 10) and `dlq.startRedrive` → `POST /dlq/redrive` with PP D5 and D7's wire shapes; SDK `ledger.dlq.listMessages({ limit? })` and `ledger.dlq.startRedrive()`; CLI `ledger dlq inspect [--limit <1-10>] [--json]` and `ledger dlq redrive [--json]`; api-contract edits: `dlq.startRedrive` returns no task handle (C1), and both entries list `database_unavailable` (C7) | DLQ contract |
 | Public inputs | `LEDGER_SIMULATOR` (`on` \| `off`, default `off`), read by `pnpm aws:deploy`; with `on`, the deploy requires `LEDGER_SIMULATOR_SECRET` and writes it into `ledger/simulator-signing-secret`. `pnpm sim` flags `--burst <events>/<seconds>s` (events ≤ 10,000), `--chaos db-outage`, `--poison <1-10>` | Public inputs |
 | Template resources | Alarms `LedgerApp-queue-age`, `LedgerApp-dlq-depth`, `LedgerApp-api-5xx` on `LedgerGuardrails-alert`; `ledger/simulator-signing-secret` only with the flag; read-API IAM on the DLQ (`sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:StartMessageMoveTask`, `sqs:ListMessageMoveTasks`) and `sqs:SendMessage` on the source queue | Template resources |
-| AWS runs | Each `pnpm aws:deploy`, the read-only quota check, each AWS sim run (`--duplicates 0.2 --shuffle`, `--burst`, `--chaos db-outage`, `--poison`), and every read-only `aws` CLI read in the walk — **held: approved one at a time, when each runs** | AWS runs |
+| AWS runs | Each `pnpm aws:deploy`, the read-only quota check, each AWS sim run (`--duplicates 0.2 --shuffle`, `--burst`, `--chaos db-outage`, `--poison`), and every read-only `aws` CLI read in the walk — **pre-approved for an unattended apply, owner-ruled 2026-10-19** ("Pre-approve all of group 12") | AWS runs |
+| Quota increase request | If the Lambda concurrent-executions quota reads below 1,000: one `aws service-quotas request-service-quota-increase` to 1,000 in us-east-2, "then revert if possible when testing is complete" (owner, 2026-10-19; tasks 12.1, 12.5) | Owner round, 2026-10-19 |
 
 Not needed: no dependency (`sim` gains `"@ledger/aws": "workspace:*"`, a boundary declaration), no CI
 change (the link check is a unit test), no migration, no live Resend write. Anything outside these
