@@ -35,7 +35,7 @@ only the PP and its repair have landed since `8e37a70`; no code changed).
 7. `pnpm sim --duplicates 0.2 --shuffle` passes invariants 1 and 2 through the deployed queue (ADR-002).
 
 **Owner ruling on Ships 4 (2026-10-19, PP D30, C5):** the PG-U07 clause becomes "settled from Neon's
-docs, source or support, or a write over the limit". Task 1.2 applies it to the card and to the
+docs, source or support, or a write over the limit". Task 1.1 applies it to the card and to the
 quote above in one step, because a reworded bullet is a scope change that starts at the card.
 
 How each bullet lands, in one line (detail in [design.md](design.md)):
@@ -82,9 +82,10 @@ catches).
 
 ### Modified Capabilities
 
-Mapped in PP §23, plus two requirements the PP's map left out (the OpenAPI document's operation list,
-and the simulator's `invariant 4 not checked` line), both fact corrections that follow from D10 and
-D23.
+Mapped in PP §23, plus three requirements the PP's map left out: the OpenAPI document's operation
+list and the simulator's `invariant 4 not checked` line, both fact corrections that follow from D10
+and D23; and `event-ledger`'s poison and redrive rule, PP §14 rules 6 and 14, which the map routed
+only to the simulator although its evidence is the worker's integration test.
 
 - `read-api`: ADDED `dlq.listMessages` and `dlq.startRedrive` with their errors; MODIFIED "Read
   responses are masked" (DLQ items carry no address, subject or payload) and "OpenAPI document"
@@ -101,6 +102,7 @@ D23.
 - `deploy-and-teardown`: MODIFIED "Deploy inputs are asserted first" (`LEDGER_SIMULATOR` and its
   secret); ADDED "Deploy writes the simulator secret".
 - `local-stack`: ADDED "Local DLQ reads the in-process dead list".
+- `event-ledger`: ADDED "A poison message is isolated, and applies once after a redrive".
 - `simulator`: ADDED the AWS-run guard, the burst, database-outage and poison knobs, and invariant 4;
   MODIFIED "Bad flags are rejected", "Live run sends every event signed", "Live run waits for the
   ledger to settle" and "Invariants 1 and 2 checked against the local process".

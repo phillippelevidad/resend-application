@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: AWS runs guard their target
-`--burst`, `--chaos db-outage` and `--poison` SHALL make a run an AWS run. An AWS run without `LEDGER_URL` SHALL exit `2`. Before sending anything it SHALL exit `1` with `sim: <reason>` when `LEDGER_URL` (trailing slash ignored) is not the deployed app stack's API URL, the kill switch is tripped or not armed, or the DLQ depth is not 0.
+`--burst`, `--chaos db-outage` and `--poison` SHALL make a run an AWS run. An AWS run without `LEDGER_URL` SHALL exit `2`. Before sending anything it SHALL exit `1` with `sim: <reason>` when `LEDGER_URL` (trailing slash ignored) is not the deployed app stack's API URL, the kill switch is tripped or not armed, the DLQ depth is not 0, or the deployed app stack holds no simulator secret.
 
 #### Scenario: Offline AWS knob
 - **WHEN** `LEDGER_URL= pnpm sim --burst 10000/10s` runs
@@ -24,6 +24,10 @@
 #### Scenario: DLQ not empty
 - **WHEN** an AWS run starts while the DLQ holds 2 messages
 - **THEN** it prints `sim: the DLQ holds 2 messages; inspect and redrive them first`, exits `1`, and sends nothing
+
+#### Scenario: Stack deployed without the simulator secret
+- **WHEN** an AWS run starts against a stack deployed with `LEDGER_SIMULATOR` off
+- **THEN** it prints `sim: the deployed stack has no simulator secret; set LEDGER_SIMULATOR=on and run pnpm aws:deploy`, exits `1`, and neither raises the throttle nor sends anything
 
 ### Requirement: Burst history
 `--burst <events>/<seconds>s` SHALL generate exactly `events` events (1–10,000) as broadcast-shaped emails with one distinct recipient each, cycling over Resend's test addresses as `+label` forms carrying the run's namespace (RS-32, RS-39), each email replaying its address's observed sequence. The history SHALL be deterministic per seed and namespace.

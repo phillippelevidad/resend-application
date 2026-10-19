@@ -8,7 +8,9 @@ See [proposal.md → Why](proposal.md#why). The pre-proposal
 below keeps its PP number (D1–D31) and carries what `opsx:apply` needs to build it. The PP keeps the
 authority trail for every decision and the contradictions C1–C11. D32 and D33 are build-level
 choices this design adds where the PP left the mechanism open. Neither changes a spec, a contract or
-a decision. Everything the build needs is in this file: [Surfaces](#surfaces) (PP §12),
+a decision. Two names differ from the PP as fact corrections: the DLQ contract suite follows the
+existing `<port>-port-contract.ts` files (`packages/shared/src/testing/queue-port-contract.ts`), and
+`burstHistory` takes the run's `seed`, which its determinism needs (D25). Everything the build needs is in this file: [Surfaces](#surfaces) (PP §12),
 [Evidence map](#evidence-map) (PP §20) and [Walkthrough plan](#walkthrough-plan) (PP §21).
 
 State on `HEAD` (PP §5, re-checked 2026-10-19; only the PP and its repair have landed since
@@ -80,7 +82,7 @@ command or mapper per file.
 | `packages/db` | `testing/poison-fault.ts` and `poison-fault.int.test.ts` (new, D27), re-exported from `testing.ts`; `testing.ts` (lazy `inject`, D32); `classify-database-error.ts` (the PG-U07 comment, D30) |
 | `packages/ingest` | `create-ingest.ts` (`simulatorSecretId`, D13); `create-ingest.test.ts` |
 | `packages/worker` | `poison-isolation.int.test.ts` (new, §Evidence map) |
-| `packages/api` | `list-dlq-messages.route.ts`, `list-dlq-messages.reader.ts`, `dlq-message-response.mapper.ts`, `dlq-message-response.schema.ts`; `start-dlq-redrive.route.ts`, `start-dlq-redrive.command.ts`, `dlq-redrive-response.schema.ts`; `list-dlq-messages.route.int.test.ts`, `start-dlq-redrive.route.int.test.ts`; `create-api.ts` (`ApiDeps.dlq`, the two routes); `testing/api-test-deps.ts` and `testing/read-api-contract.ts` (the DLQ cases) |
+| `packages/api` | `list-dlq-messages.route.ts`, `list-dlq-messages.reader.ts`, `dlq-message-response.mapper.ts`, `dlq-message-response.schema.ts`; `start-dlq-redrive.route.ts`, `start-dlq-redrive.command.ts`, `dlq-redrive-response.mapper.ts`, `dlq-redrive-response.schema.ts` (D7); `list-dlq-messages.route.int.test.ts`, `start-dlq-redrive.route.int.test.ts`; `create-api.ts` (`ApiDeps.dlq`, the two routes); `testing/api-test-deps.ts` and `testing/read-api-contract.ts` (the DLQ cases) |
 | `packages/sdk` | `create-ledger-client.ts` (`dlq.listMessages`, `dlq.startRedrive`), `testing.ts` (`FakeLedgerClient`); regenerated `openapi.json`, `src/openapi-types.ts` |
 | `packages/aws` | `sqs-dlq.adapter.ts` + test (D4); `ledger-stacks.ts` (moved and extended, D2); `http-api-stage.ts` (D33); `burst-throttle.ts` + test (D25); `function-recycle.ts` + test (D27); `account-settings.ts` + test (D25); `request-count.ts` + test (D25); `kill-switch.ts` (imports D33's helpers); `index.ts` |
 | `apps/ingest` | `ingest.config.ts` (optional `SIMULATOR_SECRET_ARN`), `main.ts` (passes it as `simulatorSecretId`), `create-ingest-handler.test.ts` |
@@ -123,8 +125,9 @@ payloads.
 `API_FUNCTION_NAME = \`${APP_STACK_NAME}-api\`` (the read API's physical name as
 `infra/src/app.stack.ts:92-97` derives it; no output names it). `infra/scripts/ledger-stacks.ts`
 re-exports them and keeps `MONTHLY_BUDGET_NAME`, `PROJECT_TAG` and `LOG_GROUP_PREFIXES`. `infra/src`
-imports the alarm names from `@ledger/aws`, so the template and the sim cannot disagree. Why: `sim`
-needs the names and must not import `infra`.
+imports the alarm names and `APP_STACK_NAME` from `@ledger/aws` (`infra/src/main.ts:23` drops its
+own `'LedgerApp'` literal), so the template and the sim cannot disagree. Tests keep their literals:
+they pin the name. Why: `sim` needs the names and must not import `infra`.
 
 ### Local and in-process
 
@@ -208,7 +211,10 @@ keyed by field, so the DLQ route carries a route-scoped override.
 `execute()` → `DlqPort.startRedrive()`. `started` → **`202`**
 `{ "object": "dlq_redrive", "status": "started", "depth": 3 }`; `empty` → **`200`**
 `{ "object": "dlq_redrive", "status": "empty", "depth": 0 }`; a thrown `redrive_in_progress` → `409`
-in the error shape. Scope `operate`. It opens no transaction: it writes nothing to Postgres.
+in the error shape. Scope `operate`. It opens no transaction: it writes nothing to Postgres, like
+`ResumeEventSourceCommand`. The `202` and `200` bodies are built by `dlq-redrive-response.mapper.ts`,
+as the resume route's are by `event-source-response.mapper.ts` (pp-backend → Gate: "every response
+built by a `.mapper.ts`").
 
 #### D8 — Errors
 
@@ -393,7 +399,12 @@ before sending anything:
 - tripped (`readKillSwitchState`) → `sim: the stack is tripped; run pnpm aws:rearm first`;
 - `KillSwitchArmed` not `true` →
   `sim: the kill switch is not armed; AWS runs need the owner's armed deployment`;
-- DLQ depth not 0 → `sim: the DLQ holds <n> messages; inspect and redrive them first`.
+- DLQ depth not 0 → `sim: the DLQ holds <n> messages; inspect and redrive them first`;
+- the `LedgerApp` outputs hold no `SimulatorSecretArn` →
+  `sim: the deployed stack has no simulator secret; set LEDGER_SIMULATOR=on and run pnpm aws:deploy`.
+  Without it ingest answers every simulator-signed request `401` (D13), so a burst would raise the
+  throttle and spend 10,000 requests to fail. The output is already read for `ApiUrl`, so the check
+  costs nothing (lens clause 1: the run scripts its own preconditions).
 
 The three knobs exclude each other and `--duplicates`; a combination exits `2` naming the pair.
 `--shuffle` combines with any. The plain `--duplicates 0.2 --shuffle` run is unchanged, works against
@@ -501,12 +512,20 @@ the DLQ, the failure the run exists to rule out).
 unexpected error that enters through ingest:
 
 1. D23's guard.
-2. Pick `n` events, seeded (`deriveSeed`), never from the walk probe email. Print
+2. Pick `n` events, seeded (`deriveSeed`), never from the walk probe email, and give each a marked
+   id, `POISON_ID_PREFIX` (`simpoison_`) + `<namespace>_<k>`, in the generated history before
+   anything is sent, so the ground truth, the send and invariant 4 all carry the marked id. Print
    `poison count=<n> svix_ids=<…> email_ids=<…>`.
-3. **Add the fault** through `DATABASE_URL` with `@ledger/db/testing`'s `removePoisonFault` (any
-   leftover `ledger_sim_poison_%` constraint) then `addPoisonFault(db, namespace, svixIds)`:
-   `ALTER TABLE webhook_events ADD CONSTRAINT ledger_sim_poison_<namespace> CHECK (svix_id NOT IN (<ids>)) NOT VALID`,
-   ids passed as literals through `pg`'s escaping. A poisoned insert fails `23514`, not
+3. **Add the fault** through `DATABASE_URL` with `@ledger/db/testing`'s `removePoisonFault`
+   (`ALTER TABLE webhook_events DROP CONSTRAINT IF EXISTS ledger_sim_poison`, so a leftover goes
+   first) then `addPoisonFault(db)`:
+   `ALTER TABLE webhook_events ADD CONSTRAINT ledger_sim_poison CHECK (NOT starts_with(svix_id, 'simpoison_')) NOT VALID`.
+   Both statements are constants: no runtime value reaches the SQL, which pp-database → Never
+   requires ("`sql.raw` with a runtime value → the `sql` template"), and DDL cannot bind a parameter.
+   Only the sim mints a `simpoison_` id: Resend's ids are `msg_…`, and the sim's others are
+   `<namespace>-svix-…`, whose namespace (`[a-z0-9-]`) holds no `_`. Rejected: the PP's
+   `CHECK (svix_id NOT IN (<ids>))` with a per-run constraint name, which inlines escaped runtime
+   values into DDL and would need an exception to that rule. A poisoned insert fails `23514`, not
    connection-class, so it follows ADR-008 per message while the others commit. A `42501` →
    `sim: --poison needs DATABASE_URL to own webhook_events (the owner's pooled URL, not the runtime role's)`,
    exit `1`, nothing sent.
@@ -601,7 +620,7 @@ RS-U08's number), which the walk records.
 | Inspect never removes or hides; one redrive at a time; empty starts nothing (Ships 2) | `packages/aws/src/sqs-dlq.adapter.test.ts` (unit, stubbed client): `ReceiveMessage` with `VisibilityTimeout: 0`, `WaitTimeSeconds: 1`, `MaxNumberOfMessages: limit`, never `DeleteMessage`; `RUNNING` → `redrive_in_progress`, no start sent; depth 0 → `empty`, no start; otherwise `StartMessageMoveTask` with the DLQ's `SourceArn` and no `DestinationArn`; no `TaskHandle` in the result; a scripted start error propagates unchanged and no second start is sent (AWS-U14). Status and error names cited from the API Reference. Plus `dlqPortContract` run here and by `in-process-queue.adapter.test.ts` | The visibility; the `RUNNING` check; the empty check |
 | Redaction; unreadable message listed; `limit` (Ships 2) | `packages/api/src/list-dlq-messages.route.int.test.ts` (int): a dead message whose raw body names `delivered@resend.dev` in `to` and `from` and carries a subject → the response text holds neither, and no item holds another key; a malformed body → `null` fields with a `receive_count`; `limit` 0 and 11 → `400` with D6's message; `has_more` and `depth`; a duplicate `svix_id` collapses | The path restriction; the `null` fallback |
 | Scope; status mapping (Ships 2) | `packages/api/src/start-dlq-redrive.route.int.test.ts` (int, real auth middleware): `401`, `403` with `read`, `202 started`, `200 empty`, `409 redrive_in_progress` in the error shape | The scope check; the mapping |
-| A redriven event applies once (Ships 6) | Existing `packages/worker/src/record-event.command.int.test.ts` (a copy under a new `messageId` leaves one row). New `packages/worker/src/poison-isolation.int.test.ts` (int, real Postgres, in-process queue, `addPoisonFault` on one `svix_id`): after `maxReceiveCount` receives that message is dead-listed while every other committed; after `removePoisonFault` and the in-process redrive it commits once | Per-message failure; the fault helpers |
+| A redriven event applies once (Ships 6) | Existing `packages/worker/src/record-event.command.int.test.ts` (a copy under a new `messageId` leaves one row). New `packages/worker/src/poison-isolation.int.test.ts` (int, real Postgres, in-process queue, `addPoisonFault` with one event's `svix_id` marked `simpoison_`): after `maxReceiveCount` receives that message is dead-listed while every other committed; after `removePoisonFault` and the in-process redrive it commits once | Per-message failure; the fault helpers |
 | SDK ↔ API agree (Ships 2) | `apps/local/src/sdk-contract.int.test.ts` and `apps/api/src/api-lambda-contract.int.test.ts` (int): `readApiContract` grows both DLQ methods' success and error cases | Contract drift |
 | SDK | `packages/sdk` method tests (unit): paths, verbs, `{ data, error }`, one request on a closed port | — |
 | CLI output (Ships 2) | `apps/cli/src/commands/dlq-list-messages.cli.test.ts`, `dlq-start-redrive.cli.test.ts` (unit, `FakeLedgerClient`): `--json` documents, [Surfaces](#surfaces)' lines, the stderr notice only in human mode with depth > 0, `409` and `403` → exit `1` with the error, `--limit abc` → exit `2` with no SDK call | The output contract |
@@ -613,7 +632,7 @@ RS-U08's number), which the walk records.
 | AWS-run guard, flags | `sim/src/read-sim-flags.test.ts` (unit): the three flags, ranges, exclusivity; `sim/src/aws-run-guard.test.ts` (unit, injected readers): each refusal; `sim/src/main.e2e.test.ts`: an AWS knob offline → exit `2`, no network, and every existing case still passes under plain `node` (D32) | — |
 | Burst history | `packages/core/src/testing/burst-history.prop.test.ts` (property): exact count, distinct recipients, determinism per seed and namespace | — |
 | Invariant 4 | `sim/src/invariants/invariant-4.test.ts` (unit, in-process adapter): pass; a stray id; a missing poisoned id; a depth mismatch | — |
-| Poison fault | `packages/db/src/testing/poison-fault.int.test.ts` (int): only the listed ids fail `23514`; `NOT VALID` leaves existing rows; removal restores inserts; a leftover is dropped first | — |
+| Poison fault | `packages/db/src/testing/poison-fault.int.test.ts` (int): only the listed ids fail `23514`; `NOT VALID` leaves existing rows; removal restores inserts; a second add after a crash drops the leftover first; an id that merely contains `simpoison_` past its start still inserts | The prefix match |
 | Settle bound | `sim/src/live-run.ts`'s bound as an exported pure function, unit-tested: 20 events → 32 s at 250 ms; 10,000 → 1,030 s at 2 s | — |
 | PG-U07 | Existing `packages/db/src/classify-database-error.test.ts` pins `53100` (D30) | — |
 | Deployed behaviour (Ships 4–7) | Simulator invariants 1, 2 and 4 in the recorded runs (walk P2–P6) | — |
@@ -623,10 +642,10 @@ RS-U08's number), which the walk records.
 ## Data model
 
 Not touched: no table, column, index, grant or migration. `--poison` adds a **transient**
-`NOT VALID` CHECK (`ledger_sim_poison_<namespace>`) to `webhook_events` on the owner's database for
+`NOT VALID` CHECK (`ledger_sim_poison`) to `webhook_events` on the owner's database for
 the length of a run and drops it in `finally`. It is a test fault: never a migration, never in the
-Drizzle schema, matching only that run's generated `svix_id`s, and dropped by the next poison run if
-a crash left it.
+Drizzle schema, matching only `svix_id`s that start `simpoison_`, which only a poison run mints
+(D27), and dropped by the next poison run if a crash left it.
 
 ### State machines
 

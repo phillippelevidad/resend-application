@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: dlq.listMessages returns a sample and the depth
-`dlq.listMessages` (`GET /dlq/messages`, scope `read`) SHALL answer `200` with `object: "list"`, `depth` (dead messages visible plus in flight), `has_more` (`depth` greater than the items returned) and up to `limit` items (1–10, default 10), each `object: "dlq_message"` with `svix_id`, `type`, `email_id`, `event_created_at`, `enqueued_at` and `receive_count`. It SHALL return no cursor, because it is a sample (AWS-50).
+`dlq.listMessages` (scope `read`) SHALL answer `200` with `object: "list"`, `depth` (dead messages visible plus in flight), `has_more` (`depth` greater than the items returned) and up to `limit` items (1–10, default 10), each `object: "dlq_message"` with `svix_id`, `type`, `email_id`, `event_created_at`, `enqueued_at` and `receive_count`. It SHALL return no cursor, because it is a sample (AWS-50).
 
 #### Scenario: One dead message
 - **WHEN** the DLQ holds one message for an `email.delivered` event and `dlq.listMessages` is called
@@ -47,7 +47,7 @@ A dead message whose body is not a valid ingest envelope, or whose payload is no
 - **THEN** it answers `500 internal_error` and logs the error's name only
 
 ### Requirement: dlq.startRedrive moves every dead message back
-`dlq.startRedrive` (`POST /dlq/redrive`, scope `operate`) SHALL start one redrive of every DLQ message to the source queue and answer `202` with `{ object: "dlq_redrive", status: "started", depth }`, the depth at start. An empty DLQ SHALL answer `200` with `status: "empty"` and `depth: 0` and start nothing. The response SHALL carry no task handle, queue ARN or account id (AWS-61).
+`dlq.startRedrive` (scope `operate`) SHALL start one redrive of every DLQ message to the source queue and answer `202` with `{ object: "dlq_redrive", status: "started", depth }`, the depth at start. An empty DLQ SHALL answer `200` with `status: "empty"` and `depth: 0` and start nothing. The response SHALL carry no task handle, queue ARN or account id (AWS-61).
 
 #### Scenario: Redrive started
 - **WHEN** the DLQ holds 3 messages and an `operate` token calls `dlq.startRedrive`
