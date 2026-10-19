@@ -75,7 +75,7 @@
 ### F3 — `ledger dlq redrive` says "the dlq is empty" over a message `ledger dlq inspect` just listed
 
 - **Severity:** major · **Category:** contract · **Status:** fixed in `d9f90ff`, deployed 21:12 UTC (E3 → E4 re-walked within 1 s: `started`) · **Step:** E4
-- **Expected:** `redrive     started: 1 message(s) moving back to the queue; …`, exit 0, per E4 and [dlq.startRedrive](../../../.ai/api-contract.md#dlqstartredrive) ("An empty DLQ answers `200` and starts no task": the DLQ was not empty).
+- **Expected:** `redrive     started: 1 message(s) moving back to the queue; …`, exit 0, per E4 and [dlq.startRedrive](../../../../.ai/api-contract.md#dlqstartredrive) ("An empty DLQ answers `200` and starts no task": the DLQ was not empty).
 - **Observed:** `redrive     nothing to move: the dlq is empty`, exit 0, ≈ 20:37 UTC, seconds after E3's inspect answered `depth: 1` with the item; the next redrive answered `started`, `depth: 1`. The message stayed in the DLQ and moved on the next call: no event lost.
 - **Evidence:** `simpoison_ccc7de44_0`, moved to the DLQ ≈ 20:36 UTC (E1's `invariant 4 pass`), E3 then E4 within ≈ 60 s.
 - **Suspected cause:** `packages/aws/src/sqs-dlq.adapter.ts` `startRedrive`: `if (depth === 0 || (await this.#receive(1)).length === 0) return { status: 'empty', depth: 0 }`. An approximate depth of 0 inside AWS-62's one-minute lag answers `empty` with no confirming receive, while `dlq.listMessages` already guards the same lag (`depth = max(approximate, items)`). Which branch fired is `[Unverified]` (no log of the depth read). VERIFICATION.md lists this as a kept judgement call ("D4 as designed"), not an owner decision; E4's text, the operator's first step after an alarm, hits it.

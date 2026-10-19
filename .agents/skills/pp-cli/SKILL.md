@@ -22,7 +22,7 @@ stdout and stderr discipline, `--json`, colour · waiting on a `202` · the CLI'
 (`ledger email`, `ledger recipient`), slice 2's
 [design.md → Surfaces](../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#surfaces)
 (`ledger health`, `ledger worker resume`, `ledger token create|list|revoke|current`), slice 3's
-[design.md → Surfaces](../../../openspec/changes/slice-3-operations-and-evidence-on-aws/design.md#surfaces)
+[design.md → Surfaces](../../../openspec/changes/archive/2026-10-19-slice-3-operations-and-evidence-on-aws/design.md#surfaces)
 (`ledger dlq inspect`, `ledger dlq redrive`), then each slice for the commands it adds.
 
 ## Precedence

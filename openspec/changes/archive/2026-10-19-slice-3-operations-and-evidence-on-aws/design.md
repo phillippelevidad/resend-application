@@ -3,7 +3,7 @@
 ## Context
 
 See [proposal.md → Why](proposal.md#why). The pre-proposal
-[2026-10-19-slice-3-operations-and-evidence-on-aws.md](../../../.ai/pre-proposals/2026-10-19-slice-3-operations-and-evidence-on-aws.md)
+[2026-10-19-slice-3-operations-and-evidence-on-aws.md](../../../../.ai/pre-proposals/2026-10-19-slice-3-operations-and-evidence-on-aws.md)
 (*PP*) is decision-complete and checked (12 repairs, nothing left for the owner). Each decision
 below keeps its PP number (D1–D31) and carries what `opsx:apply` needs to build it. The PP keeps the
 authority trail for every decision and the contradictions C1–C11. D32 and D33 are build-level
@@ -39,11 +39,11 @@ State on `HEAD` (PP §5, re-checked 2026-10-19; only the PP and its repair have 
   it once, in `createTestDatabase` (`:43`).
 
 Binding constraints: ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-008, ADR-010, ADR-011,
-ADR-013, ADR-015, ADR-016 ([Decisions](../../../.ai/architecture.md#decisions)); the module
-boundaries in root [AGENTS.md](../../../AGENTS.md#module-boundaries) (only `packages/aws` imports
+ADR-013, ADR-015, ADR-016 ([Decisions](../../../../.ai/architecture.md#decisions)); the module
+boundaries in root [AGENTS.md](../../../../AGENTS.md#module-boundaries) (only `packages/aws` imports
 `@aws-sdk/*`; `sim` never imports `infra`; every database access goes through `packages/db`);
-[aws.md → Budget alarms](../../../.ai/aws.md#budget-alarms) item 7 (the burst throttle);
-[api-contract.md → Conventions](../../../.ai/api-contract.md#conventions) (redaction, auth during an
+[aws.md → Budget alarms](../../../../.ai/aws.md#budget-alarms) item 7 (the burst throttle);
+[api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions) (redaction, auth during an
 outage, long-running commands); the `pp-backend`, `pp-infra`, `pp-testing`, `pp-cli` and
 `pp-general` skills.
 
@@ -725,7 +725,7 @@ Drizzle schema, matching only `svix_id`s that start `simpoison_`, which only a p
 
 ### Error codes raised
 
-In the [error shape](../../../AGENTS.md#error-shape):
+In the [error shape](../../../../AGENTS.md#error-shape):
 
 | Code | HTTP | Route | `message` | `hint` |
 | --- | --- | --- | --- | --- |
@@ -797,7 +797,7 @@ body carries the `AlarmDescription` with the runbook link (D18). Only the owner 
 
 ## Walkthrough plan
 
-[Walkthrough format](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). Setup
+[Walkthrough format](../../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md). Setup
 is non-destructive, every AWS step is `**Ask-first:**`, and there are no live Resend writes.
 Personas: **operator** (alarms, DLQ, health, resume), **application developer** (J7's burst; order
 independence), **reviewer** (a `read` token against the kept deploy). Support and the AI agent do not

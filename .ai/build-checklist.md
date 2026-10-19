@@ -134,7 +134,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 3 — Operations and evidence on AWS
 
-- **Status:** `[~]` every Ships box ticked; awaiting the walk (`rsa-manual-test`).
+- **Status:** `[x]`
 - **Goal:** The deployed stack is operable and its reliability claims are measured: alarms reach the owner with runbook entries, poison messages are inspected and redriven from the CLI, and burst, outage and poison runs prove invariants 1, 2 and 4 on AWS.
 - **Depends on:** 2.
 - **Refs:** [ADR-002](architecture.md#adr-002--sqs-standard-not-fifo) · [ADR-008](architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq) · [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage) · [ADR-016](architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret) · [aws.md → CloudWatch and SNS](aws.md#cloudwatch-and-sns) · [dlq.listMessages](api-contract.md#dlqlistmessages) · [dlq.startRedrive](api-contract.md#dlqstartredrive) · [features.md → operate](features.md#adopter-lifecycle) · [J4](features.md#j4--poison-message--redrive) · [J7](features.md#j7--burst)

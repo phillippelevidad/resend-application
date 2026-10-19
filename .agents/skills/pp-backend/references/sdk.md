@@ -38,7 +38,7 @@ no import of `@ledger/api`, `db`, `aws`, `ingest`, `worker`, `reconciler`, `disp
   Never a generic `request(path)` on the public surface.
 - **The methods today** (slice 1, then slice 2's
   [D24](../../../../openspec/changes/archive/2026-10-18-slice-2-durable-ingest-on-aws/design.md#d24--sdk-methods),
-  then slice 3's [D10](../../../../openspec/changes/slice-3-operations-and-evidence-on-aws/design.md#d10--sdk-and-cli)):
+  then slice 3's [D10](../../../../openspec/changes/archive/2026-10-19-slice-3-operations-and-evidence-on-aws/design.md#d10--sdk-and-cli)):
   `emails.get(emailId)`, `recipients.get(address)`, `health.get()`,
   `worker.resumeEventSource()`, `tokens.getCurrent()`, `tokens.list({ limit?, after? })`,
   `tokens.create({ name, scope })`, `tokens.revoke(tokenId: string)`, `dlq.listMessages({ limit? })`

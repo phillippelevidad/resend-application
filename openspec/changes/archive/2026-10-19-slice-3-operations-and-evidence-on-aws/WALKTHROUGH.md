@@ -10,7 +10,7 @@ already one command; run it in its own terminal and walk the other steps beside 
 that carries it. A step without such a note that fails is a finding against this slice.
 
 Every `UI surfaces` entry on the
-[slice 3 card](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) is reached:
+[slice 3 card](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws) is reached:
 `pnpm sim --burst 10000/10s` (C2); `pnpm sim --chaos db-outage` (D2); the `pnpm sim` poison run
 (E1); `ledger dlq inspect` (E3, F2, H2); `ledger dlq redrive` (E4, E5, F3, H3); `ledger health`
 (C3, D1, D3, D6, E6, T2); the alarm email (D5, E2, owner-observed).
@@ -36,7 +36,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
   `LEDGER_TOKEN_TAG_KEY`, `LEDGER_SIMULATOR_SECRET`, `LEDGER_URL`, `LEDGER_TOKEN` (written by
   `pnpm db:setup`); the owner's `LEDGER_DEPLOY_DATABASE_URL`, `LEDGER_DEPLOY_DATABASE_POOLED_URL`,
   `LEDGER_ALERT_EMAIL`, `LEDGER_KILL_SWITCH` (`on`) and, new in this slice, `LEDGER_SIMULATOR` set
-  to `on` (the owner's deployment only, [ADR-016](../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)).
+  to `on` (the owner's deployment only, [ADR-016](../../../../.ai/architecture.md#adr-016--the-simulator-reaches-aws-only-through-an-opt-in-simulator-secret)).
   `.env.deployed.local` (git-ignored, the owner's): `LEDGER_URL` (the deployed `ApiUrl`),
   `LEDGER_TOKEN` (the bootstrap `operate` token), `DATABASE_URL` (the Neon pooled URL with owner
   credentials, which `--poison` needs to own `webhook_events`), and `LEDGER_ADDRESS_HASH_KEY` (the
@@ -60,7 +60,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
   `aws sso login --profile ledger` before C, D and E when it is close to expiring.
 - **Quota prerequisite (owner op).** The burst needs an account Lambda concurrency quota of at
   least 1,000 (AWS-U05). It read `10` before this slice; an increase to 1,000 was requested in
-  Service Quotas and granted on 2026-10-19 ([aws.md → AWS-U05](../../../.ai/aws.md#unverified)), so
+  Service Quotas and granted on 2026-10-19 ([aws.md → AWS-U05](../../../../.ai/aws.md#unverified)), so
   the account now reads `1000`. Below 1,000, C2 refuses before it sends anything (C1).
 - **This walk creates:** on AWS, the simulator secret (A2, kept: `LEDGER_SIMULATOR` stays `on`),
   the three new alarms (A2, kept), a raised throttle restored in C2's `finally`, the database secret
@@ -76,7 +76,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path A — deploy: the simulator secret and the new alarms in the owner's deployment
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Check the AWS session and the simulator flag.**
 
@@ -150,7 +150,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path B — alarms and the runbook: each alarm names its runbook entry
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Read the DLQ alarm's description.**
 
@@ -189,15 +189,15 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
    `### LedgerApp-api-5xx`, `### LedgerApp-usage-trip` and `### LedgerGuardrails-kill-switch-errors`,
    each with its line number. GitHub's anchor for each is the name in lowercase, the anchor B2's
    links carry; open B1's link in a browser and it lands on
-   [the entry](../../../docs/runbook.md#ledgerapp-dlq-depth). The links resolve on GitHub once this
+   [the entry](../../../../docs/runbook.md#ledgerapp-dlq-depth). The links resolve on GitHub once this
    branch is on `main`; before that they answer `404`, and the local file is the entry. The
    agreement of every alarm name with a heading is `infra/src/runbook-links.test.ts` (a gate, not
    walked).
 
 ## Path C — the burst (J7): 10,000 events in 10 seconds, nothing lost
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas)
-([J7](../../../.ai/features.md#j7--burst))
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas)
+([J7](../../../../.ai/features.md#j7--burst))
 
 1. **Read the account's Lambda concurrency quota.**
 
@@ -279,7 +279,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path D — database outage: ingest keeps answering, the worker pauses, nothing reaches the DLQ
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Confirm the queue-age alarm and the worker start clean.**
 
@@ -393,8 +393,8 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path E — poison and redrive (J4): one bad event waits in the DLQ, then applies once
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
-([J4](../../../.ai/features.md#j4--poison-message--redrive))
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
+([J4](../../../../.ai/features.md#j4--poison-message--redrive))
 
 1. **Run the poison run, in its own terminal.**
 
@@ -550,7 +550,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path F — reviewer access: a `read` token can inspect the DLQ but not redrive it
 
-**Walked as:** [Reviewer](../../../.ai/about.md#target-personas), the Operator issuing the token
+**Walked as:** [Reviewer](../../../../.ai/about.md#target-personas), the Operator issuing the token
 
 1. **As the Operator, issue the reviewer a `read` token.**
 
@@ -607,7 +607,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path G — order independence through SQS: duplicates and shuffle on the deployed queue
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas)
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas)
 
 1. **Run the duplicates-and-shuffle simulation against the deployed stack.**
 
@@ -634,7 +634,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path H — local mode: the in-process DLQ answers the same commands
 
-**Walked as:** [Operator](../../../.ai/about.md#target-personas)
+**Walked as:** [Operator](../../../../.ai/about.md#target-personas)
 
 1. **Point the shell back at local mode and start the local stack.**
 
@@ -677,7 +677,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
    and `exit=0`.
 
-4. **Fill the local DLQ with a poison run → [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose).**
+4. **Fill the local DLQ with a poison run → [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose).**
 
    ```bash
    pnpm sim --poison 1; echo "exit=$?"
@@ -703,7 +703,7 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 
 ## Path I — adopter default: no simulator secret unless the owner asks for one
 
-**Walked as:** [Application developer](../../../.ai/about.md#target-personas), deploying their own copy
+**Walked as:** [Application developer](../../../../.ai/about.md#target-personas), deploying their own copy
 
 1. **Synthesize with no context and read the app template.**
 
@@ -784,7 +784,7 @@ run restored what it changed in its own `finally`.
 
 | Not reachable | Carried by |
 | --- | --- |
-| Local-mode DLQ: a dead message in the Postgres-backed queue, and `ledger dlq inspect` / `redrive` over it (H4) | [slice 2B](../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
-| MCP `inspect_dlq` and `redrive_dlq`, so the AI agent persona walks no path | [slice 5](../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
-| Published latency, drain and cost numbers for the burst (C2 records them; slice 9 publishes) | [slice 9](../../../.ai/build-checklist.md#9--real-aws-burst-numbers) |
-| `ledger gaps` and `ledger reconcile` after an outage or a trip | [slice 4](../../../.ai/build-checklist.md#4--recovery) |
+| Local-mode DLQ: a dead message in the Postgres-backed queue, and `ledger dlq inspect` / `redrive` over it (H4) | [slice 2B](../../../../.ai/build-checklist.md#2b--local-mode-queue-and-docker-compose) |
+| MCP `inspect_dlq` and `redrive_dlq`, so the AI agent persona walks no path | [slice 5](../../../../.ai/build-checklist.md#5--mcp-server-and-contract-hardening) |
+| Published latency, drain and cost numbers for the burst (C2 records them; slice 9 publishes) | [slice 9](../../../../.ai/build-checklist.md#9--real-aws-burst-numbers) |
+| `ledger gaps` and `ledger reconcile` after an outage or a trip | [slice 4](../../../../.ai/build-checklist.md#4--recovery) |

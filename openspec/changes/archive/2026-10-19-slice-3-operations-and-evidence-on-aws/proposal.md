@@ -2,22 +2,22 @@
 
 ## Why
 
-Slice 3 is the next spine card ([build-checklist → 3](../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws)).
+Slice 3 is the next spine card ([build-checklist → 3](../../../../.ai/build-checklist.md#3--operations-and-evidence-on-aws)).
 Slice 2 left the stack deployed with two alarms and no runbook. Its DLQ exists, but no surface
 inspects or redrives it. The reliability claims that only a deployed queue can carry are still
 "pending — slice 3" in the **Evidence** lines of
-[ADR-001](../../../.ai/architecture.md#adr-001--verify-then-enqueue),
-[ADR-002](../../../.ai/architecture.md#adr-002--sqs-standard-not-fifo),
-[ADR-008](../../../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq) and
-[ADR-015](../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage):
+[ADR-001](../../../../.ai/architecture.md#adr-001--verify-then-enqueue),
+[ADR-002](../../../../.ai/architecture.md#adr-002--sqs-standard-not-fifo),
+[ADR-008](../../../../.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq) and
+[ADR-015](../../../../.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage):
 no loss under a burst and a database outage, poison isolation, and order independence through SQS.
-PG-U07 is owed here ([Open questions owed by slice](../../../.ai/architecture.md#open-questions-owed-by-slice)).
+PG-U07 is owed here ([Open questions owed by slice](../../../../.ai/architecture.md#open-questions-owed-by-slice)).
 Slice 4's reconciler builds on this slice's runbook, its alert-topic wiring and the simulator's AWS
 mode. The build cost is low: every AWS client the slice needs is already installed in
 `packages/aws`, there is no schema change, and no live Resend write.
 
 The decision-complete brief is the checked pre-proposal
-[2026-10-19-slice-3-operations-and-evidence-on-aws.md](../../../.ai/pre-proposals/2026-10-19-slice-3-operations-and-evidence-on-aws.md)
+[2026-10-19-slice-3-operations-and-evidence-on-aws.md](../../../../.ai/pre-proposals/2026-10-19-slice-3-operations-and-evidence-on-aws.md)
 (cited below as *PP*; checked 2026-10-19: 12 repaired, 0 for the owner). Every decision it settles
 (D1–D31, C1–C11) is carried forward unchanged.
 
@@ -29,7 +29,7 @@ only the PP and its repair have landed since `8e37a70`; no code changed).
 1. CloudWatch alarms → SNS → email, each with one runbook entry; evidence: the alarm-to-runbook link check.
 2. `ledger dlq inspect` returns a sample with no address, subject or payload, and `ledger dlq redrive` refuses a second concurrent task; evidence: API and CLI tests, plus a redaction test on the inspect output.
 3. Off-by-default simulator secret (ADR-016); evidence: CDK assertion test (without the flag, no secret and no ingest reference), a unit test rejecting a simulator-signed request when the secret is absent, and a unit test that a simulator-signed event is stamped `simulated`.
-4. `pnpm sim --burst 10000/10s` on the deployed stack, recipients spread over `+label` test addresses, passes invariants 1 and 2 and records the ingest p99, closing RS-U08, and the bytes per event that set the [storage budget](../../../.ai/integrations.md#cadence-and-the-database), with PG-U07 settled from Neon's docs, source or support, or a write over the limit, by that measurement; evidence: a test where the throttle changes mid-burst and `finally` leaves it.
+4. `pnpm sim --burst 10000/10s` on the deployed stack, recipients spread over `+label` test addresses, passes invariants 1 and 2 and records the ingest p99, closing RS-U08, and the bytes per event that set the [storage budget](../../../../.ai/integrations.md#cadence-and-the-database), with PG-U07 settled from Neon's docs, source or support, or a write over the limit, by that measurement; evidence: a test where the throttle changes mid-burst and `finally` leaves it.
 5. `pnpm sim --chaos db-outage` on AWS keeps ingest at `200` and the DLQ at 0, and the queue drains after resume, with invariants 1 and 2; the queue-age alarm email reaches the owner within the hour, recorded with the run.
 6. A poison message reaches the DLQ after `maxReceiveCount` while the others commit (invariant 4), and a redrive after the fix returns the depth to 0.
 7. `pnpm sim --duplicates 0.2 --shuffle` passes invariants 1 and 2 through the deployed queue (ADR-002).
@@ -130,7 +130,7 @@ only to the simulator although its evidence is the worker's integration test.
   `.env.example`, and fact updates in pp-testing, pp-backend, pp-infra, pp-cli and rsa-manual-test
   `environment.md`, plus `WALKTHROUGH.md` in this folder. None loosens a rule.
 
-**Ask-first items** ([root AGENTS.md → Permissions](../../../AGENTS.md#permissions)). Every row was
+**Ask-first items** ([root AGENTS.md → Permissions](../../../../AGENTS.md#permissions)). Every row was
 approved by the owner on 2026-10-19 in one itemized round (PP §7, approvals table). A second owner
 round the same day pre-approved the AWS runs, so apply runs them unattended:
 

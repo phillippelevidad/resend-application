@@ -4,13 +4,13 @@ Each `D<n>` is a decision in [design.md](design.md), which carries what to build
 ([Module layout](design.md#module-layout)), every response body, layout, message and variable
 ([Surfaces](design.md#surfaces)), the evidence per claim ([Evidence map](design.md#evidence-map)) and
 the walk plan ([Walkthrough plan](design.md#walkthrough-plan)). The pre-proposal
-([2026-10-19-slice-3-operations-and-evidence-on-aws.md](../../../.ai/pre-proposals/2026-10-19-slice-3-operations-and-evidence-on-aws.md),
+([2026-10-19-slice-3-operations-and-evidence-on-aws.md](../../../../.ai/pre-proposals/2026-10-19-slice-3-operations-and-evidence-on-aws.md),
 *PP*) keeps the authority trail; nothing here needs it to build. Load `pp-workflow`, `pp-general` and
 the path skill of every project a group touches (`pp-backend`, `pp-database`, `pp-testing`, `pp-cli`,
 `pp-infra`) before code.
 
 Every group ends with `pnpm check` exiting 0, then a commit staged by path and pushed
-([root AGENTS.md → Commit and push as you go](../../../AGENTS.md#commit-and-push-as-you-go)). A group
+([root AGENTS.md → Commit and push as you go](../../../../AGENTS.md#commit-and-push-as-you-go)). A group
 that adds or edits an integration test also runs `pnpm test:int` (Docker running); one that touches
 an e2e test also runs `pnpm test:e2e`; one that touches `infra/` also runs `pnpm synth`. Each group
 lands the doc updates and `Ships` ticks its own evidence triggers; a doc task's check is that every
@@ -26,7 +26,7 @@ or AWS resource) stops uncommitted for the owner. Every AWS action group 12 name
 
 ## 1. The card
 
-- [x] 1.1 Card (owner-ruled 2026-10-19, PP D30, C5: the rewording widens what may settle PG-U07, and the owner's explicit decision is what clears the [rule gate](../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built)): Ships 4's "with PG-U07 settled from Neon's docs or support, or a write over the limit" becomes "with PG-U07 settled from Neon's docs, source or support, or a write over the limit"; update the same bullet in [proposal.md → What Changes](proposal.md#what-changes); set `Status` to `[~]`. Verify: the card and the proposal quote the same text, and `Status` reads `` `[~]` ``.
+- [x] 1.1 Card (owner-ruled 2026-10-19, PP D30, C5: the rewording widens what may settle PG-U07, and the owner's explicit decision is what clears the [rule gate](../../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built)): Ships 4's "with PG-U07 settled from Neon's docs or support, or a write over the limit" becomes "with PG-U07 settled from Neon's docs, source or support, or a write over the limit"; update the same bullet in [proposal.md → What Changes](proposal.md#what-changes); set `Status` to `[~]`. Verify: the card and the proposal quote the same text, and `Status` reads `` `[~]` ``.
 - [x] 1.2 Run `pnpm check`, then commit and push the card and the proposal, the body quoting the owner's ruling. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 2. Kernel — `packages/shared`, `packages/aws` names (Ships 2's port; D1–D3, D33)
@@ -60,7 +60,7 @@ or AWS resource) stops uncommitted for the owner. Every AWS action group 12 name
 
 - [x] 5.1 Add `dlq.listMessages({ limit }?)` and `dlq.startRedrive()` to `createLedgerClient` and `FakeLedgerClient`, with unit tests: path and verb, `{ data, error }`, never throws, one request on a closed port. Extend `readApiContract` with both methods' success and error cases (`validation_failed`, `forbidden`, `redrive_in_progress`). Verify: `pnpm test` passes, and `pnpm test:int` passes both the `@hono/node-server` and the Lambda-adapter runs.
 - [x] 5.2 Write `commands/dlq-list-messages.cli.ts` and `commands/dlq-start-redrive.cli.ts` with [Surfaces](design.md#surfaces)' layouts and notice, registered under a `dlq` group in `create-program.ts`. Verify: `pnpm -s ledger dlq --help` lists `inspect` and `redrive`.
-- [x] 5.3 Write `dlq-list-messages.cli.test.ts` and `dlq-start-redrive.cli.test.ts` (`FakeLedgerClient`): every row of [pp-cli → cli-tests](../../../.agents/skills/pp-cli/references/cli-tests.md#what-every-commands-test-asserts); `--json` prints exactly `data`; the `showing <n> of <depth>` and `empty` lines; a `null` item prints `—`; the stderr notice only with depth > 0 and not `--json`; `--limit abc` → exit `2` with no SDK call; `redrive_in_progress`, `forbidden` and `api_unavailable` → exit `1`. Verify: `pnpm test` passes, and printing the notice under `--json` makes its case fail (revert after).
+- [x] 5.3 Write `dlq-list-messages.cli.test.ts` and `dlq-start-redrive.cli.test.ts` (`FakeLedgerClient`): every row of [pp-cli → cli-tests](../../../../.agents/skills/pp-cli/references/cli-tests.md#what-every-commands-test-asserts); `--json` prints exactly `data`; the `showing <n> of <depth>` and `empty` lines; a `null` item prints `—`; the stderr notice only with depth > 0 and not `--json`; `--limit abc` → exit `2` with no SDK call; `redrive_in_progress`, `forbidden` and `api_unavailable` → exit `1`. Verify: `pnpm test` passes, and printing the notice under `--json` makes its case fail (revert after).
 - [x] 5.4 Docs. pp-cli `SKILL.md`: the slice 3 layouts point at [design.md → Surfaces](design.md#surfaces). pp-backend `references/sdk.md`: the two methods, no retry. Root AGENTS.md → Commands: `pnpm -s ledger dlq inspect [--limit <1-10>] [--json]` and `pnpm -s ledger dlq redrive [--json]` (operate). features.md → operate stance and J4: the inspect and redrive commands and their tests. about.md → What this project must demonstrate, "Operate what you build…": DLQ inspect and redrive with the route redaction test and the CLI tests. Card: tick `Ships` 2 (its API, CLI and redaction tests landed in 4.2 and 5.3). Verify: `node scripts/check-links.mjs AGENTS.md .ai/features.md .ai/about.md` exits 0, and the second box reads `[x]`.
 - [x] 5.5 Run `pnpm check` and `pnpm test:int`, then commit and push. Verify: both exit 0 before the commit, and `git status --short` is empty after the push.
 
@@ -110,7 +110,7 @@ or AWS resource) stops uncommitted for the owner. Every AWS action group 12 name
 
 ## 11. Walkthrough
 
-- [x] 11.1 Write `openspec/changes/slice-3-operations-and-evidence-on-aws/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (names only; `.env.deployed.local`; the quota prerequisite); paths P0–P8 as lettered paths with their personas; every AWS action marked `**Ask-first:**`; P2's quota block and P7's 2B note carrying `→ slice N` or the owner op; the teardown (revoke the `review-dlq` token; `LEDGER_SIMULATOR` stays on); the "cannot reach today" table (local-mode DLQ → 2B, MCP DLQ tools → 5, published numbers → 9). Verify: every card `UI surfaces` entry is reached by a numbered step; the operator, application developer and reviewer each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; `node scripts/check-links.mjs openspec/changes/slice-3-operations-and-evidence-on-aws/WALKTHROUGH.md` exits 0.
+- [x] 11.1 Write `openspec/changes/slice-3-operations-and-evidence-on-aws/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (names only; `.env.deployed.local`; the quota prerequisite); paths P0–P8 as lettered paths with their personas; every AWS action marked `**Ask-first:**`; P2's quota block and P7's 2B note carrying `→ slice N` or the owner op; the teardown (revoke the `review-dlq` token; `LEDGER_SIMULATOR` stays on); the "cannot reach today" table (local-mode DLQ → 2B, MCP DLQ tools → 5, published numbers → 9). Verify: every card `UI surfaces` entry is reached by a numbered step; the operator, application developer and reviewer each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; `node scripts/check-links.mjs openspec/changes/slice-3-operations-and-evidence-on-aws/WALKTHROUGH.md` exits 0.
 - [x] 11.2 Run `pnpm check`, then commit and push. Verify: `git status --short` is empty after the push.
 
 ## 12. Live on AWS (Ships 4–7; every action below Ask-first and pre-approved; D25–D31)
