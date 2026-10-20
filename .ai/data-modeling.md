@@ -28,7 +28,7 @@ the entry it links.
 | [`email_recipients`](#email_recipients--outcome-per-email-and-recipient) | Outcome per email and recipient | Projection | Recomputed | 1 — Local ledger and read path | [x] |
 | [`recipient_state`](#recipient_state--deliverability-per-address) | Deliverability per address | Projection | Recomputed | 1 — Local ledger and read path | [x] |
 | [`api_tokens`](#api_tokens--read-api-bearer-tokens) | Read API bearer tokens, hashed | Credential record | Insert, then revoke once | 2 — Durable ingest on AWS | [x] |
-| [`reconcile_runs`](#reconcile_runs--one-row-per-recovery-run) | One row per recovery run | Ops record | Insert, claim once, finish once | 4 — Recovery | [ ] |
+| [`reconcile_runs`](#reconcile_runs--one-row-per-recovery-run) | One row per recovery run | Ops record | Insert, claim once, finish once | 4 — Recovery | [x] |
 | [`local_queue_messages`](#local_queue_messages--the-local-mode-queue) | SQS stand-in for local mode | Queue | Claimed, deleted or dead | 2B — Local-mode queue and docker compose | [ ] |
 | [`outbox`](#outbox--reactions-awaiting-delivery) | Reactions awaiting delivery | Outbox | Status transitions only | 6 — Reactions | [ ] |
 
@@ -84,6 +84,7 @@ and the sweep reads `outbox.next_attempt_at`.
 | `email_state.email_id`, `email_recipients (email_id, address_hash)`, `recipient_state.address_hash` (PKs) | Concurrent workers on one key | `INSERT … ON CONFLICT DO NOTHING`, then `SELECT … FOR UPDATE`: the email row first, then recipient rows in sorted `address_hash` order; inputs read after the locks, at READ COMMITTED (ADR-004) |
 | `outbox.dedupe_key` (UNIQUE) | Worker retries re-emitting a reaction | Unique constraint; the Resend `Idempotency-Key` is derived from it ([ADR-006](architecture.md#adr-006--transactional-outbox-for-reactions), RS-24) |
 | `api_tokens.bootstrap` (partial UNIQUE `WHERE bootstrap`) | A re-run deploy command inserting a second first token | `INSERT … ON CONFLICT DO NOTHING`; `token_hash` stays UNIQUE as a collision guard only |
+| `reconcile_runs` start lock (`pg_advisory_xact_lock` on one fixed key) and the guarded claim (`claimed_at IS NULL AND finished_at IS NULL`) | Two concurrent starts; an at-least-once async invoke running one run twice (AWS-53) | The lock serializes starts and the unfinished-run check refuses the second; the claim's `UPDATE … RETURNING` changes zero rows for a duplicate invoke ([ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)) |
 
 A unique key MUST live in the migration, not only in the Drizzle schema file. The SQS `messageId`
 is never a key, because a redrive changes it (AWS-21).
@@ -116,10 +117,10 @@ the runtime role, in
 | --- | --- | --- |
 | Natural PK (`svix_id`, `email_id`, `address_hash`) | **MUST** when the row is keyed by an external identity | The PK is the idempotency key |
 | `id` (`bigint GENERATED ALWAYS AS IDENTITY`) | **MUST** when there is no natural key (`outbox`, `reconcile_runs`, `api_tokens`, `local_queue_messages`) | Never a public identifier, except `reconcile_runs.id` and `api_tokens.id`, which the read API exposes as `run_id` and `token_id` and pages on; never a sort key for anything a projection reads |
-| `created_at` / `received_at` | **MUST** on every table | `timestamptz default now()` |
+| `created_at` / `received_at` | **MUST** on every table | `timestamptz default now()`. `reconcile_runs`' row time is `started_at`, the time budget's origin, as `received_at` is `webhook_events`' |
 | `updated_at` | **MUST** on mutable rows; **MUST NOT** on append-only rows | Projections and `outbox` carry it; `webhook_events` does not |
 | `event_created_at` | **MUST** on any row derived from one event | Distinct from row time |
-| `status` | **MUST** where the row has a lifecycle | Closed set ([conventions](#modeling-conventions-canonical)) |
+| `status` | **MUST** where the row has a lifecycle | Closed set ([conventions](#modeling-conventions-canonical)). One exception: `reconcile_runs` carries its lifecycle as `claimed_at` and `finished_at`, because its third state, `run_abandoned`, is derived on read and a stored status would duplicate `finished_at` |
 | `dedupe_key` | **MUST** on rows whose processing causes an external effect | See [Idempotency keys](#idempotency-keys) |
 | `address_hash` + `address_masked` | **MUST** in place of any email address outside `webhook_events.payload` | See [PII & retention](#pii--retention) |
 | `tenant_id` | **MUST NOT** | One installation, one team. Multi-tenant is a [categorical reject](architecture.md#deferred-yagni) |
@@ -455,33 +456,52 @@ _Evidence (slice 2):_
 
 | Column | Type | Why it matters |
 | --- | --- | --- |
-| `id` | identity `bigint` | Run id in `ledger gaps` output |
+| `id` | identity `bigint` | Run id (`run_id`) in `ledger gaps` output; the keyset page key |
 | `trigger`, `dry_run` | `text` `CHECK (scheduled, manual)`, `boolean` | Hourly cron or on demand (ADR-007). `ledger reconcile --dry-run` replays nothing |
-| `started_at`, `finished_at` | `timestamptz` | A run with no `finished_at` past its time budget is abandoned (it crashed or its invoke was lost), never a running one. `reconcile.getRun` and `gaps.list` derive `run_abandoned` on read; it is never written to the row |
-| `claimed_at` | `timestamptz` null | Set once by the invoked reconciler before any Resend call. A second invoke of the same run finds it set and exits without work (AWS-53) |
-| `horizon_start`, `horizon_end` | `timestamptz` | The lookback horizon and the grace boundary actually checked (ADR-007) |
-| `checked`, `missing`, `replayed`, `failed` | `int` | `missing > 0` is the loss signal |
-| `error_code` | `text` null | Why a run stopped, as a registered error code (for example `webhook_disabled`) |
+| `started_at` | `timestamptz` not null, default `now()` | The row time and the time budget's origin; `gaps.list` filters on it. Postgres's `now()`, so the start check and the budget read one clock |
+| `claimed_at` | `timestamptz` null | Set by the claim before any Resend call (a manual run), or at insert (a scheduled run). A second invoke of the same run finds it set and exits without work (AWS-53) |
+| `finished_at` | `timestamptz` null | Null while running. A run with no `finished_at` past its time budget is abandoned (it crashed or its invoke was lost), never a running one. `reconcile.getRun` and `gaps.list` derive `run_abandoned` on read; it is never written to the row |
+| `horizon_start`, `horizon_end` | `timestamptz` not null, `CHECK (horizon_start <= horizon_end)` | The window the run set out to check, fixed at start (ADR-007); `error_code` says when it stopped early |
+| `checked`, `missing`, `replayed`, `failed` | `integer` not null, default `0`, `CHECK` each `>= 0` | `missing > 0` is the loss signal |
+| `error_code` | `text` null, `CHECK` against `reconcileRunErrorCodes` | Why a run stopped, as a registered run outcome: `webhook_disabled`, `rate_limited`, `resend_auth_failed`, `resend_unavailable`, `reconciler_not_configured` or `internal_error`. `run_abandoned` is refused |
+| `updated_at` | `timestamptz` not null, default `now()` | Base field. Set by every claim and finish, in the same `UPDATE` |
 
-- **Start:** one transaction takes `pg_advisory_xact_lock` on a fixed key (transaction-scoped, so
-  pooler-safe), then checks for an unfinished run inside its time budget with a statement issued
-  after the lock, then inserts the new row. Locking the newest run row instead does not serialize
-  starts under READ COMMITTED: the waiter re-reads the row it locked, not the new one.
+The four checks are named `reconcile_runs_trigger_check`, `reconcile_runs_error_code_check`,
+`reconcile_runs_counts_check` and `reconcile_runs_horizon_check`. No index beyond the primary key
+(≈ 24 rows a day; `gaps.list` and the anchor page backward on `id`).
+
+- **Start:** both triggers read the queue snapshot first, then one transaction takes
+  `pg_advisory_xact_lock` on a fixed key (transaction-scoped, so pooler-safe), checks for an
+  unfinished run inside its time budget with a statement issued after the lock (one found:
+  `reconcile_in_progress`), reads the anchor, computes the horizon and inserts the new row. Locking
+  the newest run row instead does not serialize starts under READ COMMITTED: the waiter re-reads the
+  row it locked, not the new one.
 - **Claim:** async invoke is at-least-once (AWS-53), so the start transaction alone does not keep
   one run from executing twice. The reconciler first runs
-  `UPDATE reconcile_runs SET claimed_at = now() WHERE id = $1 AND claimed_at IS NULL`; zero rows
-  means a duplicate invoke, which exits without work. The invoke sets `MaximumRetryAttempts: 0`,
-  so a lost invoke reads abandoned and the next hourly run covers its horizon.
+  `UPDATE reconcile_runs SET claimed_at = now() WHERE id = $1 AND claimed_at IS NULL AND finished_at IS NULL`;
+  zero rows means a duplicate invoke or a finished run, which exits without work. The invoke sets
+  `MaximumRetryAttempts: 0`, so a lost invoke reads abandoned and the next hourly run covers its
+  horizon.
+- **Finish:** `UPDATE … WHERE id = $1 AND finished_at IS NULL`, so a late or repeated finish
+  changes nothing.
+- **Anchor:** the `horizon_end` of the newest finished run with no `error_code` and `missing = 0`,
+  dry or not. A run that found something missing never anchors: the next run re-checks its span,
+  finds the replays stored and anchors then. The horizon reaches back to the anchor when it is older
+  than the lookback, at most 30 days (RS-31).
 - **Time budget:** one constant, shared by the start check and the `run_abandoned` derivation
   ([api-contract.md → Error codes](api-contract.md#error-codes)).
 
-_Schema: `packages/db/src/schema/reconcile-runs.ts` (once it exists)._
-_Evidence: pending._
-- Slice 4: a fake-API integration test where an outage outlasts the retry schedule. It expects
-  100 % recovered and 0 duplicates.
-- Slice 4: a disabled webhook writes `error_code = webhook_disabled`.
-- Slice 4: a second invoke of a claimed run makes no Resend call; a run with no `finished_at` past
-  its time budget reads `run_abandoned`.
+_Schema: [`packages/db/src/schema/reconcile-runs.ts`](../packages/db/src/schema/reconcile-runs.ts)._
+_Evidence (slice 4):_
+- Schema: each closed-set member inserts and an outside value fails `23514`, `run_abandoned` is
+  refused, a horizon that starts after it ends is refused, the anchor picks the newest clean run
+  with nothing missing over a newer run with missing events and a newer errored one, a claim on a
+  claimed or finished row returns none, a second finish changes no row, and `listSince` pages by
+  `id` with `has_more`, as the runtime role, in
+  [reconcile-runs.repository.int.test.ts](../packages/db/src/reconcile-runs.repository.int.test.ts).
+- Pending in this slice: two concurrent starts yield one run, a second invoke of a claimed run makes
+  no Resend call, and the recovery suite (an outage past the retry schedule ends 100 % recovered
+  with 0 duplicates; a disabled webhook writes `error_code = webhook_disabled`).
 
 - **Slices:** 4 — Recovery
 

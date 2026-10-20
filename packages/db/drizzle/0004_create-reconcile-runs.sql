@@ -1,0 +1,21 @@
+CREATE TABLE "reconcile_runs" (
+	"id" bigint GENERATED ALWAYS AS IDENTITY (sequence name "reconcile_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
+	"trigger" text NOT NULL,
+	"dry_run" boolean NOT NULL,
+	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"claimed_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
+	"horizon_start" timestamp with time zone NOT NULL,
+	"horizon_end" timestamp with time zone NOT NULL,
+	"checked" integer DEFAULT 0 NOT NULL,
+	"missing" integer DEFAULT 0 NOT NULL,
+	"replayed" integer DEFAULT 0 NOT NULL,
+	"failed" integer DEFAULT 0 NOT NULL,
+	"error_code" text,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "reconcile_runs_pkey" PRIMARY KEY("id"),
+	CONSTRAINT "reconcile_runs_trigger_check" CHECK ("reconcile_runs"."trigger" in ('scheduled', 'manual')),
+	CONSTRAINT "reconcile_runs_error_code_check" CHECK ("reconcile_runs"."error_code" in ('webhook_disabled', 'rate_limited', 'resend_auth_failed', 'resend_unavailable', 'reconciler_not_configured', 'internal_error')),
+	CONSTRAINT "reconcile_runs_counts_check" CHECK ("reconcile_runs"."checked" >= 0 and "reconcile_runs"."missing" >= 0 and "reconcile_runs"."replayed" >= 0 and "reconcile_runs"."failed" >= 0),
+	CONSTRAINT "reconcile_runs_horizon_check" CHECK ("reconcile_runs"."horizon_start" <= "reconcile_runs"."horizon_end")
+);
