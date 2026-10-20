@@ -124,6 +124,18 @@ describe('executeRun', () => {
     expect(outcome).toMatchObject({ checked: 5, missing: 5, replayed: 0 });
   });
 
+  it('ends internal_error, never clean, on an empty page that claims has_more', async () => {
+    const { resend, deps } = setup();
+    resend.pages = [
+      { hasMore: true, events: [{ id: 'evt_1', type: 'email.sent', createdAt: at(1) }] },
+      { hasMore: true, events: [] },
+    ];
+
+    const outcome = await executeRun(run(), deps);
+
+    expect(outcome).toMatchObject({ checked: 1, missing: 1, errorCode: 'internal_error' });
+  });
+
   it('replays nothing on a dry run, and reports the same missing count', async () => {
     const { resend, deps } = setup();
     resend.events = [

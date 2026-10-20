@@ -114,7 +114,10 @@ export async function executeRun(
       }
 
       const last = page.events.at(-1);
-      if (reachedStart || !page.hasMore || last === undefined) break;
+      if (reachedStart || !page.hasMore) break;
+      // An empty page that claims more has no id to page `after`: the listing stopped short of the
+      // horizon, so the run must not finish clean and anchor over the span it never listed (C1).
+      if (last === undefined) return { ...counts, errorCode: 'internal_error' };
       after = last.id;
     }
     return { ...counts, errorCode: null };
