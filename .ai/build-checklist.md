@@ -152,7 +152,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 4 — Recovery
 
-- **Status:** `[~]`
+- **Status:** `[!]` Ships 7's RS-U03 reach read waits for 2026-10-21 (the webhook is younger than 72 h); then tasks 12.4, 12.7, 12.8, 14.2 and `opsx:archive` ([M2 → Carried over from slice 4](#m2--mvp)).
 - **Goal:** Events missed during an outage longer than Resend's retry schedule are found by id diff and replayed through ingest, hourly and on demand, with no duplicates.
 - **Depends on:** 3.
 - **Refs:** [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller) · [resend.md → Headless Webhook API](resend.md#headless-webhook-api-rs-13rs-18) · [integrations.md → Locked rules](integrations.md#locked-rules-must) · [integrations.md → Secrets layout](integrations.md#secrets-layout) · [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) · [gaps.list](api-contract.md#gapslist) · [reconcile.getRun](api-contract.md#reconcilegetrun) · [reconcile.start](api-contract.md#reconcilestart) · [health.get](api-contract.md#healthget) · [features.md → recover, rotate secret](features.md#adopter-lifecycle) · [J3](features.md#j3--outage--recovery) · [J5](features.md#j5--secret-rotation)
@@ -176,6 +176,25 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 Every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, a real AWS deploy,
 simulator evidence.
+
+**Carried over from slice 4 (merged 2026-10-20 before it closed). Check these before starting the
+next slice:**
+
+1. Close slice 4: on or after 2026-10-21, walk step C3 of
+   [its walkthrough](../openspec/changes/slice-4-recovery/WALKTHROUGH.md) (List Events reaches
+   back at least 72 h, RS-U03) and record it per task 12.4; then tasks 12.7, 12.8 and 14.2 in
+   [tasks.md](../openspec/changes/slice-4-recovery/tasks.md), the card's `Status` `[x]`, and
+   `opsx:archive`.
+2. The deployed `ledger/resend-api-key` holds a dedicated key the owner plans to revoke. Set its
+   replacement in `LEDGER_DEPLOY_RESEND_API_KEY` and run `pnpm aws:deploy` first, or every hourly
+   run ends `resend_auth_failed` and `LedgerApp-reconcile-gap` fires.
+3. The first `pnpm sim` right after `pnpm dev:full` once printed `sim: no Ledger answered at
+   LEDGER_URL`, and the retry passed. Unconfirmed; it sits on the README's local quick start, so
+   reproduce it or rule it out.
+4. Slice 2's `[!]` (AWS-U01's second half) is still open.
+5. Owner calls from the slice 4 review, none blocking: `ledger reconcile` keeps polling through a
+   transient `api_unavailable`; `ledger health` marks a dry run; a read that lists the emails sent
+   to an address, for support (a contract addition, Ask-first).
 
 ### 2B — Local-mode queue and docker compose
 
