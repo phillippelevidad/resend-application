@@ -33,7 +33,8 @@ Manager, [Secrets layout](#secrets-layout))
    background consumer of the team's budget. At 2 req/s, recovering a 10,000-event gap (100 List
    Events pages plus 10,000 replays, RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6
    hourly runs because each run stops at its time budget (AWS-03), which is acceptable for recovery
-   work. Evidence: limiter unit tests (rate, yield on low `remaining`, `retry-after` on `429`) ·
+   work. Evidence: limiter unit tests (rate, yield on low `remaining`, `retry-after` on `429`) in
+   [limiter.test.ts](../packages/resend-client/src/limiter.test.ts) ·
    [slice 4](build-checklist.md#4--recovery).
 3. **Default reconcile cadence: hourly** (owner, 2026-10-15). Resend's own retries cover the first
    ≈ 27.6 h (RS-09), so the cadence sets only how quickly loss is detected. It is also the

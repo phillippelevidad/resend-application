@@ -306,7 +306,7 @@ errors are mapped by status, then name, with a default branch (RS-22). Every req
 Every calling function is single-flight (the reconciler by non-overlapping runs, ADR-007; the
 dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s.
 Rejected: calling the `resend` SDK from apps directly; a limiter shared across functions through a table or service (single-flight callers make it unnecessary).
-**Evidence:** pending — limiter unit tests (rate, yield on low `remaining`, `retry-after`); fake-API `429` storm completes the run (slice 4).
+**Evidence:** the limiter on a fake clock spaces starts 500 ms apart at 2 req/s, yields `ratelimit-reset` below half the limit and not at or above it, waits `retry-after` then retries, and throws `rate_limited` on a quota `429`, a `429` with no `retry-after`, or a wait past the deadline, before sleeping, in [limiter.test.ts](../packages/resend-client/src/limiter.test.ts) (slice 4). The real client against the fake Resend API: `baseUrl`, `User-Agent` and `Idempotency-Key` sent; status-then-name mapping with its default branch; a `5xx` or refused connection retried twice then `resend_unavailable`; Retrieve Webhook returns its status alone; nothing reaches `console.error` and no thrown error holds Resend's body, in [create-resend-client.test.ts](../packages/resend-client/src/create-resend-client.test.ts) (slice 4). Pending — fake-API `429` storm completes the run (slice 4).
 
 ### ADR-013 — Pure core and local mode
 

@@ -5,9 +5,15 @@
   "description": "Resend API wrapper that owns the shared rate limiter. The only place that calls the Resend API",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "devDependencies": {
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "@ledger/shared": "workspace:*",
+    "resend": "6.33.0"
   }
 }
