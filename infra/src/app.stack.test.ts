@@ -5,9 +5,10 @@
 // outputs). Every number comes from the stack's own named constants. Synthesis bundles every
 // function for real, so a broken entry fails here too. No credentials and no AWS call.
 // Slice 3 adds the three operating alarms (D17), every alarm's runbook link (D18), the read API's DLQ
-// grants (D9) and the simulator secret, synthesized both ways (D12).
-import { RUNBOOK_BASE_URL } from '@ledger/core';
-import { apiEnv, ingestEnv, ingestSimulatorEnv, workerEnv } from '@ledger/shared';
+// grants (D9) and the simulator secret, synthesized both ways (D12). Slice 4 adds the reconciler, its
+// invoke config, its schedule, its grants and the reconcile gap alarm (D20–D26).
+import { RECONCILE_SCHEDULED_EVENT, RUNBOOK_BASE_URL } from '@ledger/core';
+import { apiEnv, ingestEnv, ingestSimulatorEnv, reconcilerEnv, workerEnv } from '@ledger/shared';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
@@ -29,6 +30,12 @@ import {
   MAX_RECEIVE_COUNT,
   QUEUE_AGE_PERIOD_SECONDS,
   QUEUE_AGE_THRESHOLD_SECONDS,
+  RECONCILE_GAP_PERIOD_SECONDS,
+  RECONCILE_GAP_THRESHOLD,
+  RECONCILER_MAX_EVENT_AGE_SECONDS,
+  RECONCILER_MEMORY_MB,
+  RECONCILER_RETRY_ATTEMPTS,
+  RECONCILER_TIMEOUT_SECONDS,
   RESUME_EVENT,
   SCHEDULE_MAX_EVENT_AGE_SECONDS,
   SCHEDULE_RETRY_ATTEMPTS,
@@ -60,6 +67,7 @@ const synthApp = (simulator: boolean): Template =>
       commit: COMMIT,
       guardrailsStackName: GUARDRAILS_STACK_NAME,
       simulator,
+      resendWebhookId: 'unset',
     }),
   );
 
@@ -98,7 +106,7 @@ const only = <T>(record: Record<string, T>): [string, T] => {
 };
 const asArray = <T>(value: T | T[]): T[] => (Array.isArray(value) ? value : [value]);
 
-// The three functions by their stack-prefixed physical names (D27).
+// The four functions by their stack-prefixed physical names (D27).
 const functionNamed = (name: string, from: Template = template): [string, Resource] =>
   only(
     Object.fromEntries(
@@ -183,7 +191,7 @@ const dlqId = logicalIdOf('AWS::SQS::Queue', (queue) => !queue.Properties.Redriv
 
 describe('cost brake on the app template', () => {
   it('runs every function on arm64 and nodejs24.x (AWS-20, AWS-54)', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 3);
+    template.resourceCountIs('AWS::Lambda::Function', 4);
     template.allResourcesProperties('AWS::Lambda::Function', {
       Architectures: ['arm64'],
       Runtime: 'nodejs24.x',
@@ -191,7 +199,7 @@ describe('cost brake on the app template', () => {
   });
 
   it('puts no function in a VPC and holds no EC2 resource, so no NAT and no public IPv4 (AWS-13, ADR-010)', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 3);
+    template.resourceCountIs('AWS::Lambda::Function', 4);
     template.allResourcesProperties('AWS::Lambda::Function', { VpcConfig: Match.absent() });
     const ec2 = Object.values(template.toJSON().Resources as Record<string, Resource>).filter(
       (resource) => resource.Type.startsWith('AWS::EC2::'),
@@ -202,7 +210,7 @@ describe('cost brake on the app template', () => {
   it('gives every function its own explicit log group, 30-day retention, destroyed (AWS-29, AWS-38, AWS-40)', () => {
     const functions = Object.values(resourcesOf('AWS::Lambda::Function'));
     const logGroups = resourcesOf('AWS::Logs::LogGroup');
-    expect(functions).toHaveLength(3);
+    expect(functions).toHaveLength(4);
     expect(Object.keys(logGroups)).toHaveLength(functions.length);
     const used = functions.map(
       (fn) => (fn.Properties.LoggingConfig as { LogGroup: { Ref: string } }).LogGroup.Ref,
@@ -215,7 +223,7 @@ describe('cost brake on the app template', () => {
   });
 
   it('logs in the TEXT format with no level filter (D31, C15)', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 3);
+    template.resourceCountIs('AWS::Lambda::Function', 4);
     template.allResourcesProperties('AWS::Lambda::Function', {
       LoggingConfig: {
         LogFormat: 'Text',
@@ -236,10 +244,10 @@ describe('cost brake on the app template', () => {
     template.resourceCountIs(['AWS::CloudFormation::', 'Custom', 'Resource'].join(''), 0);
   });
 
-  it('holds the two Secrets layout secrets, three with the simulator, destroyed, unnamed and empty in the template (AWS-11, AWS-38, CBL-01, D12)', () => {
+  it('holds the three Secrets layout secrets, four with the simulator, destroyed, unnamed and empty in the template (AWS-11, AWS-38, CBL-01, D12, slice 4 D21)', () => {
     for (const [from, count] of [
-      [template, 2],
-      [withSimulator, 3],
+      [template, 3],
+      [withSimulator, 4],
     ] as const) {
       from.resourceCountIs('AWS::SecretsManager::Secret', count);
       from.allResources('AWS::SecretsManager::Secret', { DeletionPolicy: 'Delete' });
@@ -250,6 +258,7 @@ describe('cost brake on the app template', () => {
       });
     }
     secretIdOf('ledger/simulator-signing-secret', withSimulator);
+    secretIdOf('ledger/resend-api-key');
   });
 
   it('encrypts every queue with SSE-SQS and holds no KMS key (AWS-25, AWS-31)', () => {
@@ -269,7 +278,7 @@ describe('cost brake on the app template', () => {
   });
 
   it('sets no reserved and no provisioned concurrency (AWS-16, ADR-008)', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 3);
+    template.resourceCountIs('AWS::Lambda::Function', 4);
     template.allResourcesProperties('AWS::Lambda::Function', {
       ReservedConcurrentExecutions: Match.absent(),
     });
@@ -283,9 +292,19 @@ describe('cost brake on the app template', () => {
   });
 
   it('puts the hourly resume on the one hourly cron, window off, with an explicit no-retry policy (AWS-10, ADR-015)', () => {
-    const [, schedule] = only(resourcesOf('AWS::Scheduler::Schedule'));
+    const schedules = Object.values(resourcesOf('AWS::Scheduler::Schedule'));
+    // Slice 4 D25: the resume and the reconcile schedules, the stack's only two, on one cron.
+    expect(schedules).toHaveLength(2);
+    for (const each of schedules) {
+      expect(each.Properties).toMatchObject({
+        ScheduleExpression: HOURLY_CRON,
+        FlexibleTimeWindow: { Mode: 'OFF' },
+        Target: { RetryPolicy: { MaximumRetryAttempts: SCHEDULE_RETRY_ATTEMPTS } },
+      });
+    }
+    const schedule = schedules.find((each) => each.Properties.Name === `${APP_STACK_NAME}-hourly`);
     const [workerId] = functionNamed('worker');
-    expect(schedule.Properties).toMatchObject({
+    expect(schedule?.Properties).toMatchObject({
       Name: `${APP_STACK_NAME}-hourly`,
       ScheduleExpression: HOURLY_CRON,
       FlexibleTimeWindow: { Mode: 'OFF' },
@@ -306,9 +325,10 @@ describe('cost brake on the app template', () => {
     const alarms = [withSimulator, guardrails].map(
       (t) => Object.keys(t.findResources('AWS::CloudWatch::Alarm')).length,
     );
-    expect(alarms).toEqual([4, 1]);
+    expect(alarms).toEqual([5, 1]);
     const total = alarms.reduce((sum, count) => sum + count, 0);
-    expect(total).toBe(5);
+    // Slice 4 D24: `LedgerApp-reconcile-gap` is the sixth.
+    expect(total).toBe(6);
     expect(total).toBeLessThanOrEqual(FREE_STANDARD_ALARMS);
     for (const t of [template, withSimulator, guardrails]) {
       t.resourceCountIs('AWS::CloudWatch::CompositeAlarm', 0);
@@ -320,7 +340,7 @@ describe('cost brake on the app template', () => {
       // Built at run time, so pp-infra's review grep 5 stays a check on the stacks' code.
       expect(JSON.stringify(from.toJSON())).not.toContain(['resolve', 'secretsmanager'].join(':'));
       const functions = Object.values(resourcesOf('AWS::Lambda::Function', from));
-      expect(functions).toHaveLength(3);
+      expect(functions).toHaveLength(4);
       for (const fn of functions) {
         const variables = (fn.Properties.Environment as { Variables: Record<string, unknown> })
           .Variables;
@@ -397,6 +417,7 @@ describe('wiring of the app template', () => {
     expect(sizes('ingest')).toEqual([INGEST_MEMORY_MB, INGEST_TIMEOUT_SECONDS]);
     expect(sizes('worker')).toEqual([WORKER_MEMORY_MB, WORKER_TIMEOUT_SECONDS]);
     expect(sizes('api')).toEqual([API_MEMORY_MB, API_TIMEOUT_SECONDS]);
+    expect(sizes('reconciler')).toEqual([RECONCILER_MEMORY_MB, RECONCILER_TIMEOUT_SECONDS]);
   });
 
   it('throttles the $default stage at rate 100 and burst 200 (aws.md → Budget alarms item 7, C3)', () => {
@@ -468,6 +489,12 @@ describe('wiring of the app template', () => {
     expect(secretsReadBy('ingest')).toEqual([signingId]);
     expect(secretsReadBy('worker')).toEqual([databaseId]);
     expect(secretsReadBy('api')).toEqual([databaseId]);
+    // Slice 4 D22: the reconciler reads its key and the database; no other role reads the key.
+    const resendKeyId = secretIdOf('ledger/resend-api-key');
+    expect(secretsReadBy('reconciler')).toEqual([databaseId, resendKeyId].sort());
+    for (const name of ['ingest', 'worker', 'api']) {
+      expect(secretsReadBy(name), name).not.toContain(resendKeyId);
+    }
   });
 
   it('with the simulator, lets only ingest read the simulator secret (ADR-016, D12)', () => {
@@ -553,6 +580,7 @@ describe('wiring of the app template', () => {
     expect(keysOf('ingest')).toEqual(Object.values(ingestEnv).sort());
     expect(keysOf('worker')).toEqual(Object.values(workerEnv).sort());
     expect(keysOf('api')).toEqual(Object.values(apiEnv).sort());
+    expect(keysOf('reconciler')).toEqual(Object.values(reconcilerEnv).sort());
     // D12: with the simulator, ingest's set is its names plus the simulator names, and only its.
     const keysWithSimulator = (name: string) =>
       Object.keys(environmentOf(name, withSimulator)).sort();
@@ -561,6 +589,12 @@ describe('wiring of the app template', () => {
     );
     expect(keysWithSimulator('worker')).toEqual(Object.values(workerEnv).sort());
     expect(keysWithSimulator('api')).toEqual(Object.values(apiEnv).sort());
+    expect(keysWithSimulator('reconciler')).toEqual(Object.values(reconcilerEnv).sort());
+    // Slice 4 D21, D22: no webhook id given reads `unset`; the read API names the reconciler.
+    expect(environmentOf('reconciler')[reconcilerEnv.RESEND_WEBHOOK_ID]).toBe('unset');
+    expect(environmentOf('api')[apiEnv.RECONCILER_FUNCTION_NAME]).toBe(
+      `${APP_STACK_NAME}-reconciler`,
+    );
     const [, api] = functionNamed('api');
     expect(
       (api.Properties.Environment as { Variables: Record<string, unknown> }).Variables[
@@ -646,7 +680,7 @@ describe('wiring of the app template', () => {
 
   it("ends every alarm's description with its runbook link (D18)", () => {
     const alarms = Object.values(resourcesOf('AWS::CloudWatch::Alarm'));
-    expect(alarms).toHaveLength(4);
+    expect(alarms).toHaveLength(5);
     for (const alarm of alarms) {
       const name = String(alarm.Properties.AlarmName);
       const description = String(alarm.Properties.AlarmDescription);
@@ -672,6 +706,7 @@ describe('wiring of the app template', () => {
         'DeployedCommit',
         'DlqUrl',
         'QueueUrl',
+        'ResendApiKeySecretArn',
         'SigningSecretsArn',
         'ThrottleBurstLimit',
         'ThrottleRateLimit',
@@ -684,6 +719,10 @@ describe('wiring of the app template', () => {
     expect(outputs.ThrottleBurstLimit?.Value).toBe(String(THROTTLE_BURST_LIMIT));
     expect(outputs.QueueUrl?.Value).toEqual({ Ref: sourceQueueId });
     expect(outputs.DlqUrl?.Value).toEqual({ Ref: dlqId });
+    // Slice 4 D26: the deploy's key write targets it.
+    expect(outputs.ResendApiKeySecretArn?.Value).toEqual({
+      Ref: secretIdOf('ledger/resend-api-key'),
+    });
   });
 
   it('outputs SimulatorSecretArn only with the simulator (D12, D21)', () => {
@@ -702,6 +741,99 @@ describe('wiring of the app template', () => {
 // CBL-01: an environment value is a reference CloudFormation resolves to an ARN, URL or name (`Ref`,
 // `Fn::GetAtt`, or a `Fn::Join` of those and strings), or a plain string that is no secret's shape.
 const secretShapes = /whsec_|re_[A-Za-z0-9]{8}|postgres(ql)?:\/\/|ldg_/;
+
+// Slice 4 D20–D26: the reconciler, its invoke bounds, its schedule, who may invoke it, and the gap
+// alarm on a wall clock window.
+describe('the reconciler (slice 4)', () => {
+  it('holds LedgerApp-reconciler at 256 MB and 900 s with no reserved concurrency (AWS-03)', () => {
+    const [, fn] = functionNamed('reconciler');
+    expect(fn.Properties).toMatchObject({ MemorySize: 256, Timeout: 900 });
+    expect(fn.Properties.ReservedConcurrentExecutions).toBeUndefined();
+    expect([RECONCILER_MEMORY_MB, RECONCILER_TIMEOUT_SECONDS]).toEqual([256, 900]);
+  });
+
+  it('holds exactly one EventInvokeConfig, on the reconciler, never retried and dropped after 60 s (AWS-53, AWS-63)', () => {
+    const [reconcilerId] = functionNamed('reconciler');
+    const [, config] = only(resourcesOf('AWS::Lambda::EventInvokeConfig'));
+    expect(config.Properties).toMatchObject({
+      FunctionName: { Ref: reconcilerId },
+      MaximumRetryAttempts: 0,
+      MaximumEventAgeInSeconds: 60,
+    });
+    expect([RECONCILER_RETRY_ATTEMPTS, RECONCILER_MAX_EVENT_AGE_SECONDS]).toEqual([0, 60]);
+  });
+
+  it('runs LedgerApp-reconcile-hourly on the resume cron, window off, no retry, 60 s age, to the reconciler (AWS-10, D25)', () => {
+    const [reconcilerId] = functionNamed('reconciler');
+    const schedule = Object.values(resourcesOf('AWS::Scheduler::Schedule')).find(
+      (each) => each.Properties.Name === `${APP_STACK_NAME}-reconcile-hourly`,
+    );
+    expect(schedule?.Properties).toMatchObject({
+      ScheduleExpression: HOURLY_CRON,
+      FlexibleTimeWindow: { Mode: 'OFF' },
+      Target: {
+        Arn: { 'Fn::GetAtt': [reconcilerId, 'Arn'] },
+        Input: JSON.stringify(RECONCILE_SCHEDULED_EVENT),
+        RetryPolicy: {
+          MaximumRetryAttempts: SCHEDULE_RETRY_ATTEMPTS,
+          MaximumEventAgeInSeconds: SCHEDULE_MAX_EVENT_AGE_SECONDS,
+        },
+      },
+    });
+  });
+
+  it('lets only the read API role invoke the reconciler, by its name-built ARN (D22, D27)', () => {
+    const invokes = (name: string) =>
+      statementsOf(name).filter(
+        (statement) =>
+          asArray(statement.Action).includes('lambda:InvokeFunction') &&
+          JSON.stringify(statement.Resource).includes(`function:${APP_STACK_NAME}-reconciler`),
+      );
+    expect(invokes('api')).toHaveLength(1);
+    for (const name of ['ingest', 'worker', 'reconciler']) {
+      expect(invokes(name), name).toEqual([]);
+    }
+  });
+
+  it('grants the reconciler the queue attributes of both queues and CloudWatch statistics (D21)', () => {
+    const statements = statementsOf('reconciler');
+    const attributes = statements.find((statement) =>
+      asArray(statement.Action).includes('sqs:GetQueueAttributes'),
+    );
+    expect(asArray(attributes?.Resource)).toHaveLength(2);
+    expect(
+      statements.some(
+        (statement) =>
+          asArray(statement.Action).includes('cloudwatch:GetMetricStatistics') &&
+          statement.Resource === '*',
+      ),
+    ).toBe(true);
+  });
+
+  it('alarms on reconcile.missing above 0 or an hour with none, on a wall clock window, to the alert topic (D24, AWS-64)', () => {
+    const alarm = alarmNamed(`${APP_STACK_NAME}-reconcile-gap`);
+    expect(alarm.Properties).toMatchObject({
+      Namespace: 'Ledger',
+      MetricName: 'reconcile.missing',
+      Statistic: 'Maximum',
+      Period: RECONCILE_GAP_PERIOD_SECONDS,
+      EvaluationPeriods: 1,
+      Threshold: RECONCILE_GAP_THRESHOLD,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'breaching',
+      EvaluationWindow: { WallClockWindow: {} },
+      AlarmActions: [constructedTopicArn(alertTopicName(GUARDRAILS_STACK_NAME))],
+    });
+    expect([RECONCILE_GAP_PERIOD_SECONDS, RECONCILE_GAP_THRESHOLD]).toEqual([3_600, 0]);
+    expect(alarm.Properties.Dimensions).toBeUndefined();
+    expect(alarm.Properties.OKActions).toBeUndefined();
+    expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
+    expect(String(alarm.Properties.AlarmDescription)).toBe(
+      `A reconcile run found missing events, or none finished cleanly this hour. Runbook: ${RUNBOOK_BASE_URL}#ledgerapp-reconcile-gap`,
+    );
+  });
+});
+
 function isReferenceOrPlainName(value: unknown): boolean {
   if (typeof value === 'string') return !secretShapes.test(value);
   if (typeof value !== 'object' || value === null) return false;

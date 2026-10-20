@@ -11,7 +11,13 @@ export const infraContextKeys = {
   killSwitch: 'ledger:killSwitch',
   budgetDrill: 'ledger:budgetDrill',
   simulator: 'ledger:simulator',
+  // Slice 4 D21: the Resend webhook id the reconciler lists and replays.
+  resendWebhookId: 'ledger:resendWebhookId',
 } as const;
+
+// Slice 4 D21: what the reconciler reads as no webhook configured; its runs then end
+// `reconciler_not_configured`.
+export const UNSET_WEBHOOK_ID = 'unset';
 
 // A synth without a commit exports `unset`, which no `git merge-base --is-ancestor` accepts, so a
 // deploy built from it refuses every contract step (D33 step 4, fail closed).
@@ -43,6 +49,11 @@ export const infraConfigSchema = z
     [infraContextKeys.simulator]: z
       .enum(['true', 'false'], { error: 'must be true or false' })
       .default('false'),
+    // Slice 4 D21, D29: an id, never a secret; `pnpm synth` passes none.
+    [infraContextKeys.resendWebhookId]: z
+      .string()
+      .min(1, { error: 'must be a webhook id' })
+      .default(UNSET_WEBHOOK_ID),
   })
   .transform((context) => ({
     commit: context[infraContextKeys.commit],
@@ -51,6 +62,7 @@ export const infraConfigSchema = z
     killSwitch: context[infraContextKeys.killSwitch] === 'on',
     budgetDrill: context[infraContextKeys.budgetDrill] === 'true',
     simulator: context[infraContextKeys.simulator] === 'true',
+    resendWebhookId: context[infraContextKeys.resendWebhookId],
   }));
 
 export type InfraConfig = z.output<typeof infraConfigSchema>;

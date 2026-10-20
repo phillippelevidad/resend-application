@@ -547,8 +547,8 @@ _Evidence: pending._
 - **Writes:** rows are written only in the worker transaction of the event that caused them. A row
   caused by a `source = simulated` event is dispatched only to the simulator's receiver sink
   ([ADR-006](architecture.md#adr-006--transactional-outbox-for-reactions)).
-- **Operational alerts:** reconcile gaps, DLQ depth and queue age go through CloudWatch → SNS
-  (slice 3), never through the outbox.
+- **Operational alerts:** reconcile gaps (`LedgerApp-reconcile-gap`, slice 4), DLQ depth and queue
+  age go through CloudWatch → SNS (slice 3), never through the outbox.
 - **Indexes:** a partial index on `next_attempt_at` where `status = 'pending'`, for the sweep.
 
 _Schema: `packages/db/src/schema/outbox.ts` (once it exists)._

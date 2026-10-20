@@ -30,6 +30,13 @@ export {
   recycleFunction,
 } from './function-recycle.ts';
 export {
+  INGEST_ROUTE_KEY,
+  type IngestRouteRestore,
+  ingestRouteSettingExists,
+  lowerIngestRouteThrottle,
+  restoreIngestRouteThrottle,
+} from './ingest-route-throttle.ts';
+export {
   type DeclaredThrottle,
   KILL_SWITCH_STOP_THROTTLE,
   type KillSwitchClients,
@@ -62,6 +69,8 @@ export {
   guardrailsOutputKeys,
   KILL_SWITCH_ERRORS_ALARM_NAME,
   QUEUE_AGE_ALARM_NAME,
+  RECONCILE_GAP_ALARM_NAME,
+  RECONCILE_SCHEDULE_NAME,
   RECONCILER_FUNCTION_NAME,
   USAGE_TRIP_ALARM_NAME,
 } from './ledger-stacks.ts';

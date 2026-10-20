@@ -145,8 +145,8 @@ This table is the canonical layout (adapted from the frozen
 `package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
-scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools. `packages/resend-client`
-and `packages/reconciler` hold their logic (slice 4).
+scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools. `packages/resend-client`,
+`packages/reconciler` and `apps/reconciler` hold their logic (slice 4).
 
 | Project | Role | Logic lands |
 | --- | --- | --- |

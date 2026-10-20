@@ -1,4 +1,11 @@
-import { apiEnv, ingestEnv, ingestSimulatorEnv, killSwitchEnv, workerEnv } from '@ledger/shared';
+import {
+  apiEnv,
+  ingestEnv,
+  ingestSimulatorEnv,
+  killSwitchEnv,
+  reconcilerEnv,
+  workerEnv,
+} from '@ledger/shared';
 
 // D2: the internal variable values, keyed by the names `@ledger/shared` declares and each function's
 // `.config.ts` parses. Each builder returns exactly its object's keys, so the type checker refuses a
@@ -40,6 +47,21 @@ export const apiEnvironment = (values: {
   [apiEnv.DLQ_URL]: values.dlqUrl,
   [apiEnv.WORKER_FUNCTION_NAME]: values.workerFunctionName,
   [apiEnv.RECONCILER_FUNCTION_NAME]: values.reconcilerFunctionName,
+});
+
+// Slice 4 D21: `resendWebhookId` is `ledger:resendWebhookId`'s value, `unset` when absent.
+export const reconcilerEnvironment = (values: {
+  databaseSecretArn: string;
+  resendApiKeySecretArn: string;
+  resendWebhookId: string;
+  queueUrl: string;
+  dlqUrl: string;
+}): EnvOf<typeof reconcilerEnv> => ({
+  [reconcilerEnv.DATABASE_SECRET_ARN]: values.databaseSecretArn,
+  [reconcilerEnv.RESEND_API_KEY_SECRET_ARN]: values.resendApiKeySecretArn,
+  [reconcilerEnv.RESEND_WEBHOOK_ID]: values.resendWebhookId,
+  [reconcilerEnv.QUEUE_URL]: values.queueUrl,
+  [reconcilerEnv.DLQ_URL]: values.dlqUrl,
 });
 
 export const killSwitchEnvironment = (values: {

@@ -11,6 +11,8 @@
     "@ledger/aws": "workspace:*",
     "@ledger/core": "workspace:*",
     "@ledger/db": "workspace:*",
+    "@ledger/resend-client": "workspace:*",
+    "@ledger/sdk": "workspace:*",
     "@ledger/shared": "workspace:*",
     "aws-cdk-lib": "2.273.0",
     "constructs": "10.8.1",

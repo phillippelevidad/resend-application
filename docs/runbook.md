@@ -9,8 +9,8 @@ alarm emails the owner once, on `ALARM`, and returns to OK on its own. Commands 
 with `.env.local` holding `LEDGER_URL` and an active `LEDGER_TOKEN`
 ([Commands](../AGENTS.md#commands)). Function logs are in CloudWatch under
 `/ledger/<function name>` (`/ledger/LedgerApp-ingest`, `/ledger/LedgerApp-worker`,
-`/ledger/LedgerApp-api`, `/ledger/LedgerGuardrails-kill-switch`), one JSON object per line, never
-an address or a subject.
+`/ledger/LedgerApp-api`, `/ledger/LedgerApp-reconciler`, `/ledger/LedgerGuardrails-kill-switch`), one
+JSON object per line, never an address or a subject.
 
 ## Alarms
 
@@ -120,6 +120,35 @@ an address or a subject.
   - If the trip was a drill, `pnpm aws:rearm` restores the stack.
 - **Related:** [aws.md → Budget alarms](../.ai/aws.md#budget-alarms) item 4, AWS-34 and AWS-53,
   [ADR-010](../.ai/architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack).
+
+### LedgerApp-reconcile-gap
+
+- **Means:** in the last completed UTC hour, a reconcile run found events Resend holds that the
+  ledger does not, or no run finished cleanly at all (an errored run emits no metric, and the
+  alarm reads an hour with no datapoint as breaching). Expected after a gap drill, after a trip, and
+  before the first deploy that configures the reconciler.
+- **First:** `pnpm -s ledger gaps --since 2h`.
+- **Then:**
+  - The newest run has `missing` above 0 and no error: the next hourly run replays them, or run
+    `pnpm -s ledger reconcile` now. If they stay missing, `pnpm -s ledger dlq inspect` (a dead event
+    is missing until it is redriven), and check that the ingest route is not throttled: a crashed
+    gap drill leaves it at `0`, and `pnpm aws:rearm` clears it.
+  - A run with an error follows that code: [reconciler_not_configured](#reconciler_not_configured),
+    [internal_error](#internal_error) and [run_abandoned](#run_abandoned) have their entries. The
+    four whose `docs` point at Resend:
+    - `webhook_disabled`: re-enable the webhook in the Resend dashboard or with
+      `PATCH /webhooks/{id}` and `status: enabled`, then `pnpm -s ledger reconcile`. A disabled
+      webhook may create no event for what it missed, so check the dashboard's email log for that
+      span too (RS-U05).
+    - `resend_auth_failed`: the reconciler's key in `ledger/resend-api-key` was refused (missing,
+      deleted, restricted or suspended); set a `full_access` key in `LEDGER_DEPLOY_RESEND_API_KEY`,
+      then `pnpm aws:deploy` (Ask-first).
+    - `rate_limited` and `resend_unavailable`: the next hourly run retries. `rate_limited` repeating
+      means another caller is spending the team's shared budget.
+  - No run at all: `pnpm -s ledger health`; `api_unavailable` means the stack is tripped
+    ([LedgerApp-usage-trip](#ledgerapp-usage-trip)).
+- **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest),
+  AWS-64 ([aws.md → CloudWatch and SNS](../.ai/aws.md#cloudwatch-and-sns)).
 
 ## Error codes
 
@@ -253,7 +282,9 @@ an address or a subject.
   no internals.
 - **First:** retry the command once.
 - **Then:** if it persists, read `/ledger/LedgerApp-api` for `api.internal_error` with the
-  response's request id (locally, the server's stdout).
+  response's request id (locally, the server's stdout). A reconcile run that ended
+  `internal_error` is in `/ledger/LedgerApp-reconciler` under its `run_id`
+  (`reconcile.internal_error`); start another with `pnpm -s ledger reconcile`.
 - **Related:** [ADR-011](../.ai/architecture.md#adr-011--one-contract-many-surfaces).
 
 ### api_unavailable

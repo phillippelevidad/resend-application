@@ -18,6 +18,8 @@ export const appOutputKeys = {
   workerFunctionName: 'WorkerFunctionName',
   throttleRateLimit: 'ThrottleRateLimit',
   throttleBurstLimit: 'ThrottleBurstLimit',
+  // Slice 4 D26: the reconciler's key secret, which the deploy's key write targets.
+  resendApiKeySecretArn: 'ResendApiKeySecretArn',
 } as const;
 
 // Slice 2, D28's outputs.
@@ -42,3 +44,7 @@ export const QUEUE_AGE_ALARM_NAME = `${APP_STACK_NAME}-queue-age`;
 export const DLQ_DEPTH_ALARM_NAME = `${APP_STACK_NAME}-dlq-depth`;
 export const API_5XX_ALARM_NAME = `${APP_STACK_NAME}-api-5xx`;
 export const KILL_SWITCH_ERRORS_ALARM_NAME = `${GUARDRAILS_STACK_NAME}-kill-switch-errors`;
+
+// Slice 4 D24, D25: the reconciler's hourly schedule and its gap alarm.
+export const RECONCILE_SCHEDULE_NAME = `${APP_STACK_NAME}-reconcile-hourly`;
+export const RECONCILE_GAP_ALARM_NAME = `${APP_STACK_NAME}-reconcile-gap`;

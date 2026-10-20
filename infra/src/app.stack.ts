@@ -3,13 +3,21 @@ import {
   appOutputKeys,
   DLQ_DEPTH_ALARM_NAME,
   QUEUE_AGE_ALARM_NAME,
+  RECONCILE_GAP_ALARM_NAME,
   USAGE_TRIP_ALARM_NAME,
 } from '@ledger/aws';
-import { RESUME_EVENT } from '@ledger/core';
+import { RECONCILE_SCHEDULED_EVENT, RESUME_EVENT } from '@ledger/core';
 import { ArnFormat, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import { HttpApi, HttpMethod, HttpStage } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import { Alarm, ComparisonOperator, Stats, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
+import {
+  Alarm,
+  type CfnAlarm,
+  ComparisonOperator,
+  Metric,
+  Stats,
+  TreatMissingData,
+} from 'aws-cdk-lib/aws-cloudwatch';
 import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
@@ -28,6 +36,7 @@ import {
   apiEnvironment,
   ingestEnvironment,
   ingestSimulatorEnvironment,
+  reconcilerEnvironment,
   workerEnvironment,
 } from './function-env.ts';
 import { alarmDescription, alertTopicName, tripTopicName } from './guardrails.stack.ts';
@@ -47,6 +56,14 @@ export const WORKER_TIMEOUT_SECONDS = 60;
 // AWS-02: under the 30 s integration cap; one connect (5 s) plus one query (15 s) is the worst case.
 export const API_MEMORY_MB = 256;
 export const API_TIMEOUT_SECONDS = 25;
+// Slice 4 D20: the run's 840 s budget (`RECONCILE_RUN_BUDGET_MS`) below the 900 s maximum (AWS-03).
+export const RECONCILER_MEMORY_MB = 256;
+export const RECONCILER_TIMEOUT_SECONDS = 900;
+// D20, AWS-53, AWS-63: no retry, so a lost invoke reads `run_abandoned` (ADR-007); a 60 s event age
+// (the minimum), so invokes queued while the kill switch holds the function at 0 expire instead of
+// running back to back on re-arm (PP C15).
+export const RECONCILER_RETRY_ATTEMPTS = 0;
+export const RECONCILER_MAX_EVENT_AGE_SECONDS = 60;
 
 // AWS-07: the source queue keeps 13 days, so the DLQ can keep longer, at the 14-day maximum (AWS-09).
 export const SOURCE_RETENTION_DAYS = 13;
@@ -87,6 +104,10 @@ export const DLQ_DEPTH_THRESHOLD = 0;
 // endpoint; it is also how a throttled ingest surfaces. The HTTP API's `5xx` is vended (AWS-30).
 export const API_5XX_PERIOD_SECONDS = 300;
 export const API_5XX_THRESHOLD = 0;
+// Slice 4 D24: one wall clock hour of the reconciler's `reconcile.missing` (EMF, namespace `Ledger`,
+// no dimension, D19): above 0, or no clean run's datapoint at all, reads breaching (AWS-64).
+export const RECONCILE_GAP_PERIOD_SECONDS = 3_600;
+export const RECONCILE_GAP_THRESHOLD = 0;
 
 // AWS-10, integrations.md → Cadence: every Postgres-touching schedule shares the one hourly cron,
 // window off. No retry and a 60 s event age (AWS-10's minimum): the next tick supersedes a missed one.
@@ -108,11 +129,14 @@ export type AppStackProps = StackProps & {
   readonly guardrailsStackName: string;
   // ADR-016, slice 3 D12: the simulator signing secret and ingest's read of it, only when on.
   readonly simulator: boolean;
+  // Slice 4 D21: the Resend webhook id the reconciler lists and replays, `unset` when not given.
+  readonly resendWebhookId: string;
 };
 
-// ADR-001, ADR-002, ADR-008, ADR-010, ADR-015, ADR-016: ingest, the queues, the worker and its
-// mapping, the read API behind one HTTP API, the two secrets (three with the simulator), the hourly
-// resume schedule, the usage trip and the three operating alarms.
+// ADR-001, ADR-002, ADR-007, ADR-008, ADR-010, ADR-015, ADR-016: ingest, the queues, the worker and
+// its mapping, the read API behind one HTTP API, the reconciler, the three secrets (four with the
+// simulator), the hourly resume and reconcile schedules, the usage trip, the three operating alarms
+// and the reconcile gap alarm.
 export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
@@ -123,6 +147,7 @@ export class AppStack extends Stack {
       worker: `${stackName}-worker`,
       api: `${stackName}-api`,
       reconciler: `${stackName}-reconciler`,
+      reconcileHourly: `${stackName}-reconcile-hourly`,
       http: `${stackName}-http`,
     };
     // Every function ARN in a policy is built from its physical name, never a reference, so no
@@ -155,6 +180,14 @@ export class AppStack extends Stack {
           removalPolicy: RemovalPolicy.DESTROY,
         })
       : undefined;
+
+    // Slice 4 D21, Secrets layout: `ledger/resend-api-key`, the reconciler's bare `full_access` key,
+    // written by the deploy command after `cdk deploy` (D29); until then the CDK placeholder reads as
+    // not configured.
+    const resendApiKeySecret = new Secret(this, 'ResendApiKeySecret', {
+      description: "ledger/resend-api-key: the reconciler's full_access Resend API key",
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
 
     // AWS-25: SSE-SQS, at no cost and with no key to manage.
     const dlq = new Queue(this, 'Dlq', {
@@ -265,6 +298,44 @@ export class AppStack extends Stack {
       api.fn.addToRolePolicy(statement);
     }
 
+    // Slice 4 D20–D22: the reconciler, on the hourly schedule and on the read API's async invoke.
+    const reconciler = new LedgerFunction(this, 'Reconciler', {
+      app: 'reconciler',
+      functionName: names.reconciler,
+      memorySize: RECONCILER_MEMORY_MB,
+      timeout: Duration.seconds(RECONCILER_TIMEOUT_SECONDS),
+      environment: reconcilerEnvironment({
+        databaseSecretArn: databaseSecret.secretArn,
+        resendApiKeySecretArn: resendApiKeySecret.secretArn,
+        resendWebhookId: props.resendWebhookId,
+        queueUrl: queue.queueUrl,
+        dlqUrl: dlq.queueUrl,
+      }),
+    });
+    reconciler.fn.configureAsyncInvoke({
+      retryAttempts: RECONCILER_RETRY_ATTEMPTS,
+      maxEventAge: Duration.seconds(RECONCILER_MAX_EVENT_AGE_SECONDS),
+    });
+    databaseSecret.grantRead(reconciler.fn);
+    resendApiKeySecret.grantRead(reconciler.fn);
+    // D21: the grace window's age reads the source queue's attributes and CloudWatch (AWS-22).
+    reconciler.fn.addToRolePolicy(
+      new PolicyStatement({
+        actions: ['sqs:GetQueueAttributes'],
+        resources: [queue.queueArn, dlq.queueArn],
+      }),
+    );
+    reconciler.fn.addToRolePolicy(
+      new PolicyStatement({ actions: ['cloudwatch:GetMetricStatistics'], resources: ['*'] }),
+    );
+    // D22: `reconcile.start` hands its run to the reconciler; the ARN is built from the name (D27).
+    api.fn.addToRolePolicy(
+      new PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [functionArn(names.reconciler)],
+      }),
+    );
+
     // api-contract.md → Ingest boundary: the webhook path to ingest, everything else to the read API.
     const httpApi = new HttpApi(this, 'HttpApi', {
       apiName: names.http,
@@ -293,6 +364,19 @@ export class AppStack extends Stack {
       timeWindow: TimeWindow.off(),
       target: new LambdaInvoke(worker.fn, {
         input: ScheduleTargetInput.fromObject(RESUME_EVENT),
+        retryAttempts: SCHEDULE_RETRY_ATTEMPTS,
+        maxEventAge: Duration.seconds(SCHEDULE_MAX_EVENT_AGE_SECONDS),
+      }),
+    });
+
+    // Slice 4 D25: the hourly reconcile, a second schedule on the same cron (one target each, AWS-10),
+    // so both ticks land in one database wake.
+    new Schedule(this, 'ReconcileHourly', {
+      scheduleName: names.reconcileHourly,
+      schedule: ScheduleExpression.expression(HOURLY_CRON),
+      timeWindow: TimeWindow.off(),
+      target: new LambdaInvoke(reconciler.fn, {
+        input: ScheduleTargetInput.fromObject(RECONCILE_SCHEDULED_EVENT),
         retryAttempts: SCHEDULE_RETRY_ATTEMPTS,
         maxEventAge: Duration.seconds(SCHEDULE_MAX_EVENT_AGE_SECONDS),
       }),
@@ -380,11 +464,39 @@ export class AppStack extends Stack {
       }).addAlarmAction(alertAction);
     }
 
+    // Slice 4 D24, Ships 11: a run that found missing events, or an hour with no clean run, whose
+    // silence is breaching. The wall clock window reads the most recently completed UTC hour only,
+    // so a reconciler that stops emitting is never judged by its last clean `0` (AWS-64, PP C21);
+    // the L2 `Alarm` has no prop for it in aws-cdk-lib 2.273.0, so it is set on the `CfnAlarm`.
+    const reconcileGap = new Alarm(this, 'ReconcileGap', {
+      alarmName: RECONCILE_GAP_ALARM_NAME,
+      alarmDescription: alarmDescription(
+        'A reconcile run found missing events, or none finished cleanly this hour',
+        RECONCILE_GAP_ALARM_NAME,
+      ),
+      metric: new Metric({
+        namespace: 'Ledger',
+        metricName: 'reconcile.missing',
+        statistic: Stats.MAXIMUM,
+        period: Duration.seconds(RECONCILE_GAP_PERIOD_SECONDS),
+      }),
+      threshold: RECONCILE_GAP_THRESHOLD,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: TreatMissingData.BREACHING,
+    });
+    (reconcileGap.node.defaultChild as CfnAlarm).evaluationWindow = { wallClockWindow: {} };
+    reconcileGap.addAlarmAction(alertAction);
+
     // What the deploy, teardown, re-arm and drill commands read (D33–D36).
     new CfnOutput(this, appOutputKeys.deployedCommit, { value: props.commit });
     new CfnOutput(this, appOutputKeys.apiUrl, { value: stage.url });
     new CfnOutput(this, appOutputKeys.signingSecretsArn, { value: signingSecrets.secretArn });
     new CfnOutput(this, appOutputKeys.databaseSecretArn, { value: databaseSecret.secretArn });
+    // Slice 4 D26, D29: the deploy command writes the reconciler's key to this ARN.
+    new CfnOutput(this, appOutputKeys.resendApiKeySecretArn, {
+      value: resendApiKeySecret.secretArn,
+    });
     // D12, D21: the deploy command writes the simulator value to this ARN, only with the flag.
     if (simulatorSecret) {
       new CfnOutput(this, appOutputKeys.simulatorSecretArn, { value: simulatorSecret.secretArn });

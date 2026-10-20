@@ -145,10 +145,10 @@ makes no AWS call before the first invocation (D32). Settled by it on 2026-10-17
   account (`formatArn` with `account: ''`). The kill switch updates no route, so it has no
   `/routes/*` grant. AWS-U11 stays `[Unverified]` until the trip drill's update succeeds under it.
 - **Physical names** (D27): `<stack>-<fn>` for functions (`LedgerApp-ingest`, `LedgerApp-worker`,
-  `LedgerApp-api`, `LedgerGuardrails-kill-switch`), `LedgerApp-http` for the HTTP API,
-  `LedgerApp-hourly` for the schedule, `LedgerApp-usage-trip`, `LedgerApp-queue-age`,
-  `LedgerApp-dlq-depth`, `LedgerApp-api-5xx` and `LedgerGuardrails-kill-switch-errors` for the
-  alarms (the names from `@ledger/aws`'s `ledger-stacks.ts`, so the scripts and `sim` read the same
+  `LedgerApp-api`, `LedgerApp-reconciler`, `LedgerGuardrails-kill-switch`), `LedgerApp-http` for the
+  HTTP API, `LedgerApp-hourly` and `LedgerApp-reconcile-hourly` for the schedules,
+  `LedgerApp-usage-trip`, `LedgerApp-queue-age`, `LedgerApp-dlq-depth`, `LedgerApp-api-5xx`,
+  `LedgerApp-reconcile-gap` and `LedgerGuardrails-kill-switch-errors` for the alarms (the names from `@ledger/aws`'s `ledger-stacks.ts`, so the scripts and `sim` read the same
   ones), `LedgerGuardrails-trip` and
   `LedgerGuardrails-alert` for the topics, `LedgerGuardrails-monthly` (and `-drill`) for the budgets,
   `/ledger/<function name>` for log groups. Queues and secrets take none.
@@ -157,7 +157,16 @@ makes no AWS call before the first invocation (D32). Settled by it on 2026-10-17
   slice 4). Async invoke is at-least-once ([AWS-53](../../../../.ai/aws.md#lambda)), so a run's
   claim on its [`reconcile_runs`](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)
   row stops a duplicate ([ADR-007](../../../../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest));
-  no retry means a lost invoke reads abandoned and the next hourly run covers it.
+  no retry means a lost invoke reads abandoned and the next hourly run covers it. It sets
+  `maxEventAge` to its 60 s minimum too (`MaximumEventAgeInSeconds: 60`, [AWS-63](../../../../.ai/aws.md#lambda)),
+  so hourly invokes queued while the kill switch holds the function at `0` expire rather than run
+  back to back on re-arm; `reconciler.fn.configureAsyncInvoke(…)` emits the one
+  `AWS::Lambda::EventInvokeConfig`.
+- **`LedgerApp-reconcile-gap` sets its evaluation window on the `CfnAlarm`:**
+  `(alarm.node.defaultChild as CfnAlarm).evaluationWindow = { wallClockWindow: {} }`, because the L2
+  `Alarm` has no prop for it in aws-cdk-lib 2.273.0 ([AWS-64](../../../../.ai/aws.md#cloudwatch-and-sns)).
+  With `TreatMissingData.BREACHING`, an hour with no clean run then reads breaching; a sliding
+  window would keep evaluating the last clean `0`.
 
 ## The guardrails stack
 
