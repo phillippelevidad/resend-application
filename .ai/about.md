@@ -66,9 +66,12 @@ No dates. Slice IDs map to milestones in [architecture.md](architecture.md); [bu
 carries one card per slice. A reviewer may arrive
 at any milestone boundary, so each one MUST leave the README claims, the demo and the deploy coherent.
 
-- **M1 — MVP:** foundations, local v0, durable ingest on AWS, recovery, and a usable CLI. Evidence over breadth.
-- **M2 — Feature complete:** every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, real AWS deploy, simulator evidence.
-- **M3 — Stretch:** SDK and CLI published to npm with semver; real AWS load numbers from the 10k burst; a learning log of the AWS and distributed-systems decisions.
+- **M1 — Proof of concept:** foundations, local v0, durable ingest on AWS, recovery, and a usable CLI. Evidence over breadth.
+- **M2 — MVP:** every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, real AWS deploy, simulator evidence.
+- **M3 — Feature complete:** SDK and CLI published to npm with semver; real AWS load numbers from the 10k burst; a learning log of the AWS and distributed-systems decisions.
+
+Reader-facing text (the README, the demo) names the stages, never the codes (owner, 2026-10-20:
+"calling M2 'feature complete' without the npm packages would send the wrong message").
 
 Upstream PRs to Resend's Webhook Ingester are not planned.
 

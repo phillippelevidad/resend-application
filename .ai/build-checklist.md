@@ -58,7 +58,7 @@ The marker lives on the card's `Status` line, in backticks, and nowhere else. He
 marker-free: they are link anchors (`#2b--local-mode-queue-and-docker-compose`). Checkbox lines
 appear only inside a `Ships` list. A ticked `Status` over an unticked `Ships` box is the card lying.
 
-## M1 — MVP
+## M1 — Proof of concept
 
 Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; evidence over breadth.
 
@@ -172,7 +172,7 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 - **Ops:** owner: a `full_access` Resend key in Secrets Manager for the reconciler only, and the webhook id as a deploy input; approve the replay experiment and the disabled-webhook experiments (Ask-first); walk the M1 demo against the kept deploy; create a dedicated `full_access` key; set `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`; approve the gap drill.
 - **Deferred tail:** RS-U03 re-measured before M2 closes ([slice 7](#7--polish-and-retention)). MCP `list_gaps` and `reconcile` ([slice 5](#5--mcp-server-and-contract-hardening)).
 
-## M2 — Feature complete
+## M2 — MVP
 
 Every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, a real AWS deploy,
 simulator evidence.
@@ -245,7 +245,7 @@ simulator evidence.
 - **Ops:** owner: time the newcomer walk; approve the redeploy (Ask-first).
 - **Deferred tail:** Inngest adapter, read-only UI and inbound projection (tripwires in [about.md → Open questions](about.md#open-questions)).
 
-## M3 — Stretch
+## M3 — Feature complete
 
 npm releases with semver, real AWS load numbers, a learning log. Any order once M2 is done.
 
