@@ -80,7 +80,7 @@ and the sweep reads `outbox.next_attempt_at`.
 
 | Key | Absorbs | Where enforced |
 | --- | --- | --- |
-| `webhook_events.svix_id` (PK) | Svix retries, DLQ redrives, reconciler replays (same `svix-id`, RS-06, RS-08, RS-U01) | `INSERT … ON CONFLICT (svix_id) DO NOTHING` ([ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)) |
+| `webhook_events.svix_id` (PK) | Svix retries, DLQ redrives, reconciler replays (same `svix-id`, RS-06, RS-08, RS-45) | `INSERT … ON CONFLICT (svix_id) DO NOTHING` ([ADR-004](architecture.md#adr-004--immutable-ledger-keyed-on-svix_id-one-transaction-per-message)) |
 | `email_state.email_id`, `email_recipients (email_id, address_hash)`, `recipient_state.address_hash` (PKs) | Concurrent workers on one key | `INSERT … ON CONFLICT DO NOTHING`, then `SELECT … FOR UPDATE`: the email row first, then recipient rows in sorted `address_hash` order; inputs read after the locks, at READ COMMITTED (ADR-004) |
 | `outbox.dedupe_key` (UNIQUE) | Worker retries re-emitting a reaction | Unique constraint; the Resend `Idempotency-Key` is derived from it ([ADR-006](architecture.md#adr-006--transactional-outbox-for-reactions), RS-24) |
 | `api_tokens.bootstrap` (partial UNIQUE `WHERE bootstrap`) | A re-run deploy command inserting a second first token | `INSERT … ON CONFLICT DO NOTHING`; `token_hash` stays UNIQUE as a collision guard only |
@@ -285,14 +285,13 @@ Load-bearing columns only. Every table also carries its
 | `payload` | `jsonb` | The parsed `{ type, created_at, data }` body (RS-26), as received minus what Postgres cannot store ([Immutable ledger](#immutable-ledger)). Not the signed bytes |
 
 - **Source values:** `source` has no `replay` value: a replay takes no special path (ADR-007), and
-  it is expected to carry the original `svix-id` ([RS-U01](resend.md#unverified), which slice 4
-  MUST settle).
+  it carries the original `svix-id` ([RS-45](resend.md#facts)).
 - **Indexes:** `(email_id, event_created_at)` for projection loads. The reconcile diff is a
   primary-key lookup on `svix_id` (ADR-007). The retention job's scan index and its `redacted_at`
   column land with it in slice 7.
 
 _Schema: [`packages/db/src/schema/webhook-events.ts`](../packages/db/src/schema/webhook-events.ts)._
-_Evidence: the slice 1 schema and worker items hold; the other items are pending._
+_Evidence: the slice 1, 3 and 4 items hold; the other items are pending._
 - Slice 1 (schema): the `source` `CHECK` against `eventSourceSchema` and a duplicate
   `insertIfAbsent` leaving one row, as the runtime role, in
   [webhook-events.repository.int.test.ts](../packages/db/src/webhook-events.repository.int.test.ts).
@@ -307,7 +306,10 @@ _Evidence: the slice 1 schema and worker items hold; the other items are pending
 - Slice 1: sim invariant 1.
 - Slice 3: a unit test that a simulator-signed event is stamped `simulated`, in
   [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts).
-- Slice 4: replays dedupe on `svix_id` (RS-U01).
+- Slice 4: replays dedupe on `svix_id`: an outage past the retry schedule recovers with one row
+  per event, and a late re-delivery of a recovered event leaves one row, in
+  [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts); live, the replay of a
+  stored event on the deployed stack deduped ([RS-45](resend.md#facts), RS-U01 settled).
 - Slice 7: a rebuild after redaction yields identical projections.
 
 - **Slices:** 1 — Local ledger and read path; 3 — Operations and evidence on AWS; 4 — Recovery; 7 — Polish and retention

@@ -60,7 +60,7 @@ listed there as not an operation ([Coverage](api-contract.md#coverage)).
 - **Trigger:** ingest down longer than Resend's retry schedule.
 - **Steps:** alarm fires → `ledger gaps --since 24h` → `ledger reconcile --dry-run` → `ledger reconcile` → `ledger gaps` shows zero missing.
 - **Surfaces:** `gaps.list`, `reconcile.start`.
-- **Evidence:** fake-API integration test, 100% recovered, 0 duplicates, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) · [slice 4](build-checklist.md#4--recovery).
+- **Evidence:** fake-API integration test, 100% recovered, 0 duplicates, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) · on the deployed stack, `pnpm aws:gap-drill` (2026-10-20): `dry run: missing 2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, then `gaps: newest run missing 0` ([ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) Evidence) · [slice 4](build-checklist.md#4--recovery).
 
 ### J4 — Poison message → redrive
 

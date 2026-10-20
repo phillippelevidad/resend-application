@@ -56,7 +56,7 @@ Manager, [Secrets layout](#secrets-layout))
 6. **Idempotent writes where Resend allows them.** Every send carries an `Idempotency-Key`
    derived from the outbox `dedupe_key` (RS-24). Keys live 24 h, so the alert-email retry horizon
    stays under 24 h ([resend.md → Constraint 8](resend.md#constraints-and-sharp-edges)). Replays
-   take no key (RS-17): their safety rests on ledger dedupe on `svix_id` and on RS-U01.
+   take no key (RS-17): their safety rests on ledger dedupe on `svix_id` and on a replay keeping the `svix-id` (RS-45).
 7. **Secrets never leave Secrets Manager.** Any `full_access` key can read the signing secret
    (RS-05), and no read-only key exists (RS-18). Keys and signing secrets never appear in logs, CLI
    output, MCP output or Resend-visible response bodies
@@ -123,7 +123,8 @@ database connectors, deduplicated on a unique `svix_id`. It writes synchronously
   at 3 days, and replay every id missing from storage, under 10 req/s. Ledger's reconciler is the
   same approach, with replays landing in the queue path. The ADR that adopts it cites PR #13. The
   PR's live findings (replay keeps `svix-id`, List Events ids equal `svix-id`, ≈ 8 s visibility)
-  are a contributor's observations, not Resend's docs, so they stay RS-U01, RS-U02 and RS-U13. Its
+  are a contributor's observations, not Resend's docs; slice 4 settled the first two live on the
+  owner's webhook (RS-44, RS-45) and measured the third at ≤ 5.2 s (RS-U13). Its
   claim that a disabled endpoint receives no replays (it answers `409` on that basis) stays RS-U04.
 - **[Issue #8](https://github.com/resend/resend-webhooks-ingester/issues/8)** (open) asks for
   per-email event correlation. Ledger's order-independent projection answers that question in its
