@@ -135,9 +135,9 @@ resource) stops uncommitted for the owner.
 
 ## 14. Gate
 
-- [ ] 14.1 Run `pnpm exec openspec validate slice-4-recovery --type change --strict`. Verify: it reports the change is valid.
+- [x] 14.1 Run `pnpm exec openspec validate slice-4-recovery --type change --strict`. Verify: it reports the change is valid.
 - [ ] 14.2 Check the card: every `Ships` box is ticked except any group 12 left open with its reason (RS-U03 before 2026-10-21; Ships 11's email awaiting the owner). `Status` stays `[~]` until the walk passes. Verify: the card reads as stated.
-- [ ] 14.3 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
+- [x] 14.3 Run `pnpm verify` in the background, redirected to a log. Verify: it runs `install, docker, secrets, lint, migrations, links, typecheck, drift, unit, int, synth, e2e`, exits 0 and ends `VERIFY PASSED`.
 
 ## Workflow follow-up
 
