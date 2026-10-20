@@ -253,8 +253,8 @@ AWS-12):
 
 - **Allowed**, by these exact keys: `svix_id`, `email_id`, `type`, `request_id`, `run_id`,
   `token_id` (the `api_tokens.id`, never a token or its hash), `error_name`, `error_code` (a
-  [registry](api-contract.md#error-codes) code), `pg_code` (the Postgres SQLSTATE), counts as
-  `<name>_count`, durations as `<name>_ms`, `function_name`, `cold_start` and `timestamp`. The
+  [registry](api-contract.md#error-codes) code), `pg_code` (the Postgres SQLSTATE), `reason` (why ingest answered `401`,
+  the closed set `signature` | `timestamp`; slice 4), counts as `<name>_count`, durations as `<name>_ms`, `function_name`, `cold_start` and `timestamp`. The
   line's `level` and its message, a constant written in code, never interpolated.
 - **Never:** an error's `message` or `detail` from parsing or Postgres (they can quote a row), an
   address or `address_hash`, a subject, request or response headers, a token or secret, the raw

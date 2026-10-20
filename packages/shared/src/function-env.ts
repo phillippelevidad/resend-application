@@ -26,6 +26,17 @@ export const apiEnv = {
   WORKER_FUNCTION_NAME: 'WORKER_FUNCTION_NAME',
 } as const;
 
+// Slice 4 D21: `RESEND_WEBHOOK_ID` is the value of CDK context `ledger:resendWebhookId`, `unset` when
+// absent, which `reconciler.config.ts` reads as not configured. Both queue URLs feed the grace
+// window's age (AWS-22).
+export const reconcilerEnv = {
+  DATABASE_SECRET_ARN: 'DATABASE_SECRET_ARN',
+  RESEND_API_KEY_SECRET_ARN: 'RESEND_API_KEY_SECRET_ARN',
+  RESEND_WEBHOOK_ID: 'RESEND_WEBHOOK_ID',
+  QUEUE_URL: 'QUEUE_URL',
+  DLQ_URL: 'DLQ_URL',
+} as const;
+
 export const killSwitchEnv = {
   APP_STACK_NAME: 'APP_STACK_NAME',
   ALERT_TOPIC_ARN: 'ALERT_TOPIC_ARN',

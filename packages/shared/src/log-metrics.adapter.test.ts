@@ -26,4 +26,20 @@ describe('LogMetricsAdapter', () => {
       { level: 'info', message: 'worker.processing_lag', svix_id: 'msg_1', value_ms: 42 },
     ]);
   });
+
+  it('writes a dimension as a log field: ingest.rejected carries its reason (slice 4 D8)', () => {
+    const lines: string[] = [];
+    const metrics = new LogMetricsAdapter(
+      createLogger({
+        functionName: 'ingest',
+        stream: { write: (chunk: string) => lines.push(chunk) },
+      }),
+    );
+
+    metrics.count('ingest.rejected', 1, undefined, { reason: 'timestamp' });
+
+    expect(lines.map((line) => JSON.parse(line))).toMatchObject([
+      { message: 'ingest.rejected', reason: 'timestamp', value_count: 1 },
+    ]);
+  });
 });

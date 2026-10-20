@@ -67,7 +67,10 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
   The helper is `EmfMetricsAdapter({ sink, clock })`, implementing `MetricsPort` (slice 2, D5): one
   line per call through the injected sink, namespace `Ledger`, one empty dimension set, unit `Count`
   or `Milliseconds`, the value under the metric's name, and the caller's fields through the log
-  allow-list. Lambda roots use it; `apps/local` keeps `LogMetricsAdapter`. The test is
+  allow-list. The signature is `count(name, value, fields?, ...dimensions)`, the dimensions typed
+  per name by `MetricDimensions` (slice 4, D8): `ingest.rejected` requires `{ reason }`, every other
+  name takes none, so a dimension on another metric does not compile. A dimensioned line carries
+  `Dimensions: [['reason']]` and `reason` top-level. Lambda roots use it; `apps/local` keeps `LogMetricsAdapter`. The test is
   [emf-metrics.adapter.test.ts](../../../../packages/shared/src/emf-metrics.adapter.test.ts).
 - **On Lambda, write the line with `process.stdout.write`**, not `console.log`: under the JSON log
   format CloudWatch does not parse EMF that `console.log` wrapped
@@ -76,10 +79,10 @@ One logger, Winston JSON, built in `packages/shared`. Every app logs through it.
   A new metric is a doc change first: every metric emitted in an hour costs money
   ([aws.md → CloudWatch and SNS](../../../../.ai/aws.md#cloudwatch-and-sns), AWS-12).
 - **Ids are never dimensions** (AWS-12). The only dimension in the set is `ingest.rejected`'s
-  `reason`. An EMF line carries the metric values, their dimensions and nothing that the log
+  `reason` (`signature` | `timestamp`), also an allow-listed log field. An EMF line carries the metric values, their dimensions and nothing that the log
   allow-list would drop.
 - **Locally**, `LogMetricsAdapter` writes through the logger instead: the metric name is the
-  constant message, its value a count or duration field.
+  constant message, its value a count or duration field, a dimension a log field.
 
 ## PII in code
 

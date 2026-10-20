@@ -87,4 +87,39 @@ describe('EmfMetricsAdapter', () => {
     });
     expect(lines[0]).not.toContain(address);
   });
+
+  it('writes ingest.rejected with its reason as the one dimension set and a top-level value (slice 4 D8)', () => {
+    const { metrics, parsed } = captured();
+
+    metrics.count('ingest.rejected', 1, undefined, { reason: 'signature' });
+    metrics.count('ingest.rejected', 1, undefined, { reason: 'timestamp' });
+
+    const [signature, timestamp] = parsed();
+    expect(signature).toMatchObject({
+      reason: 'signature',
+      'ingest.rejected': 1,
+      _aws: {
+        CloudWatchMetrics: [
+          {
+            Namespace: 'Ledger',
+            Dimensions: [['reason']],
+            Metrics: [{ Name: 'ingest.rejected', Unit: 'Count' }],
+          },
+        ],
+      },
+    });
+    expect(Object.keys(signature ?? {}).sort()).toEqual(['_aws', 'ingest.rejected', 'reason']);
+    expect(timestamp).toMatchObject({ reason: 'timestamp' });
+  });
+
+  it('types the dimension per metric: ingest.rejected needs its reason, no other name takes one', () => {
+    const { metrics } = captured();
+    // @ts-expect-error: ingest.rejected requires its reason dimension.
+    metrics.count('ingest.rejected', 1);
+    // @ts-expect-error: a metric outside MetricDimensions takes no dimension.
+    metrics.count('ingest.accepted', 1, undefined, { reason: 'signature' });
+    // @ts-expect-error: reason is a closed set.
+    metrics.count('ingest.rejected', 1, undefined, { reason: 'other' });
+    expect(true).toBe(true);
+  });
 });

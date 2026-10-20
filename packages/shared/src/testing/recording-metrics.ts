@@ -1,11 +1,13 @@
 import type { LogFields } from '../create-logger.ts';
-import type { MetricName, MetricsPort } from '../metrics.port.ts';
+import type { MetricDimensionArgs, MetricName, MetricsPort } from '../metrics.port.ts';
 
 export type RecordedMetric = {
   readonly kind: 'count' | 'duration';
   readonly name: MetricName;
   readonly value: number;
   readonly fields: LogFields;
+  // Slice 4 D8: present only for a dimensioned metric (`ingest.rejected`'s `reason`).
+  readonly dimensions?: Readonly<Record<string, string>>;
 };
 
 // D7: the metrics port's test double. It holds every metric emitted, in order, so a test asserts
@@ -13,8 +15,20 @@ export type RecordedMetric = {
 export class RecordingMetrics implements MetricsPort {
   readonly recorded: RecordedMetric[] = [];
 
-  count(name: MetricName, value: number, fields: LogFields = {}): void {
-    this.recorded.push({ kind: 'count', name, value, fields });
+  count<N extends MetricName>(
+    name: N,
+    value: number,
+    fields: LogFields = {},
+    ...dimensions: MetricDimensionArgs<N>
+  ): void {
+    const [dims] = dimensions;
+    this.recorded.push({
+      kind: 'count',
+      name,
+      value,
+      fields,
+      ...(dims === undefined ? {} : { dimensions: dims }),
+    });
   }
 
   duration(name: MetricName, ms: number, fields: LogFields = {}): void {

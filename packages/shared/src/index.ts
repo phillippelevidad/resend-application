@@ -2,6 +2,7 @@
 // variable names, error base, clock, token mint and tag check). No AWS, Postgres or
 // Resend (ADR-013). The package's one public surface; port doubles ship through `./testing`.
 export { hashApiToken, hasValidTag, mintApiToken, tokenTagKeyId } from './api-token.ts';
+export type { AsyncFunctionInvokePort } from './async-function-invoke.port.ts';
 export type { ClockPort } from './clock.port.ts';
 export { ConfigError, type ConfigIssue } from './config.error.ts';
 export {
@@ -22,9 +23,11 @@ export {
   ingestEnv,
   ingestSimulatorEnv,
   killSwitchEnv,
+  reconcilerEnv,
   workerEnv,
 } from './function-env.ts';
 export type { FunctionInvokePort } from './function-invoke.port.ts';
+export { InProcessAsyncFunctionInvokeAdapter } from './in-process-async-function-invoke.adapter.ts';
 export { InProcessFunctionInvokeAdapter } from './in-process-function-invoke.adapter.ts';
 export {
   type DeadListEntry,
@@ -34,7 +37,14 @@ export {
 export { LedgerError, type LedgerErrorOptions } from './ledger.error.ts';
 export { type Env, loadConfig } from './load-config.ts';
 export { LogMetricsAdapter } from './log-metrics.adapter.ts';
-export { type MetricName, type MetricsPort, metricNames } from './metrics.port.ts';
+export {
+  type IngestRejectReason,
+  type MetricDimensionArgs,
+  type MetricDimensions,
+  type MetricName,
+  type MetricsPort,
+  metricNames,
+} from './metrics.port.ts';
 export type { BatchResponse, QueueConsumer, QueueMessage, QueuePort } from './queue.port.ts';
 export type { QueueAttributesPort, QueueSnapshot } from './queue-attributes.port.ts';
 export type { SecretReaderPort } from './secret-reader.port.ts';

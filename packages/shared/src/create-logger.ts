@@ -16,6 +16,7 @@ export const logFieldKeys = [
   'error_name',
   'error_code',
   'pg_code',
+  'reason',
   'function_name',
   'cold_start',
   'timestamp',
@@ -40,6 +41,8 @@ type NamedFields = {
   error_name: string;
   error_code: ErrorCode;
   pg_code: string;
+  // Slice 4 D34: `ingest.rejected`'s dimension, a closed set.
+  reason: 'signature' | 'timestamp';
   cold_start: boolean;
 };
 

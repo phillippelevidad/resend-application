@@ -123,6 +123,13 @@ export function queuePortContract(name: string, make: () => Promise<QueuePortUnd
   | --- | --- | --- |
   | `dlqPortContract` | `() => { port, deadLetter(body) }` | Sampling never removes a message (a second sample returns the same bodies and depth); `depth` counts every dead-lettered message whatever `limit` returns; an empty redrive answers `empty` with depth `0`; a redrive answers `started` with the depth and empties the dead store |
 
+  **Slice 4's seventh** (D7), in the same place, run by `InProcessAsyncFunctionInvokeAdapter` and by
+  `LambdaAsyncFunctionInvokeAdapter` over the `StubClient`:
+
+  | Suite | `make` | Shared cases |
+  | --- | --- | --- |
+  | `asyncFunctionInvokePortContract` | `(fn) => port` | The payload reaches `fn` unchanged; `invokeAsync` resolves before `fn` finishes; a `fn` that rejects never rejects the invoke |
+
   `deadLetter(body)` seeds the dead store the implementation's own way: the in-process queue fails
   the message through every receive, the SQS adapter's stubbed DLQ holds it. Its two
   implementations are `InProcessQueueAdapter` (`in-process-queue.adapter.test.ts`, which adds that a

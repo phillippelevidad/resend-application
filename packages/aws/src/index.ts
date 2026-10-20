@@ -41,6 +41,10 @@ export {
   tripKillSwitch,
 } from './kill-switch.ts';
 export {
+  LambdaAsyncFunctionInvokeAdapter,
+  type LambdaAsyncFunctionInvokeAdapterDeps,
+} from './lambda-async-function-invoke.adapter.ts';
+export {
   LambdaEventSourceControlAdapter,
   type LambdaEventSourceControlAdapterDeps,
 } from './lambda-event-source-control.adapter.ts';
