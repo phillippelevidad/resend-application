@@ -383,7 +383,26 @@ importers:
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/reconciler:
+    dependencies:
+      '@ledger/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ledger/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ledger/resend-client':
+        specifier: workspace:*
+        version: link:../resend-client
+      '@ledger/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
+      '@ledger/ingest':
+        specifier: workspace:*
+        version: link:../ingest
+      '@ledger/worker':
+        specifier: workspace:*
+        version: link:../worker
       vitest:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))

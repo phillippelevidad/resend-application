@@ -8,6 +8,14 @@
     ".": "./src/index.ts"
   },
   "devDependencies": {
+    "@ledger/ingest": "workspace:*",
+    "@ledger/worker": "workspace:*",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@ledger/core": "workspace:*",
+    "@ledger/db": "workspace:*",
+    "@ledger/resend-client": "workspace:*",
+    "@ledger/shared": "workspace:*"
   }
 }

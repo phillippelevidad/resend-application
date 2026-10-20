@@ -146,7 +146,7 @@ This table is the canonical layout (adapted from the frozen
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
 scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools. `packages/resend-client`
-holds its logic (slice 4).
+and `packages/reconciler` hold their logic (slice 4).
 
 | Project | Role | Logic lands |
 | --- | --- | --- |

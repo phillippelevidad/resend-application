@@ -499,9 +499,12 @@ _Evidence (slice 4):_
   claimed or finished row returns none, a second finish changes no row, and `listSince` pages by
   `id` with `has_more`, as the runtime role, in
   [reconcile-runs.repository.int.test.ts](../packages/db/src/reconcile-runs.repository.int.test.ts).
-- Pending in this slice: two concurrent starts yield one run, a second invoke of a claimed run makes
-  no Resend call, and the recovery suite (an outage past the retry schedule ends 100 % recovered
-  with 0 duplicates; a disabled webhook writes `error_code = webhook_disabled`).
+- A second invoke of a claimed run, and an invoke of a finished row, make no Resend call, in
+  [reconciler.int.test.ts](../packages/reconciler/src/reconciler.int.test.ts); an outage past the
+  retry schedule ends 100 % recovered with 0 duplicates and a disabled webhook writes
+  `error_code = webhook_disabled`, in
+  [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts).
+- Pending in this slice: two concurrent starts yield one run.
 
 - **Slices:** 4 — Recovery
 

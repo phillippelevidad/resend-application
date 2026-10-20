@@ -67,7 +67,7 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 
 | Invariant | Carried by | Evidence | Design test (MUST) |
 | --- | --- | --- | --- |
-| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | sim invariant 1 ([invariant-1.ts](../sim/src/invariants/invariant-1.ts)), run live by `pnpm sim --duplicates 0.2 --shuffle` against `apps/local` (slice 1, local; the checker's pass and fail on real Postgres in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)). On AWS, through a database outage: `pnpm sim --chaos db-outage` (26 of 26 accepted at `200`, DLQ 0, invariant 1 after the resume, slice 3, 2026-10-19). Pending — "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
+| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | sim invariant 1 ([invariant-1.ts](../sim/src/invariants/invariant-1.ts)), run live by `pnpm sim --duplicates 0.2 --shuffle` against `apps/local` (slice 1, local; the checker's pass and fail on real Postgres in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)). On AWS, through a database outage: `pnpm sim --chaos db-outage` (26 of 26 accepted at `200`, DLQ 0, invariant 1 after the resume, slice 3, 2026-10-19). Down past the retry schedule: six events 30 h old, three stored, a scheduled run replays the three through ingest and each id is stored once, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) (slice 4, fake Resend API) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
 | **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` and `--chaos dispatcher-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
 | **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) and for `projectRecipient` in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0); sim invariant 2 ([invariant-2.ts](../sim/src/invariants/invariant-2.ts)) under `--shuffle`, run live against `apps/local` (slice 1, local; pass and fail in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
@@ -196,7 +196,7 @@ Rejected: calling third parties from the worker; dedupe in memory.
 
 ### ADR-007 — Recovery by id diff and replay through ingest
 
-**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03)**; amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-03, AO-12).
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03)**; amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-03, AO-12)**; amended 2026-10-19** ([slice 4 pre-proposal](pre-proposals/2026-10-19-slice-4-recovery.md): C1, C2, C11, C14, C15, C18).
 On the hourly cron and on demand, the reconciler reads the configured webhook's `status` first
 (its id is a deploy input, [integrations.md → Secrets layout](integrations.md#secrets-layout)) and
 stops with `webhook_disabled` if it is disabled (RS-11, RS-13). It then pages List Events newest
@@ -205,20 +205,29 @@ first (RS-14), skips events younger than its grace window (10 minutes, or the so
 `local_queue_messages` row), so an event ingest acknowledged that is still queued is neither
 counted missing nor replayed. A dead-lettered event is replayed once per run until it is redriven
 or purged; the DLQ alarm already shows it (ADR-008). It stops at a lookback horizon (default 3
-days, above the ≈ 27.6 h retry schedule, RS-09; extended back to the `horizon_end` of the last run
-that finished without an `error_code` when that is older, capped at 30 days, RS-31, and at List
+days, above the ≈ 27.6 h retry schedule, RS-09; the default and an explicit `--lookback` alike are
+extended back to the anchor, the `horizon_end` of the newest run that finished without an
+`error_code` and with nothing missing, when that is older (a run that found events missing never
+anchors, so the next run re-checks its span and anchors once the replays are stored, C1), capped at 30 days, RS-31, and at List
 Events reach, RS-U03, so a span when runs could not run, such as a tripped kill switch, a database
 outage or a quota suspension, is covered with no `--lookback`), diffs ids against
 `webhook_events`, and replays the missing ones (RS-16). A replay re-enters through ingest, so
 verification and dedupe apply unchanged. One failed replay never aborts a run; runs never overlap
 and stay inside a time budget below the Lambda timeout (AWS-03), one constant shared by the start
 check and the abandoned derivation below:
-- **Start:** one transaction takes `pg_advisory_xact_lock` on a fixed reconcile key, refuses with
-  `reconcile_in_progress` if an unfinished run is inside its time budget, and inserts its row.
+- **Start:** both triggers read the queue snapshot first, then one transaction takes
+  `pg_advisory_xact_lock` on a fixed reconcile key, refuses with `reconcile_in_progress` if an
+  unfinished run is inside its time budget, reads the anchor and inserts its row with its horizon,
+  the window the run sets out to check, fixed at start (C14, C18). A scheduled run is claimed at
+  insert; a manual one by its invoke.
 - **Claim:** async invoke is at-least-once and can deliver one event twice without an error
   (AWS-53), so before any Resend call the reconciler runs `UPDATE reconcile_runs SET claimed_at =
-  now() WHERE id = $1 AND claimed_at IS NULL`; zero rows means a duplicate invoke, which exits
-  without work. The invoke sets `MaximumRetryAttempts: 0`.
+  now() WHERE id = $1 AND claimed_at IS NULL AND finished_at IS NULL`; zero rows means a duplicate
+  invoke or a finished run, which exits without work (C11). The invoke sets
+  `MaximumRetryAttempts: 0` and `MaximumEventAgeInSeconds: 60`, so invokes queued during a trip do
+  not run back to back on re-arm (C15, AWS-63).
+- **Deadline:** Resend calls stop at `started_at` plus the budget minus a 60 s finish reserve; the
+  budget reached with paging unfinished finishes the run `rate_limited`, which never anchors (C2).
 - **Abandoned:** a run with no `finished_at` past its time budget (it crashed, or its invoke was
   lost) will not finish. `packages/api` derives `run_abandoned` on read and never writes it to the
   row ([api-contract.md → Error codes](api-contract.md#error-codes)); the next hourly run covers the
@@ -230,7 +239,7 @@ cited, not claimed. **Conditional:** the id diff holds only if List Events ids a
 three MUST be settled in slice 4; recoverable range is bounded by List Events reach (RS-U03); the
 grace window assumes visibility within minutes (RS-U13).
 Rejected: a write path that inserts fetched payloads directly (bypasses verification); diffing by delivery status (misses "acknowledged but never stored").
-**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; a 5-day gap since the last good run recovered with no `--lookback`; disabled webhook; `429` with `retry-after`; a queued backlog older than 10 minutes is not replayed; a second invoke of a claimed run makes no Resend call; a run past its budget with no `finished_at` reads `run_abandoned` through `reconcile.getRun` and `gaps.list` (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
+**Evidence:** the recovery suite composes the real reconciler, the real `resend-client` against a fake Resend API, real ingest and the real worker over real Postgres: an outage past the retry schedule ends 100 % recovered with 0 duplicates, an out-of-order replay leaves the projection of both events, a 5-day gap since the last good run is recovered with no `--lookback`, a disabled webhook stops before any List Events call, a `429` storm with `retry-after` completes, an event queued behind a 30-minute backlog is neither counted nor replayed, one failed replay counts in `failed`, the budget reached ends `rate_limited` and never anchors, a dry run replays nothing, and a reconciler with no Resend configuration makes no request, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) (slice 4). A second invoke of a claimed run, an invoke of a finished row and a scheduled start over an unfinished run make no Resend call, and an unexpected throw after the claim finishes the row `internal_error`, in [reconciler.int.test.ts](../packages/reconciler/src/reconciler.int.test.ts) (slice 4). Pending — a run past its budget with no `finished_at` reads `run_abandoned` through `reconcile.getRun` and `gaps.list`, and two concurrent starts yield one run (slice 4); the recorded gap drill and E1 (slice 4's walk). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
 
 ### ADR-008 — Backpressure: bounded concurrency, partial batch failure, DLQ
 
@@ -306,7 +315,7 @@ errors are mapped by status, then name, with a default branch (RS-22). Every req
 Every calling function is single-flight (the reconciler by non-overlapping runs, ADR-007; the
 dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s.
 Rejected: calling the `resend` SDK from apps directly; a limiter shared across functions through a table or service (single-flight callers make it unnecessary).
-**Evidence:** the limiter on a fake clock spaces starts 500 ms apart at 2 req/s, yields `ratelimit-reset` below half the limit and not at or above it, waits `retry-after` then retries, and throws `rate_limited` on a quota `429`, a `429` with no `retry-after`, or a wait past the deadline, before sleeping, in [limiter.test.ts](../packages/resend-client/src/limiter.test.ts) (slice 4). The real client against the fake Resend API: `baseUrl`, `User-Agent` and `Idempotency-Key` sent; status-then-name mapping with its default branch; a `5xx` or refused connection retried twice then `resend_unavailable`; Retrieve Webhook returns its status alone; nothing reaches `console.error` and no thrown error holds Resend's body, in [create-resend-client.test.ts](../packages/resend-client/src/create-resend-client.test.ts) (slice 4). Pending — fake-API `429` storm completes the run (slice 4).
+**Evidence:** the limiter on a fake clock spaces starts 500 ms apart at 2 req/s, yields `ratelimit-reset` below half the limit and not at or above it, waits `retry-after` then retries, and throws `rate_limited` on a quota `429`, a `429` with no `retry-after`, or a wait past the deadline, before sleeping, in [limiter.test.ts](../packages/resend-client/src/limiter.test.ts) (slice 4). The real client against the fake Resend API: `baseUrl`, `User-Agent` and `Idempotency-Key` sent; status-then-name mapping with its default branch; a `5xx` or refused connection retried twice then `resend_unavailable`; Retrieve Webhook returns its status alone; nothing reaches `console.error` and no thrown error holds Resend's body, in [create-resend-client.test.ts](../packages/resend-client/src/create-resend-client.test.ts) (slice 4). Five `429`s with `retry-after: 1` on List Events, then the run completes with every missing event replayed, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) (slice 4).
 
 ### ADR-013 — Pure core and local mode
 
