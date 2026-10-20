@@ -15,7 +15,7 @@ reached: `ledger gaps --since 24h` (F2); `ledger reconcile --dry-run` (A2, D1); 
 `LedgerApp-reconcile-gap` email (D4, owner-observed).
 
 Order: A → B → C → D → E → F, then [Teardown](#teardown). B4 waits for the next `:00`; D1 needs a
-start minute between `:02` and `:40` UTC and no unfinished run.
+start minute between `:02` and `:40` UTC, no unfinished run, and B5 reading `"OK"`.
 
 ## Before you start
 
@@ -247,7 +247,9 @@ export AWS_PROFILE=ledger AWS_REGION=us-east-2
 ## Path D — one real gap and its recovery (J3)
 
 **Walked as:** Operator. Deployed values loaded, plus `RESEND_API_KEY` and
-`LEDGER_DEPLOY_RESEND_WEBHOOK_ID`; start between `:02` and `:40` UTC.
+`LEDGER_DEPLOY_RESEND_WEBHOOK_ID`; start between `:02` and `:40` UTC, and only once B5 reads
+`"OK"`: an alarm already in `ALARM` (the hour before the reconciler's first run reads as breaching)
+makes no transition, so D4 would show no drill email.
 
 1. **Run the gap drill.**
 
