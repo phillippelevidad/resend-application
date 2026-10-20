@@ -257,12 +257,14 @@ makes no transition, so D4 would show no drill email.
    pnpm aws:gap-drill
    ```
 
-   Expect: exit `0` in about 12 minutes; lines in order `aws:gap-drill: lowering the ingest route
-   throttle`, `sent one email`, `events visible after <ms> ms` (RS-U13), `waiting <s> s for the grace
-   window`, `ingest route restored`, `dry run: missing 2`, `reconcile: missing 2 replayed 2 failed 0`,
-   `stored 2 of 2`, `dry run: missing 0`, `gaps: newest run missing 0`,
-   `created_at unchanged by the replay: yes` (RS-U10), and `aws:gap-drill: done`; no line holds an
-   id, a key, a URL or an address.
+   Expect: exit `0` in about 12 to 14 minutes; lines in order `aws:gap-drill: lowering the ingest
+   route throttle`, `sent one email`, `events visible after <ms> ms` (RS-U13), `waiting <s> s for
+   the grace window`, `ingest route restored`, `stored before the reconcile: 0`, `dry run: missing
+   2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, `dry run: missing 0`,
+   `gaps: newest run missing 0`, `created_at unchanged by the replay: yes` (RS-U10), and
+   `aws:gap-drill: done`; no line holds an id, a key, a URL or an address. If other mail reached the
+   webhook while the route was lowered, both `missing` counts and `replayed` are above 2,
+   `replayed` still equals `missing` with `failed 0`, and `stored 2 of 2` is unchanged.
    **Ask-first:** one send to `delivered@resend.dev`, its two replays, and the ingest route throttle
    lowered then restored on the owner's stack.
 
@@ -272,8 +274,11 @@ makes no transition, so D4 would show no drill email.
    pnpm -s ledger gaps --since 1h
    ```
 
-   Expect: exit `0`; three manual rows, newest first: `dry run` with `missing 0`, then
-   `missing 2   replayed 2   failed 0   ok`, then `dry run` with `missing 2`.
+   Expect: exit `0`; three or more manual rows, newest first: `dry run` with `missing 0`; then any
+   earlier final dry runs that still found missing events (the drill repeats it every 2 s, up to
+   120 s, while other mail's replays are stored); then `missing <n>   replayed <n>   failed 0   ok`,
+   one `<n>` ≥ 2 (2 when no other mail reached the webhook during the drill); then `dry run` with
+   `missing` ≥ 2.
 
 3. **Read health.**
 

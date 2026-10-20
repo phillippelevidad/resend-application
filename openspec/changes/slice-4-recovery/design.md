@@ -525,23 +525,38 @@ Over `readStage` and `withThrottle` (`http-api-stage.ts`):
   2. Lower the ingest route throttle, with a `finally` that restores it (D31's guard).
   3. `sendEmail` from `onboarding@resend.dev` to `delivered@resend.dev`, subject `Ledger gap drill`,
      a one-line text, `Idempotency-Key` `ledger-gap-drill-<UTC timestamp>` (RS-42).
-  4. Poll List Events every 2 s, up to 120 s, until two ids absent from step 1's page appear;
-     print `events visible after <ms> ms` (first-seen time minus the newest item's `createdAt`,
-     RS-U13).
-  5. Wait until the newest event is older than the grace window plus 30 s, printing the wait.
+  4. Poll List Events every 2 s, up to 120 s, until the ids absent from step 1's page hold an
+     `email.sent` and an `email.delivered` (RS-39). An item names no email (RS-14), so other mail
+     on the webhook appears among them too; requiring both types keeps another email's event from
+     ending the wait before the send's own `email.delivered` is listed. Print `events visible
+     after <ms> ms` (first-seen time minus the newest item's `createdAt`, RS-U13).
+  5. Wait until the newest new event, and the send itself, are older than the grace window plus
+     30 s, printing the wait.
   6. Restore the throttle, printing `ingest route restored`. Resend's next attempt is ≈ 35 min after
      the send (RS-09), so the restore precedes it.
   7. As child processes (`process.execPath` with `apps/cli/src/main.ts`, no shell, the drill's
-     `LEDGER_URL` and `LEDGER_TOKEN`): `ledger reconcile --dry-run --json`; `ledger reconcile
-     --json`; poll `ledger email <email_id> --json` every 2 s, up to 120 s, until `event_count` is
-     2; `ledger reconcile --dry-run --json`; `ledger gaps --since 1h --json`. Print `dry run:
-     missing <n>`, `reconcile: missing <n> replayed <n> failed <n>`, `stored 2 of 2`, `dry run:
-     missing 0`, `gaps: newest run missing 0`. Any other count fails the drill.
+     `LEDGER_URL` and `LEDGER_TOKEN`): `ledger email <email_id> --json`, which MUST answer
+     `email_not_found` (the route refused every delivery of the send; a throttle is best-effort,
+     AWS-14); `ledger reconcile --dry-run --json`; `ledger reconcile --json`; poll `ledger email
+     <email_id> --json` every 2 s, up to 120 s, until `event_count` is 2; `ledger reconcile
+     --dry-run --json`, repeated every 2 s up to 120 s until it reads 0; `ledger gaps --since 1h
+     --json`. Print `stored before the reconcile: 0`, `dry run: missing <n>`, `reconcile: missing
+     <n> replayed <n> failed <n>`, `stored 2 of 2`, `dry run: missing 0` (the last result only),
+     `gaps: newest run missing 0`. Other mail on the webhook while the route is lowered is refused
+     too, and List Events names no email (RS-14), so the runs' counts may exceed the send's 2. The
+     drill fails unless the dry run and the real run each find at least 2, the real run's
+     `replayed` equals its `missing` with `failed` 0, `ledger email` reaches 2, and the final dry
+     run reaches 0. That 0 covers every refused event older than the grace window; other mail
+     refused in the 10 min before it is left to Resend's retries and the hourly run.
   8. Compare each stored `event_created_at` with `retrieveWebhookEventCreatedAt`; print `created_at
      unchanged by the replay: yes | no` (RS-U10).
 - Root script: `"aws:gap-drill": "node --env-file-if-exists=.env.local infra/scripts/gap-drill.ts"`.
 - `run-gap-drill.test.ts`: each refusal changes nothing; a failure after the lower restores; a trip
-  mid-drill leaves the setting; a count mismatch fails after restoring; no line holds the fake key.
+  mid-drill leaves the setting; a count mismatch fails after restoring; the send's events stored
+  before the reconcile fail the drill; other mail refused alongside the send ends `done` with higher
+  run counts, yet fails when the send's own events are not stored or the run replays fewer than it
+  found; another email's event listed first does not end step 4's wait; the final dry run is
+  repeated until it reads 0; no line holds the fake key.
 
 ### Ingest (`packages/ingest`)
 

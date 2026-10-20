@@ -8,8 +8,9 @@ import { createScriptOutput, type ScriptOutput, type ScriptSink } from './script
 // URL or an address. It is the owner's Ask-first run (root AGENTS.md → Permissions): it makes one
 // send, and its reconcile replays through Resend.
 
-// A List Events item as the drill reads it.
-export type DrillEvent = { readonly id: string; readonly createdAt: Date };
+// A List Events item as the drill reads it. An item names no email (RS-14: `id`, `type`,
+// `created_at`, `status`), so the drill cannot tell its own events from other mail's on the webhook.
+export type DrillEvent = { readonly id: string; readonly type: string; readonly createdAt: Date };
 
 // One `ledger` CLI run as a child process: its exit code and its stdout, parsed as JSON.
 export type LedgerRun = { readonly code: number; readonly json: unknown };
@@ -50,7 +51,10 @@ export type GapDrillConfig = {
 const SCRIPT = 'aws:gap-drill';
 
 // RS-39: a send to `delivered@resend.dev` produces two events, `email.sent` then `email.delivered`.
-const EXPECTED_EVENTS = 2;
+// Other mail on the webhook while the route is lowered is refused too, so it adds to what the
+// reconcile finds missing and replays; the drill's own count is checked through `ledger email`.
+const OWN_EVENT_TYPES = ['email.sent', 'email.delivered'] as const;
+const OWN_EVENTS = OWN_EVENT_TYPES.length;
 // The UTC minutes the drill may start in: clear of the hourly reconcile at :00, with time to finish.
 const FIRST_MINUTE = 2;
 const LAST_MINUTE = 40;
@@ -166,7 +170,6 @@ async function drill(
   // window passed, then the route restored before Resend's next retry (≈ 35 min, RS-09).
   let restored = false;
   let emailId: string;
-  let newEvents: readonly DrillEvent[];
   try {
     // Inside the `try`: a lower that applied and then threw is still restored, and a restore with
     // nothing lowered changes nothing.
@@ -182,20 +185,25 @@ async function drill(
       );
     }
     emailId = sent.emailId;
+    const sentAt = steps.now().getTime();
     out.line('sent one email');
 
+    // Until every type of the send's sequence is among the new ids: another email's events alone
+    // cannot end the wait before the send's own `email.delivered` is listed.
     let seen: readonly DrillEvent[] = [];
-    for (let waited = 0; seen.length < EXPECTED_EVENTS; waited += POLL_INTERVAL_MS) {
+    const listed = () => OWN_EVENT_TYPES.every((type) => seen.some((event) => event.type === type));
+    for (let waited = 0; !listed(); waited += POLL_INTERVAL_MS) {
       if (waited >= POLL_BOUND_MS) throw fail("the send's events never appeared in List Events");
       await steps.sleep(POLL_INTERVAL_MS);
       const page = await step('List Events failed', () => steps.newestEvents());
       seen = page.filter((event) => !before.has(event.id));
     }
-    newEvents = seen;
-    const newest = Math.max(...newEvents.map((event) => event.createdAt.getTime()));
+    const newest = Math.max(...seen.map((event) => event.createdAt.getTime()));
     out.line(`events visible after ${Math.max(0, steps.now().getTime() - newest)} ms`);
 
-    const waitMs = newest + GRACE_WAIT_MS - steps.now().getTime();
+    // From the newest new event, and never from before the send: an older event of other mail
+    // cannot shorten the wait the send's own events need.
+    const waitMs = Math.max(newest, sentAt) + GRACE_WAIT_MS - steps.now().getTime();
     if (waitMs > 0) {
       out.line(`waiting ${Math.ceil(waitMs / 1000)} s for the grace window`);
       await steps.sleep(waitMs);
@@ -222,15 +230,30 @@ async function drill(
     }
   }
 
-  // 7. The recovery, through the CLI as the operator runs it.
-  const expected = newEvents.length;
+  // 7. The recovery, through the CLI as the operator runs it. The runs count every refused event on
+  // the webhook, the send's and any other mail's, so they find at least the send's own; the send's
+  // recovery is read from `ledger email`, and the final dry run's 0 covers every refused event older
+  // than the grace window.
+  // First, none of the send's events is stored: a throttle is best-effort (AWS-14), and the counts
+  // below only prove recovery if the send was missing.
+  const beforeReconcile = await step('ledger email failed', () =>
+    steps.ledger(['email', emailId, '--json']),
+  );
+  if (
+    beforeReconcile.code !== 1 ||
+    field(field(beforeReconcile.json, 'error'), 'code') !== 'email_not_found'
+  ) {
+    throw fail("the send's events were stored before the reconcile");
+  }
+  out.line('stored before the reconcile: 0');
+
   const dry = await step('ledger reconcile --dry-run failed', () =>
     steps.ledger(['reconcile', '--dry-run', '--json']),
   );
   const dryMissing = num(dry.json, 'missing');
   out.line(`dry run: missing ${dryMissing ?? '?'}`);
-  if (dry.code !== 0 || dryMissing !== expected)
-    throw fail(`the dry run did not find ${expected} missing`);
+  if (dry.code !== 0 || dryMissing === undefined || dryMissing < OWN_EVENTS)
+    throw fail(`the dry run did not find ${OWN_EVENTS} missing`);
 
   const real = await step('ledger reconcile failed', () => steps.ledger(['reconcile', '--json']));
   const [missing, replayed, failed] = ['missing', 'replayed', 'failed'].map((key) =>
@@ -239,28 +262,41 @@ async function drill(
   out.line(
     `reconcile: missing ${missing ?? '?'} replayed ${replayed ?? '?'} failed ${failed ?? '?'}`,
   );
-  if (real.code !== 0 || missing !== expected || replayed !== expected || failed !== 0) {
+  if (
+    real.code !== 0 ||
+    missing === undefined ||
+    missing < OWN_EVENTS ||
+    replayed !== missing ||
+    failed !== 0
+  ) {
     throw fail('the reconcile did not replay every missing event');
   }
 
   let stored = 0;
   let timeline: unknown;
-  for (let waited = 0; stored < expected; waited += POLL_INTERVAL_MS) {
+  for (let waited = 0; stored < OWN_EVENTS; waited += POLL_INTERVAL_MS) {
     if (waited >= POLL_BOUND_MS) throw fail('the replayed events were never stored');
     await steps.sleep(POLL_INTERVAL_MS);
     const email = await steps.ledger(['email', emailId, '--json']);
     stored = email.code === 0 ? (num(email.json, 'event_count') ?? 0) : 0;
     timeline = field(email.json, 'timeline');
   }
-  out.line(`stored ${stored} of ${expected}`);
+  out.line(`stored ${stored} of ${OWN_EVENTS}`);
 
-  const after = await step('the final ledger reconcile --dry-run failed', () =>
-    steps.ledger(['reconcile', '--dry-run', '--json']),
-  );
-  const afterMissing = num(after.json, 'missing');
+  // Repeated within the poll bound: other mail's replays may still be on their way once the send's
+  // own are stored. Only the last result is printed.
+  const finalBy = steps.now().getTime() + POLL_BOUND_MS;
+  let afterMissing: number | undefined;
+  for (;;) {
+    const after = await step('the final ledger reconcile --dry-run failed', () =>
+      steps.ledger(['reconcile', '--dry-run', '--json']),
+    );
+    afterMissing = after.code === 0 ? num(after.json, 'missing') : undefined;
+    if (afterMissing === 0 || steps.now().getTime() >= finalBy) break;
+    await steps.sleep(POLL_INTERVAL_MS);
+  }
   out.line(`dry run: missing ${afterMissing ?? '?'}`);
-  if (after.code !== 0 || afterMissing !== 0)
-    throw fail('the final dry run still found missing events');
+  if (afterMissing !== 0) throw fail('the final dry run still found missing events');
 
   const gaps = await step('ledger gaps failed', () =>
     steps.ledger(['gaps', '--since', '1h', '--json']),
@@ -272,7 +308,7 @@ async function drill(
 
   // 8. RS-U10: whether a replay keeps the event's created_at.
   const items = Array.isArray(timeline) ? timeline : [];
-  let unchanged = items.length === expected;
+  let unchanged = items.length === OWN_EVENTS;
   for (const item of items) {
     const svixId = field(item, 'svix_id');
     const storedAt = field(item, 'event_created_at');

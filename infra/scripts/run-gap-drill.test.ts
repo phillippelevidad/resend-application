@@ -1,6 +1,8 @@
 // Slice 4 D32, Ships 9: the gap drill's order over fake steps (unit, no AWS, no Resend, no real
 // time). Each refusal changes nothing; every path past the lower restores the ingest route, unless
-// the stack tripped meanwhile; a wrong count fails; no line holds the key, a URL or an address.
+// the stack tripped meanwhile; a wrong count fails, other mail refused alongside the send does not;
+// no line holds the key, a URL or an address.
+import { RECONCILE_GRACE_MS } from '@ledger/core';
 import { describe, expect, it } from 'vitest';
 import {
   type DrillEvent,
@@ -34,13 +36,23 @@ type World = {
   depths: { queue: number; dlq: number };
   lastRunFinished: boolean | null;
   routeSetting: boolean;
+  // Each is listed once the fake clock reaches its `createdAt`.
   events: DrillEvent[];
   sendRejected: number | undefined;
-  // What the real reconcile replays and the dry runs find, in order.
+  // The send's `email.delivered`, this long after the send.
+  deliveredAfterMs: number;
+  // Other mail on the webhook while the route is lowered: one event per offset after the send.
+  otherEventsAfterMs: { type: string; afterMs: number }[];
+  // What the dry runs find, in order, the last one repeated; what the real reconcile finds and
+  // replays; what `ledger email` counts for the send after the real reconcile, and whether it
+  // already held the send's events before it (the throttle let a delivery through, AWS-14).
   dryMissing: number[];
+  realMissing: number;
   replayed: number;
-  stored: boolean;
+  storedCount: number;
+  storedBeforeReconcile: boolean;
   createdAtShift: number;
+  restoredAt: number | undefined;
 };
 
 const start = Date.parse('2026-10-21T13:05:00.000Z');
@@ -56,12 +68,17 @@ function newWorld(overrides: Partial<World> = {}): World {
     depths: { queue: 0, dlq: 0 },
     lastRunFinished: true,
     routeSetting: false,
-    events: [{ id: 'msg_old', createdAt: new Date(start - 3_600_000) }],
+    events: [{ id: 'msg_old', type: 'email.delivered', createdAt: new Date(start - 3_600_000) }],
     sendRejected: undefined,
+    deliveredAfterMs: 1_000,
+    otherEventsAfterMs: [],
     dryMissing: [2, 0],
+    realMissing: 2,
     replayed: 2,
-    stored: true,
+    storedCount: 2,
+    storedBeforeReconcile: false,
     createdAtShift: 0,
+    restoredAt: undefined,
     ...overrides,
   };
 }
@@ -69,6 +86,7 @@ function newWorld(overrides: Partial<World> = {}): World {
 function stepsFor(world: World): GapDrillSteps {
   const call = (name: string) => world.calls.push(name);
   let dryRuns = 0;
+  let reconciled = false;
   const run = (json: unknown, code = 0): LedgerRun => ({ code, json });
   const runJson = (missing: number, replayed: number, failed = 0) => ({
     object: 'reconcile_run',
@@ -82,13 +100,25 @@ function stepsFor(world: World): GapDrillSteps {
     queueDepths: async () => world.depths,
     lastRunFinished: async () => world.lastRunFinished,
     ingestRouteSettingExists: async () => world.routeSetting,
-    newestEvents: async () => [...world.events],
+    newestEvents: async () =>
+      world.events
+        .filter((event) => event.createdAt.getTime() <= world.now)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
     async sendEmail() {
       call('sendEmail');
       if (world.sendRejected !== undefined) return { rejectedStatus: world.sendRejected };
-      world.events.unshift(
-        { id: 'msg_new_delivered', createdAt: new Date(world.now + 1_000) },
-        { id: 'msg_new_sent', createdAt: new Date(world.now + 500) },
+      world.events.push(
+        {
+          id: 'msg_new_delivered',
+          type: 'email.delivered',
+          createdAt: new Date(world.now + world.deliveredAfterMs),
+        },
+        { id: 'msg_new_sent', type: 'email.sent', createdAt: new Date(world.now + 500) },
+        ...world.otherEventsAfterMs.map(({ type, afterMs }, index) => ({
+          id: `msg_other_${index}`,
+          type,
+          createdAt: new Date(world.now + afterMs),
+        })),
       );
       return { emailId: EMAIL_ID };
     },
@@ -107,19 +137,26 @@ function stepsFor(world: World): GapDrillSteps {
       call('restore');
       if (world.tripped) return 'left: tripped';
       world.routeSetting = false;
+      world.restoredAt = world.now;
       return 'restored';
     },
     async ledger(args) {
       call(`ledger ${args.join(' ')}`);
       if (args[0] === 'reconcile' && args.includes('--dry-run')) {
-        const missing = world.dryMissing[dryRuns] ?? 0;
+        const missing = world.dryMissing[Math.min(dryRuns, world.dryMissing.length - 1)] ?? 0;
         dryRuns += 1;
         return run(runJson(missing, 0));
       }
-      if (args[0] === 'reconcile') return run(runJson(2, world.replayed));
+      if (args[0] === 'reconcile') {
+        reconciled = true;
+        return run(runJson(world.realMissing, world.replayed));
+      }
+      if (args[0] === 'email' && !reconciled && !world.storedBeforeReconcile) {
+        return run({ error: { code: 'email_not_found' } }, 1);
+      }
       if (args[0] === 'email') {
         return run({
-          event_count: world.stored ? 2 : 0,
+          event_count: world.storedCount,
           timeline: world.events
             .filter((event) => event.id.startsWith('msg_new'))
             .map((event) => ({
@@ -165,6 +202,7 @@ describe('runGapDrill', () => {
       expect.stringMatching(/^aws:gap-drill: events visible after \d+ ms\n$/),
       expect.stringMatching(/^aws:gap-drill: waiting \d+ s for the grace window\n$/),
       'aws:gap-drill: ingest route restored\n',
+      'aws:gap-drill: stored before the reconcile: 0\n',
       'aws:gap-drill: dry run: missing 2\n',
       'aws:gap-drill: reconcile: missing 2 replayed 2 failed 0\n',
       'aws:gap-drill: stored 2 of 2\n',
@@ -268,6 +306,95 @@ describe('runGapDrill', () => {
     expect(run.last).toBe('aws:gap-drill: failed: the final dry run still found missing events\n');
   });
 
+  // Other mail on the owner's webhook while the route is lowered is refused too: the runs count it,
+  // `ledger email` counts only the send's own events.
+  const otherMail = (): Partial<World> => ({
+    otherEventsAfterMs: [{ type: 'email.delivered', afterMs: 200 }],
+    dryMissing: [3, 0],
+    realMissing: 3,
+    replayed: 3,
+  });
+
+  it('recovers when other mail was refused during the drill, ending done', async () => {
+    const world = newWorld(otherMail());
+
+    const run = await drill(world);
+
+    expect(run.code).toBe(0);
+    expect(run.lines).toEqual(
+      expect.arrayContaining([
+        'aws:gap-drill: dry run: missing 3\n',
+        'aws:gap-drill: reconcile: missing 3 replayed 3 failed 0\n',
+        'aws:gap-drill: stored 2 of 2\n',
+        'aws:gap-drill: dry run: missing 0\n',
+        'aws:gap-drill: created_at unchanged by the replay: yes\n',
+      ]),
+    );
+    expect(run.last).toBe('aws:gap-drill: done\n');
+    expect(world.routeSetting).toBe(false);
+  });
+
+  // The throttle is best-effort (AWS-14): a send that was never missing proves no recovery, however
+  // the run counts read.
+  it("fails when the send's events were stored before the reconcile, after restoring", async () => {
+    const world = newWorld({ ...otherMail(), storedBeforeReconcile: true });
+
+    const run = await drill(world);
+
+    expect(run.code).toBe(1);
+    expect(run.last).toBe(
+      "aws:gap-drill: failed: the send's events were stored before the reconcile\n",
+    );
+    expect(run.lines).toContain('aws:gap-drill: ingest route restored\n');
+    expect(world.routeSetting).toBe(false);
+    expect(world.calls.filter((name) => name.startsWith('ledger reconcile'))).toEqual([]);
+  });
+
+  it("fails when the send's own events are not stored, though other mail fills the counts", async () => {
+    const world = newWorld({ ...otherMail(), storedCount: 1 });
+
+    const run = await drill(world);
+
+    expect(run.code).toBe(1);
+    expect(run.last).toBe('aws:gap-drill: failed: the replayed events were never stored\n');
+    expect(world.routeSetting).toBe(false);
+  });
+
+  it('fails when the reconcile replays fewer than it found missing', async () => {
+    const run = await drill(newWorld({ ...otherMail(), replayed: 2 }));
+
+    expect(run.last).toBe(
+      'aws:gap-drill: failed: the reconcile did not replay every missing event\n',
+    );
+  });
+
+  // The regression: two new ids, the send's `email.sent` and another email's, ended the wait before
+  // the send's `email.delivered` was listed, so the route came back while it was inside the grace
+  // window and the reconcile after the restore could not count it.
+  it("waits for the send's email.delivered when another email's event is listed first", async () => {
+    const deliveredAfterMs = 40_000;
+    const world = newWorld({
+      ...otherMail(),
+      otherEventsAfterMs: [{ type: 'email.sent', afterMs: 200 }],
+      deliveredAfterMs,
+    });
+
+    const run = await drill(world);
+
+    expect(run.code).toBe(0);
+    expect(world.restoredAt).toBeGreaterThan(start + deliveredAfterMs + RECONCILE_GRACE_MS);
+  });
+
+  it("repeats the final dry run while other mail's replays are still being stored", async () => {
+    const world = newWorld({ ...otherMail(), dryMissing: [3, 1, 0] });
+
+    const run = await drill(world);
+
+    expect(run.code).toBe(0);
+    expect(run.lines).not.toContain('aws:gap-drill: dry run: missing 1\n');
+    expect(run.lines).toContain('aws:gap-drill: dry run: missing 0\n');
+  });
+
   it('reports created_at changed when Resend returns another one', async () => {
     const run = await drill(newWorld({ createdAtShift: 5 }));
 
@@ -281,6 +408,7 @@ describe('runGapDrill', () => {
       await drill(newWorld({ apiUrl: 'https://other.invalid' })),
       await drill(newWorld({ trippedMidDrill: true })),
       await drill(newWorld({ dryMissing: [1, 0] })),
+      await drill(newWorld(otherMail())),
     ];
     for (const run of runs) {
       for (const line of run.lines) {
