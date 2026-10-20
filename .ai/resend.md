@@ -250,7 +250,7 @@ Resend.
 | Create a Resend account | Yes | Done |
 | Create an API key (`full_access` for the webhook API, RS-18; shown once) | Yes, dashboard or `POST /api-keys` | Done: a `full_access` key exists (live read) |
 | Verify a sending domain: DNS records; needed to send alerts to anyone but the account owner (RS-34) | Yes, needs DNS access | Done: verified 2026-10-17 (`GET /domains`: `verified`, sending enabled; [about.md → Project domain](about.md#open-questions)); it carried RS-43's send |
-| Create the webhook pointing at the ingest URL and subscribe to events; the response returns the signing secret (RS-13) | Yes, dashboard or `POST /webhooks`, so it is scriptable | Not done: no webhook exists (live read) |
+| Create the webhook pointing at the ingest URL and subscribe to events; the response returns the signing secret (RS-13) | Yes, dashboard or `POST /webhooks`, so it is scriptable | Done: the production webhook exists, repointed to the kept deploy's ingest URL, since 2026-10-18 (slice 2's walk) |
 | Store the signing secret in Secrets Manager | Adopter's step ([features.md → connect webhook](features.md#adopter-lifecycle)) | — |
 | Verify with one send to `delivered@resend.dev` (RS-32) | Yes, with no verified domain (RS-42) | Not done as the verify stage (slice 2); test-address sends accepted 2026-10-17 (RS-42) |
 

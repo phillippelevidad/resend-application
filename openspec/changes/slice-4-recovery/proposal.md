@@ -23,7 +23,7 @@ settles (D1–D41, C1–C22) is carried forward unchanged.
 
 ## What Changes
 
-The card's `Ships` list, verbatim. Each bullet's state on `HEAD` is PP §5's (re-checked 2026-10-19:
+The card's `Ships` list, verbatim, as task 1.1 left it (the owner's rulings below applied). Each bullet's state on `HEAD` is PP §5's (re-checked 2026-10-19:
 only the PP and its two repairs have landed since `5fe2a51`; no code changed).
 
 1. `packages/resend-client` with one 2 req/s limiter that yields on low `ratelimit-remaining` and waits `retry-after` on `429`, every response checked and mapped by status then name; evidence: limiter unit tests.
@@ -32,10 +32,11 @@ only the PP and its two repairs have landed since `5fe2a51`; no code changed).
 4. `ledger gaps [--since]` and `ledger reconcile [--dry-run] [--lookback] [--no-wait]`, polling until the run is finished or `run_abandoned`, with the last run in `ledger health`; evidence: SDK ↔ API contract tests (a run with no `finished_at` past its time budget reads `run_abandoned`) and CLI `--json` output tests.
 5. Rotation runbook entry, and ingest emitting the `ingest.rejected{reason}` metric the runbook watches; evidence: unit test with a fake clock where a secret removed from the store gets `401` once the 5-minute cache TTL passes and emits `ingest.rejected` with `reason=signature`.
 6. RS-U01 and RS-U20 settled by one Ask-first replay of a stored event on the owner's webhook; RS-U02 settled read-only by comparing stored `svix_id`s with List Events ids.
-7. RS-U03 reach of at least the 3-day lookback, RS-U13 visibility lag and RS-U17 revoked-key status closed by read-only checks; PG-U03 proved safe either way (Free never bills; a quota suspension or a full store pauses the worker while the queue holds events, ADR-015), its row citing that, with the 30-idle-day usage reading added beside aws.md → Cost shape when it exists; RS-U06 proved safe by the status read every run.
+7. RS-U03 reach of at least the 3-day lookback and RS-U13 visibility lag closed by read-only checks, and RS-U17 revoked-key status closed by one Ask-first create and revoke of a throwaway key and a read with it; PG-U03 proved safe either way (Free never bills; a quota suspension or a full store pauses the worker while the queue holds events, ADR-015), its row citing that, with the 30-idle-day usage reading added beside aws.md → Cost shape when it exists; RS-U06 proved safe by the status read every run.
 8. RS-U04 and RS-U05 closed by the Ask-first disabled-webhook experiments, RS-U09 by an Ask-first secret rotation on a test webhook, RS-U10 by the RS-U01 replay, or each proved safe either way, its row citing the result.
-9. A gap script for the owner's deployment produces one real gap: it lowers the ingest route throttle to its stop value, makes one Ask-first send to `delivered@resend.dev`, restores the throttle after the grace window and before Resend's next scheduled retry (RS-09), then runs `ledger reconcile --dry-run` (1 missing), `ledger reconcile` and `ledger gaps` (0 missing); evidence: the recorded run.
+9. A gap script for the owner's deployment produces one real gap: it lowers the ingest route throttle to its stop value, makes one Ask-first send to `delivered@resend.dev`, restores the throttle after the grace window and before Resend's next scheduled retry (RS-09), then runs `ledger reconcile --dry-run` (the send's events missing, RS-39), `ledger reconcile`, a final `ledger reconcile --dry-run` and `ledger gaps` (0 missing); evidence: the recorded run.
 10. M1 boundary: the README states only claims whose evidence landed in slices 0–4, with 0 unlinked claims and the CI link check green.
+11. An alarm `LedgerApp-reconcile-gap` on `reconcile.missing` fires when a run finds missing events or no run finishes cleanly in an hour, with its runbook entry; evidence: a CDK assertion test, the alarm-to-runbook link check, and the alarm email from the recorded gap-script run.
 
 **Owner rulings on the card (2026-10-19), applied by task 1.1** before anything is built, because a
 new or reworded bullet is a scope change that starts at the card
