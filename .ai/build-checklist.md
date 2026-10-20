@@ -58,7 +58,7 @@ The marker lives on the card's `Status` line, in backticks, and nowhere else. He
 marker-free: they are link anchors (`#2b--local-mode-queue-and-docker-compose`). Checkbox lines
 appear only inside a `Ships` list. A ticked `Status` over an unticked `Ships` box is the card lying.
 
-## M1 — MVP
+## M1 — Proof of concept
 
 Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; evidence over breadth.
 
@@ -152,29 +152,49 @@ Foundations, local v0, durable ingest on AWS, recovery, and a usable CLI; eviden
 
 ### 4 — Recovery
 
-- **Status:** `[ ]`
+- **Status:** `[!]` Ships 7's RS-U03 reach read waits for 2026-10-21 (the webhook is younger than 72 h); then tasks 12.4, 12.7, 12.8, 14.2 and `opsx:archive` ([M2 → Carried over from slice 4](#m2--mvp)).
 - **Goal:** Events missed during an outage longer than Resend's retry schedule are found by id diff and replayed through ingest, hourly and on demand, with no duplicates.
 - **Depends on:** 3.
 - **Refs:** [ADR-007](architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest) · [ADR-009](architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance) · [ADR-012](architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller) · [resend.md → Headless Webhook API](resend.md#headless-webhook-api-rs-13rs-18) · [integrations.md → Locked rules](integrations.md#locked-rules-must) · [integrations.md → Secrets layout](integrations.md#secrets-layout) · [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run) · [gaps.list](api-contract.md#gapslist) · [reconcile.getRun](api-contract.md#reconcilegetrun) · [reconcile.start](api-contract.md#reconcilestart) · [health.get](api-contract.md#healthget) · [features.md → recover, rotate secret](features.md#adopter-lifecycle) · [J3](features.md#j3--outage--recovery) · [J5](features.md#j5--secret-rotation)
 - **Ships:**
-  - [ ] `packages/resend-client` with one 2 req/s limiter that yields on low `ratelimit-remaining` and waits `retry-after` on `429`, every response checked and mapped by status then name; evidence: limiter unit tests.
-  - [ ] Reconciler on the hourly cron and on demand writes one `reconcile_runs` row per run, claims it before any Resend call (`claimed_at`, invoke `MaximumRetryAttempts: 0`) and never overlaps; evidence: an integration test where two concurrent starts yield one run and one `reconcile_in_progress`, one where a second invoke of a claimed run makes no Resend call, and a fake-API integration test where an outage past the retry schedule ends 100 % recovered with 0 duplicates, and a 5-day gap since the last good run is recovered with no `--lookback`.
-  - [ ] A disabled webhook stops the run with `webhook_disabled`, and a `429` storm with `retry-after` still completes; evidence: fake-API integration tests.
-  - [ ] `ledger gaps [--since]` and `ledger reconcile [--dry-run] [--lookback] [--no-wait]`, polling until the run is finished or `run_abandoned`, with the last run in `ledger health`; evidence: SDK ↔ API contract tests (a run with no `finished_at` past its time budget reads `run_abandoned`) and CLI `--json` output tests.
-  - [ ] Rotation runbook entry, and ingest emitting the `ingest.rejected{reason}` metric the runbook watches; evidence: unit test with a fake clock where a secret removed from the store gets `401` once the 5-minute cache TTL passes and emits `ingest.rejected` with `reason=signature`.
-  - [ ] RS-U01 and RS-U20 settled by one Ask-first replay of a stored event on the owner's webhook; RS-U02 settled read-only by comparing stored `svix_id`s with List Events ids.
-  - [ ] RS-U03 reach of at least the 3-day lookback, RS-U13 visibility lag and RS-U17 revoked-key status closed by read-only checks; PG-U03 proved safe either way (Free never bills; a quota suspension or a full store pauses the worker while the queue holds events, ADR-015), its row citing that, with the 30-idle-day usage reading added beside aws.md → Cost shape when it exists; RS-U06 proved safe by the status read every run.
-  - [ ] RS-U04 and RS-U05 closed by the Ask-first disabled-webhook experiments, RS-U09 by an Ask-first secret rotation on a test webhook, RS-U10 by the RS-U01 replay, or each proved safe either way, its row citing the result.
-  - [ ] A gap script for the owner's deployment produces one real gap: it lowers the ingest route throttle to its stop value, makes one Ask-first send to `delivered@resend.dev`, restores the throttle after the grace window and before Resend's next scheduled retry (RS-09), then runs `ledger reconcile --dry-run` (1 missing), `ledger reconcile` and `ledger gaps` (0 missing); evidence: the recorded run.
-  - [ ] M1 boundary: the README states only claims whose evidence landed in slices 0–4, with 0 unlinked claims and the CI link check green.
-- **UI surfaces:** `ledger gaps --since 24h` · `ledger reconcile --dry-run` · `ledger reconcile` · `ledger health` · the hourly cron run.
-- **Ops:** owner: a `full_access` Resend key in Secrets Manager for the reconciler only, and the webhook id as a deploy input; approve the replay experiment and the disabled-webhook experiments (Ask-first); walk the M1 demo against the kept deploy.
+  - [x] `packages/resend-client` with one 2 req/s limiter that yields on low `ratelimit-remaining` and waits `retry-after` on `429`, every response checked and mapped by status then name; evidence: limiter unit tests.
+  - [x] Reconciler on the hourly cron and on demand writes one `reconcile_runs` row per run, claims it before any Resend call (`claimed_at`, invoke `MaximumRetryAttempts: 0`) and never overlaps; evidence: an integration test where two concurrent starts yield one run and one `reconcile_in_progress`, one where a second invoke of a claimed run makes no Resend call, and a fake-API integration test where an outage past the retry schedule ends 100 % recovered with 0 duplicates, and a 5-day gap since the last good run is recovered with no `--lookback`.
+  - [x] A disabled webhook stops the run with `webhook_disabled`, and a `429` storm with `retry-after` still completes; evidence: fake-API integration tests.
+  - [x] `ledger gaps [--since]` and `ledger reconcile [--dry-run] [--lookback] [--no-wait]`, polling until the run is finished or `run_abandoned`, with the last run in `ledger health`; evidence: SDK ↔ API contract tests (a run with no `finished_at` past its time budget reads `run_abandoned`) and CLI `--json` output tests.
+  - [x] Rotation runbook entry, and ingest emitting the `ingest.rejected{reason}` metric the runbook watches; evidence: unit test with a fake clock where a secret removed from the store gets `401` once the 5-minute cache TTL passes and emits `ingest.rejected` with `reason=signature`.
+  - [x] RS-U01 and RS-U20 settled by one Ask-first replay of a stored event on the owner's webhook; RS-U02 settled read-only by comparing stored `svix_id`s with List Events ids.
+  - [ ] RS-U03 reach of at least the 3-day lookback and RS-U13 visibility lag closed by read-only checks, and RS-U17 revoked-key status closed by one Ask-first create and revoke of a throwaway key and a read with it; PG-U03 proved safe either way (Free never bills; a quota suspension or a full store pauses the worker while the queue holds events, ADR-015), its row citing that, with the 30-idle-day usage reading added beside aws.md → Cost shape when it exists; RS-U06 proved safe by the status read every run.
+  - [x] RS-U04 and RS-U05 closed by the Ask-first disabled-webhook experiments, RS-U09 by an Ask-first secret rotation on a test webhook, RS-U10 by the RS-U01 replay, or each proved safe either way, its row citing the result.
+  - [x] A gap script for the owner's deployment produces one real gap: it lowers the ingest route throttle to its stop value, makes one Ask-first send to `delivered@resend.dev`, restores the throttle after the grace window and before Resend's next scheduled retry (RS-09), then runs `ledger reconcile --dry-run` (the send's events missing, RS-39), `ledger reconcile`, a final `ledger reconcile --dry-run` and `ledger gaps` (0 missing); evidence: the recorded run.
+  - [x] M1 boundary: the README states only claims whose evidence landed in slices 0–4, with 0 unlinked claims and the CI link check green.
+  - [x] An alarm `LedgerApp-reconcile-gap` on `reconcile.missing` fires when a run finds missing events or no run finishes cleanly in an hour, with its runbook entry; evidence: a CDK assertion test, the alarm-to-runbook link check, and the alarm email from the recorded gap-script run.
+- **UI surfaces:** `ledger gaps --since 24h` · `ledger reconcile --dry-run` · `ledger reconcile` · `ledger health` · the hourly cron run · `pnpm aws:gap-drill` · the `LedgerApp-reconcile-gap` email.
+- **Ops:** owner: a `full_access` Resend key in Secrets Manager for the reconciler only, and the webhook id as a deploy input; approve the replay experiment and the disabled-webhook experiments (Ask-first); walk the M1 demo against the kept deploy; create a dedicated `full_access` key; set `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`; approve the gap drill.
 - **Deferred tail:** RS-U03 re-measured before M2 closes ([slice 7](#7--polish-and-retention)). MCP `list_gaps` and `reconcile` ([slice 5](#5--mcp-server-and-contract-hardening)).
 
-## M2 — Feature complete
+## M2 — MVP
 
 Every [idea §7](../docs/idea.md#7-implementation-plan) phase at v0 depth, a real AWS deploy,
 simulator evidence.
+
+**Carried over from slice 4 (merged 2026-10-20 before it closed). Check these before starting the
+next slice:**
+
+1. Close slice 4: on or after 2026-10-21, walk step C3 of
+   [its walkthrough](../openspec/changes/slice-4-recovery/WALKTHROUGH.md) (List Events reaches
+   back at least 72 h, RS-U03) and record it per task 12.4; then tasks 12.7, 12.8 and 14.2 in
+   [tasks.md](../openspec/changes/slice-4-recovery/tasks.md), the card's `Status` `[x]`, and
+   `opsx:archive`.
+2. The deployed `ledger/resend-api-key` holds a dedicated key the owner plans to revoke. Set its
+   replacement in `LEDGER_DEPLOY_RESEND_API_KEY` and run `pnpm aws:deploy` first, or every hourly
+   run ends `resend_auth_failed` and `LedgerApp-reconcile-gap` fires.
+3. The first `pnpm sim` right after `pnpm dev:full` once printed `sim: no Ledger answered at
+   LEDGER_URL`, and the retry passed. Unconfirmed; it sits on the README's local quick start, so
+   reproduce it or rule it out.
+4. Slice 2's `[!]` (AWS-U01's second half) is still open.
+5. Owner calls from the slice 4 review, none blocking: `ledger reconcile` keeps polling through a
+   transient `api_unavailable`; `ledger health` marks a dry run; a read that lists the emails sent
+   to an address, for support (a contract addition, Ask-first).
 
 ### 2B — Local-mode queue and docker compose
 
@@ -244,7 +264,7 @@ simulator evidence.
 - **Ops:** owner: time the newcomer walk; approve the redeploy (Ask-first).
 - **Deferred tail:** Inngest adapter, read-only UI and inbound projection (tripwires in [about.md → Open questions](about.md#open-questions)).
 
-## M3 — Stretch
+## M3 — Feature complete
 
 npm releases with semver, real AWS load numbers, a learning log. Any order once M2 is done.
 

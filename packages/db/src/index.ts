@@ -40,6 +40,12 @@ export {
   type RecipientStateValues,
   recipientStateRepository,
 } from './recipient-state.repository.ts';
+export {
+  RECONCILE_START_LOCK_KEY,
+  type ReconcileRunOutcome,
+  type ReconcileRunStart,
+  reconcileRunsRepository,
+} from './reconcile-runs.repository.ts';
 export { runTransaction } from './run-transaction.ts';
 export { type ApiTokenRow, apiTokens, type NewApiToken } from './schema/api-tokens.ts';
 export {
@@ -53,6 +59,11 @@ export {
   type RecipientStateRow,
   recipientState,
 } from './schema/recipient-state.ts';
+export {
+  type NewReconcileRun,
+  type ReconcileRunRow,
+  reconcileRuns,
+} from './schema/reconcile-runs.ts';
 export {
   type NewWebhookEvent,
   type WebhookEventRow,

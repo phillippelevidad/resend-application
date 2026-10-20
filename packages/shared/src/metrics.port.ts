@@ -17,8 +17,26 @@ export const metricNames = [
 
 export type MetricName = (typeof metricNames)[number];
 
+// Slice 4 D33: why ingest answered `401`, the one dimension's closed set.
+export type IngestRejectReason = 'signature' | 'timestamp';
+
+// Slice 4 D8: the only dimensioned metric, a closed set of values, so its cost stays fixed (AWS-12).
+export type MetricDimensions = {
+  'ingest.rejected': { readonly reason: IngestRejectReason };
+};
+
+// A metric in `MetricDimensions` takes its dimensions, required; every other name takes none.
+export type MetricDimensionArgs<N extends MetricName> = N extends keyof MetricDimensions
+  ? [dimensions: MetricDimensions[N]]
+  : [];
+
 // D16: ids travel beside a metric as allow-listed log fields, never as dimensions (AWS-12).
 export interface MetricsPort {
-  count(name: MetricName, value: number, fields?: LogFields): void;
+  count<N extends MetricName>(
+    name: N,
+    value: number,
+    fields?: LogFields,
+    ...dimensions: MetricDimensionArgs<N>
+  ): void;
   duration(name: MetricName, ms: number, fields?: LogFields): void;
 }

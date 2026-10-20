@@ -13,6 +13,8 @@ export type TokenList = components['schemas']['TokenList'];
 export type DlqMessage = components['schemas']['DlqMessage'];
 export type DlqMessageList = components['schemas']['DlqMessageList'];
 export type DlqRedrive = components['schemas']['DlqRedrive'];
+export type ReconcileRun = components['schemas']['ReconcileRun'];
+export type ReconcileRunList = components['schemas']['ReconcileRunList'];
 
 type TokenScope = Token['scope'];
 
@@ -53,6 +55,23 @@ export type LedgerClient = {
   readonly dlq: {
     listMessages(params?: { readonly limit?: number }): Promise<SdkResult<DlqMessageList>>;
     startRedrive(): Promise<SdkResult<DlqRedrive>>;
+  };
+  // Slice 4 D27: no retry in this slice (slice 5's reads); `since` and `lookback` are durations
+  // the API parses (`1m` to `30d`).
+  readonly gaps: {
+    list(params?: {
+      readonly since?: string;
+      readonly limit?: number;
+      readonly after?: number;
+    }): Promise<SdkResult<ReconcileRunList>>;
+  };
+  readonly reconcile: {
+    // A string, as the CLI receives it: the API validates the id.
+    getRun(runId: string): Promise<SdkResult<ReconcileRun>>;
+    start(input?: {
+      readonly dry_run?: boolean;
+      readonly lookback?: string;
+    }): Promise<SdkResult<ReconcileRun>>;
   };
 };
 
@@ -189,6 +208,42 @@ export function createLedgerClient(config: LedgerClientConfig): LedgerClient {
       startRedrive: () =>
         settle<DlqRedrive>(() =>
           client.POST('/dlq/redrive', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
+        ),
+    },
+    gaps: {
+      list: (params = {}) =>
+        settle<ReconcileRunList>(() =>
+          client.GET('/gaps', {
+            params: {
+              query: {
+                ...(params.since === undefined ? {} : { since: params.since }),
+                ...(params.limit === undefined ? {} : { limit: String(params.limit) }),
+                ...(params.after === undefined ? {} : { after: String(params.after) }),
+              },
+            },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+        ),
+    },
+    reconcile: {
+      getRun: (runId) =>
+        settle<ReconcileRun>(() =>
+          client.GET('/reconcile/runs/{run_id}', {
+            params: { path: { run_id: runId } },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
+        ),
+      // One request per call, never retried: each accepted call starts a run that spends the
+      // shared Resend budget (slice 4; sdk.md → Retries).
+      start: (input = {}) =>
+        settle<ReconcileRun>(() =>
+          client.POST('/reconcile', {
+            body: {
+              ...(input.dry_run === undefined ? {} : { dry_run: input.dry_run }),
+              ...(input.lookback === undefined ? {} : { lookback: input.lookback }),
+            },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }),
         ),
     },
   };

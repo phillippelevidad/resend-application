@@ -78,6 +78,10 @@ function contextArgs(context: DeployContext): string[] {
     [infraContextKeys.killSwitch]: context.killSwitch ? 'on' : 'off',
     [infraContextKeys.budgetDrill]: context.budgetDrill ? 'true' : 'false',
     [infraContextKeys.simulator]: context.simulator ? 'true' : 'false',
+    // Slice 4 D29: an id, never a secret; absent, the app's default `unset` applies.
+    ...(context.resendWebhookId === undefined
+      ? {}
+      : { [infraContextKeys.resendWebhookId]: context.resendWebhookId }),
   };
   return Object.entries(values).flatMap(([key, value]) => ['-c', `${key}=${value}`]);
 }
@@ -175,6 +179,7 @@ function createSteps(config: DeployEnv): DeploySteps {
         signingSecretsArn: required(appStack.outputs, appOutputKeys.signingSecretsArn),
         // Present only with the simulator (D12); runDeploy fails when `on` finds it absent.
         simulatorSecretArn: appStack.outputs[appOutputKeys.simulatorSecretArn],
+        resendApiKeySecretArn: required(appStack.outputs, appOutputKeys.resendApiKeySecretArn),
         killSwitchArmed,
       };
     },

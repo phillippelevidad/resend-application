@@ -62,9 +62,17 @@ For `ledger reconcile` (slice 4), with `sleep` injected so no test waits in real
 - An abandoned run: `reconcile.getRun` answers running, then the run with no `finished_at` and its
   `error` set to [`run_abandoned`](../../../../.ai/api-contract.md#error-codes): exit `1`, stdout
   under `--json` is that error in the error shape, and no poll follows it.
-- A run that stays running past the backstop (the API's derivation failed): the wait stops at the
-  backstop bound (the slice 4 pre-proposal fixes the bound and the output), and the test asserts
+- A run that stays running past the backstop (the API's derivation failed): the wait stops after
+  `RUN_WAIT_BACKSTOP_MS / RUN_POLL_INTERVAL_MS` polls (400), exits `1` with `internal_error` under
+  `--json` and the constant defect line without, and the test asserts
   it stops.
+- A transient poll error (`api_unavailable`, `database_unavailable`, `internal_error`) mid-wait,
+  then the run finished: exit `0`, stdout under `--json` holds only the final run and stderr only
+  the run-id notice; without `--json`, stderr also holds the retry notice.
+- A poll error that is not transient (`unauthorized`, `run_not_found`): exit `1` with it, and no poll
+  follows it.
+- Transient poll errors in a row: the wait stops after `MAX_CONSECUTIVE_POLL_FAILURES` polls and
+  exits `1` with the last one; a success between them resets the count.
 
 ## Never
 

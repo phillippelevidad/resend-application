@@ -37,6 +37,9 @@ const SIMULATOR_SECRET = `whsec_${Buffer.from('fakeSimulatorSecret6').toString('
 // Not RS-02's form, so `LEDGER_SIMULATOR=on` refuses it; the refusal must not echo it either.
 const MALFORMED_SIMULATOR_SECRET = 'fakeMalformedSimulatorSecret7';
 const ALERT_EMAIL = 'delivered@resend.dev';
+// Slice 4 D29: a key of the `re_` form, below the gitleaks rule's 20 characters, and a webhook id.
+const RESEND_API_KEY = 're_fakeReconciler10';
+const RESEND_WEBHOOK_ID = 'wh_fake_ledger';
 const databaseUrl = (scheme: string, password: string, host: string) =>
   `${scheme}://owner:${password}@${host}/ledger`;
 const DIRECT_URL = databaseUrl('postgres', OWNER_DIRECT_PASSWORD, 'direct.db.invalid');
@@ -53,12 +56,14 @@ const SECRETS = [
   SIMULATOR_SECRET,
   MALFORMED_SIMULATOR_SECRET,
   ALERT_EMAIL,
+  RESEND_API_KEY,
 ];
 
 const DEPLOYED_COMMIT = 'a'.repeat(40);
 const DATABASE_SECRET_ARN = 'fake-database-secret';
 const SIGNING_SECRETS_ARN = 'fake-signing-secrets';
 const SIMULATOR_SECRET_ARN = 'fake-simulator-secret';
+const RESEND_API_KEY_SECRET_ARN = 'fake-resend-api-key';
 const KEY_ID = addressHashKeyId(new Uint8Array(Buffer.from(ADDRESS_HASH_KEY, 'hex')));
 
 const baseEnv = {
@@ -69,6 +74,9 @@ const baseEnv = {
   LEDGER_TOKEN_TAG_KEY: TOKEN_TAG_KEY,
   LEDGER_DEPLOY_WEBHOOK_SECRETS: WEBHOOK_SECRET,
   LEDGER_KILL_SWITCH: 'on',
+  // Slice 4 D29: with the signing secrets set, both are required.
+  LEDGER_DEPLOY_RESEND_API_KEY: RESEND_API_KEY,
+  LEDGER_DEPLOY_RESEND_WEBHOOK_ID: RESEND_WEBHOOK_ID,
 };
 
 const databaseSecret = (tokenTagKey: string) =>
@@ -210,6 +218,7 @@ function fakeSteps(world: World): DeploySteps {
           world.synthesized?.simulator === true && !world.simulatorOutputMissing
             ? SIMULATOR_SECRET_ARN
             : undefined,
+        resendApiKeySecretArn: RESEND_API_KEY_SECRET_ARN,
         killSwitchArmed: true,
       };
     },
@@ -572,6 +581,8 @@ describe('the order and what a deploy writes', () => {
       'readDeployOutputs',
       `writeSecret:${DATABASE_SECRET_ARN}`,
       `writeSecret:${SIGNING_SECRETS_ARN}`,
+      // Slice 4 D29: the reconciler's key, after the stacks and the other secrets.
+      `writeSecret:${RESEND_API_KEY_SECRET_ARN}`,
       'insertBootstrapToken',
     ]);
     expect(run.lines.slice(-5)).toEqual([
@@ -786,5 +797,77 @@ describe('the output', () => {
         expect(line).not.toMatch(/postgres(ql)?:\/\//);
       }
     }
+  });
+});
+
+// Slice 4 D29: the reconciler's two deploy inputs, refused before any AWS call unless both or
+// neither are set (and both whenever the signing secrets are), the webhook id as CDK context, and the
+// key written after `cdk deploy`.
+describe("the reconciler's Resend inputs (slice 4 D29)", () => {
+  const without = (...names: string[]) =>
+    Object.fromEntries(Object.entries(baseEnv).filter(([name]) => !names.includes(name))) as Record<
+      string,
+      string
+    >;
+
+  it.each([
+    [
+      'LEDGER_DEPLOY_RESEND_WEBHOOK_ID',
+      without('LEDGER_DEPLOY_RESEND_WEBHOOK_ID', 'LEDGER_DEPLOY_WEBHOOK_SECRETS'),
+    ],
+    [
+      'LEDGER_DEPLOY_RESEND_API_KEY',
+      without('LEDGER_DEPLOY_RESEND_API_KEY', 'LEDGER_DEPLOY_WEBHOOK_SECRETS'),
+    ],
+    [
+      'LEDGER_DEPLOY_RESEND_API_KEY',
+      without('LEDGER_DEPLOY_RESEND_API_KEY', 'LEDGER_DEPLOY_RESEND_WEBHOOK_ID'),
+    ],
+    ['LEDGER_DEPLOY_RESEND_WEBHOOK_ID', without('LEDGER_DEPLOY_RESEND_WEBHOOK_ID')],
+    ['LEDGER_DEPLOY_RESEND_API_KEY', { ...baseEnv, LEDGER_DEPLOY_RESEND_API_KEY: 'sk_notResend' }],
+  ])('refuses naming %s before any step runs, never its value', async (variable, env) => {
+    const world = newWorld();
+
+    const run = await deploy(world, { env });
+
+    expect(run.code).toBe(1);
+    expect(lastLine(run)).toMatch(new RegExp(`^aws:deploy: refused: ${variable} `));
+    expect(run.stepsBuilt).toBe(false);
+    expect(world.calls).toEqual([]);
+    for (const line of run.lines) {
+      expect(line).not.toContain(RESEND_API_KEY);
+      expect(line).not.toContain('sk_notResend');
+    }
+  });
+
+  it('passes the webhook id as context and writes the key after both stack deploys', async () => {
+    const world = newWorld();
+
+    const run = await deploy(world);
+
+    expect(run.code).toBe(0);
+    expect(world.synthesized?.resendWebhookId).toBe(RESEND_WEBHOOK_ID);
+    expect(world.secrets.get(RESEND_API_KEY_SECRET_ARN)).toBe(RESEND_API_KEY);
+    expect(run.lines).toContain('aws:deploy: ledger/resend-api-key written\n');
+    const writeAt = world.calls.indexOf(`writeSecret:${RESEND_API_KEY_SECRET_ARN}`);
+    expect(writeAt).toBeGreaterThan(world.calls.indexOf('deployStack:LedgerApp'));
+    for (const line of run.lines) expect(line).not.toContain(RESEND_API_KEY);
+  });
+
+  it('writes no key and passes no webhook id when both are unset, with no signing secrets', async () => {
+    const world = newWorld();
+
+    const run = await deploy(world, {
+      env: without(
+        'LEDGER_DEPLOY_RESEND_API_KEY',
+        'LEDGER_DEPLOY_RESEND_WEBHOOK_ID',
+        'LEDGER_DEPLOY_WEBHOOK_SECRETS',
+      ),
+    });
+
+    expect(run.code).toBe(0);
+    expect(world.synthesized?.resendWebhookId).toBeUndefined();
+    expect(world.calls).not.toContain(`writeSecret:${RESEND_API_KEY_SECRET_ARN}`);
+    expect(run.lines.join('')).not.toContain('ledger/resend-api-key');
   });
 });

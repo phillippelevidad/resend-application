@@ -374,6 +374,16 @@
               "storage_bytes",
               "storage_limit_bytes"
             ]
+          },
+          "last_reconcile_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReconcileRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -381,7 +391,109 @@
           "queue",
           "dlq",
           "event_source",
-          "database"
+          "database",
+          "last_reconcile_run"
+        ]
+      },
+      "ReconcileRun": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "reconcile_run"
+            ]
+          },
+          "run_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "manual"
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "horizon_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checked": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missing": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "replayed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "docs": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "hint",
+              "docs"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "run_id",
+          "trigger",
+          "dry_run",
+          "started_at",
+          "finished_at",
+          "horizon_start",
+          "horizon_end",
+          "checked",
+          "missing",
+          "replayed",
+          "failed",
+          "error"
         ]
       },
       "EventSource": {
@@ -630,6 +742,44 @@
           "status",
           "depth"
         ]
+      },
+      "ReconcileRunList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconcileRun"
+            }
+          }
+        },
+        "required": [
+          "object",
+          "has_more",
+          "data"
+        ]
+      },
+      "ReconcileStart": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "example": false
+          },
+          "lookback": {
+            "type": "string",
+            "example": "72h"
+          }
+        }
       }
     },
     "parameters": {}
@@ -805,7 +955,7 @@
     "/health": {
       "get": {
         "operationId": "health.get",
-        "summary": "Queue and DLQ depth, the worker event source, and database reachability and storage",
+        "summary": "Queue and DLQ depth, the worker event source, database reachability and storage, and the last reconcile run",
         "security": [
           {
             "bearerAuth": []
@@ -1367,6 +1517,277 @@
           },
           "409": {
             "description": "`redrive_in_progress`: a redrive task is already running; SQS allows one per queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gaps": {
+      "get": {
+        "operationId": "gaps.list",
+        "summary": "Reconcile runs in the window, newest first, each with its counts and outcome",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "24h"
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[1-9][0-9]?|100)$",
+              "example": "20"
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,14}$"
+            },
+            "required": false,
+            "name": "after",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of runs; an unfinished run past its budget reads `run_abandoned`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileRunList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconcile/runs/{run_id}": {
+      "get": {
+        "operationId": "reconcile.getRun",
+        "summary": "One reconcile run, running, finished or abandoned",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,14}$",
+              "example": "42"
+            },
+            "required": true,
+            "name": "run_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run; one with no `finished_at` past its budget reads `run_abandoned`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`: no reconcile run with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: an unexpected failure, logged by request id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`database_unavailable`: the database is unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconcile": {
+      "post": {
+        "operationId": "reconcile.start",
+        "summary": "Start one manual reconcile run; poll reconcile.getRun until it finishes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileStart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The inserted run, `finished_at: null`; the reconciler runs it asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation_failed`: the field the message names is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the token lacks the `operate` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`reconcile_in_progress`: another run is unfinished inside its time budget.",
             "content": {
               "application/json": {
                 "schema": {

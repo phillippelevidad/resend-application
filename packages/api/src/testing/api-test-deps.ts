@@ -2,6 +2,7 @@ import type { TokenScope } from '@ledger/core';
 import { apiTokensRepository, type Executor, STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { InProcessQueueAdapter, type Logger, mintApiToken } from '@ledger/shared';
 import {
+  FakeAsyncFunctionInvoke,
   FakeClock,
   FakeEventSourceControl,
   FakeFunctionInvoke,
@@ -55,6 +56,10 @@ export function testApiDeps(db: Executor, overrides: Partial<ApiDeps> = {}): Api
     workerInvoke: new FakeFunctionInvoke({ outcome: 'already_enabled', state: 'enabled' }),
     // The real in-process queue, as local mode composes it (slice 3 D9); its dead list starts empty.
     dlq: new InProcessQueueAdapter({ clock: new FakeClock(), logger: silentLogger }),
+    reconcilerInvoke: new FakeAsyncFunctionInvoke(),
+    // Wall-clock time: `reconcile_runs.started_at` is Postgres's `now()`, so a run's derived
+    // outcome and the start's horizon read a clock near it (slice 4 D43).
+    clock: { now: () => new Date() },
     storageLimitBytes: STORAGE_LIMIT_BYTES,
     ...overrides,
   };

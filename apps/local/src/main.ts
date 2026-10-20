@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { serve } from '@hono/node-server';
 import { createApi } from '@ledger/api';
+import { reconcileRunEventSchema } from '@ledger/core';
 import { createDatabase, STORAGE_LIMIT_BYTES } from '@ledger/db';
 import { createIngest } from '@ledger/ingest';
+import { createReconciler } from '@ledger/reconciler';
 import {
   type ClockPort,
   ConfigError,
   createLogger,
+  InProcessAsyncFunctionInvokeAdapter,
   InProcessFunctionInvokeAdapter,
   InProcessQueueAdapter,
   type Logger,
@@ -83,11 +86,17 @@ function start({ port, host }: Flags, config: LocalConfig): void {
   const ingestLogger = createLogger({ functionName: 'ingest' });
   const workerLogger = createLogger({ functionName: 'worker' });
   const apiLogger = createLogger({ functionName: 'api' });
+  const reconcilerLogger = createLogger({ functionName: 'reconciler' });
 
   // ADR-005, D29: one size-1 pool per function that touches the database; ingest has none. Locally
   // both connect with `DATABASE_URL` as the owner (D30). `pg` connects lazily, on the first query.
   const workerDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: workerLogger });
   const apiDatabase = createDatabase({ url: config.databaseUrl, max: 1, logger: apiLogger });
+  const reconcilerDatabase = createDatabase({
+    url: config.databaseUrl,
+    max: 1,
+    logger: reconcilerLogger,
+  });
 
   const queue = new InProcessQueueAdapter({ clock, logger: workerLogger });
   // D13: ingest reads both secrets through the port in both runtimes. Locally the Resend set is the
@@ -120,6 +129,22 @@ function start({ port, host }: Flags, config: LocalConfig): void {
     metrics: new LogMetricsAdapter(workerLogger),
     addressHashKey: config.addressHashKey,
   });
+  // Slice 4 D23: the reconciler composed with no Resend client and no webhook id, so every local run
+  // ends `reconciler_not_configured` with no Resend call. A live local reconcile is a Deferred row.
+  // `reconcile.start`'s invoke runs the claimed run in process, not awaited, as an `Event` invoke.
+  const reconciler = createReconciler({
+    db: reconcilerDatabase.db,
+    resend: undefined,
+    webhookId: undefined,
+    queueAttributes: queue,
+    clock,
+    logger: reconcilerLogger,
+    metrics: new LogMetricsAdapter(reconcilerLogger),
+  });
+  const reconcilerInvoke = new InProcessAsyncFunctionInvokeAdapter(
+    (payload) => reconciler.runClaimed(reconcileRunEventSchema.parse(payload).run_id),
+    reconcilerLogger,
+  );
   // D40: the same middleware as on AWS, under the local tag key; the in-process queue reports its
   // own counts, the static event source `enabled`, and the resume runs the local worker in process,
   // which answers `already_enabled`. Slice 3 D9: the in-process queue's dead list is the DLQ, until
@@ -134,6 +159,8 @@ function start({ port, host }: Flags, config: LocalConfig): void {
     eventSource: new StaticEventSourceControlAdapter(),
     workerInvoke: new InProcessFunctionInvokeAdapter(() => worker.resume()),
     dlq: queue,
+    reconcilerInvoke,
+    clock,
     storageLimitBytes: STORAGE_LIMIT_BYTES,
   });
 
@@ -151,6 +178,7 @@ function start({ port, host }: Flags, config: LocalConfig): void {
   const closePools = (): void => {
     void workerDatabase.pool.end();
     void apiDatabase.pool.end();
+    void reconcilerDatabase.pool.end();
   };
 
   const server = serve({ fetch, hostname: host, port }, () => {

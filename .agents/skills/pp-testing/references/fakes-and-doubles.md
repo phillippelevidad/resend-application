@@ -12,13 +12,13 @@ are [pp-backend → Ports](../../pp-backend/references/composition.md#ports)'s.
 | Seam | In a test | Never |
 | --- | --- | --- |
 | Queue port | The in-process queue: the real slice 1 implementation, not a fake (ADR-013). For ingest's `503`, a queue double whose `enqueue` rejects | A recorded-call stub asserting "enqueue was called" |
-| Clock port, and the limiter's injected sleep | The fake clock from `@ledger/shared/testing`: `now()` returns a set instant, `advance(ms)` moves it, and a sleep through it resolves when the clock passes its deadline | `vi.useFakeTimers()` or `Date.now` patched for logic under test |
+| Clock port, and the limiter's injected sleep | The fake clock from `@ledger/shared/testing`: `now()` returns a set instant, `advance(ms)` moves it, and a sleep through it resolves when the clock passes its deadline. A fake clock that meets a wall-clock check starts at wall-clock time: the `resend` SDK's 5-minute `verify` window (resend.md → Constraint 12) beside ingest's own check, and Postgres's `now()` behind `reconcile_runs.started_at` (slice 4, D43); the retired-secret test starts it a minute short of the TTL before wall-clock time, so the clock lands on wall-clock time once the cache expires | `vi.useFakeTimers()` or `Date.now` patched for logic under test |
 | `resend-client`'s consumers (reconciler, dispatcher) | A fake client from `@ledger/resend-client/testing`, typed against the exported client, holding programmable answers and recording what it was asked | `vi.mock('resend')` |
 | `resend-client` itself | The [fake Resend API](#the-fake-resend-api): a local `node:http` server | `nock`, `msw`, a patched `fetch` |
 | A `packages/aws` adapter | Its [port contract](#aws-adapters) with the SDK client stubbed | An SQS fake in a consumer's test |
 | Postgres | The [harness](postgres-harness.md): real Postgres | A mocked client, a stubbed repository |
 | Logger | The real logger, its output captured: `createLogger({ functionName, stream })` with a sink (`{ write: (chunk) => lines.push(chunk) }`) gets the same format and allow-list over a Winston Stream transport, one JSON line per call ([logging-and-pii.md](../../pp-general/references/logging-and-pii.md#logger), D15) | Asserting the logger was called; assert the line |
-| Event source control, queue attributes, function invoke, DLQ, secret reading ([ports](../../pp-backend/references/composition.md#ports)) | A stateful fake from `@ledger/shared/testing` holding what the port reads and writes; the test asserts the resulting state (`state: 'paused'` after an outage). Slice 2's four: `FakeEventSourceControl` (`state`; `failGetState`, `failEnable`, `failDisable`), `FakeQueueAttributes` (`snapshot`, `failing`), `FakeFunctionInvoke` (the scripted `answer`, `failing`, the `payloads` it was sent), `FakeSecretReader` (`secrets` by id, `failing`, `reads`). A failing fake rejects with a plain `FakeFailure` error carrying no registry code, as an SDK failure would. The DLQ fake is slice 3's | A recorded-call stub asserting "disable was called" |
+| Event source control, queue attributes, function invoke, DLQ, secret reading ([ports](../../pp-backend/references/composition.md#ports)) | A stateful fake from `@ledger/shared/testing` holding what the port reads and writes; the test asserts the resulting state (`state: 'paused'` after an outage). Slice 2's four: `FakeEventSourceControl` (`state`; `failGetState`, `failEnable`, `failDisable`), `FakeQueueAttributes` (`snapshot`, `failing`), `FakeFunctionInvoke` (the scripted `answer`, `failing`, the `payloads` it was sent), `FakeSecretReader` (`secrets` by id, `failing`, `reads`). Slice 4 adds `FakeAsyncFunctionInvoke` (the `payloads` handed over; `failNext()` rejects the next invoke). A failing fake rejects with a plain `FakeFailure` error carrying no registry code, as an SDK failure would. The DLQ fake is slice 3's | A recorded-call stub asserting "disable was called" |
 | SDK, for CLI and MCP tests | A fake SDK ([pp-cli](../../pp-cli/SKILL.md#output-and-exit-codes), [pp-mcp](../../pp-mcp/SKILL.md#tool-registration-and-least-privilege)) | The database |
 
 - A fake lives in the `testing.ts` surface of the package that owns the port or the client, named
@@ -39,19 +39,26 @@ against a local HTTP server standing in for Resend's API.
   (verified in the `resend@6.33.0` `.d.mts` and `.mjs` on npm, the version RS-02 pins). Without the
   option, the SDK reads `process.env.RESEND_BASE_URL`, then `https://api.resend.com`. So
   `resend-client` MUST pass `baseUrl` from its typed config, never leave it to the environment, and
-  a test passes the fake's URL (no trailing slash). Re-check against the version slice 4 installs.
-- **The server** is `node:http` on `127.0.0.1`, port `0` (the OS picks), closed in `afterAll`,
-  exported from `@ledger/resend-client/testing`. It answers the routes the client's named methods
-  call (List Events, Retrieve Webhook and Replay Event from slice 4; Send Email from the slice whose test first calls it), from a scripted
-  queue of responses: status, the RS-22 error body `{ name, statusCode, message }`, and the
-  `ratelimit-*` and `retry-after` headers.
+  a test passes the fake's URL (no trailing slash). Re-checked against the installed
+  `resend@6.33.0` in slice 4.
+- **The server** is `startFakeResendApi()` → `{ baseUrl, script(route, responses), events,
+  webhookStatus, onReplay, requests, close }`: `node:http` on `127.0.0.1`, port `0` (the OS picks),
+  closed after the test, exported from `@ledger/resend-client/testing`. It answers Retrieve Webhook,
+  List Events, Retrieve Event, Replay Event and Send Email. `script(route, responses)` queues
+  answers per route: status, the RS-22 error body `{ name, statusCode, message }`, and the
+  `ratelimit-*` and `retry-after` headers. Unscripted, List Events pages `events` (data the test
+  sets) newest first with `after`, Retrieve Webhook answers `webhookStatus` and a fake signing
+  secret built at run time, and a replay of a held event awaits `onReplay(eventId)` before its
+  `200`. It never decides what is missing.
 - **It records what it received**: method, path, the `User-Agent` and `Idempotency-Key` headers,
   the body. The outbound request is the consequence at this seam (RS-21, RS-24).
 - **Which claims use it:** the limiter unit tests (ADR-012); the slice 4 fake-API integration tests
   (outage past the retry schedule, the 5-day gap, the disabled webhook, the `429` storm with
   `retry-after`), which compose the real reconciler, the real `resend-client` and this server
   ([slice 4](../../../../.ai/build-checklist.md#4--recovery)). A fake client there would skip the
-  limiter the `429` claim is about.
+  limiter the `429` claim is about. `FakeResendClient`, typed against `ResendClient` (the
+  webhook's status and events, explicit `pages`, `fail(method, code)`, `failReplayOf(id, code)`, the
+  `calls` in order), serves the reconciler's unit tests only, never a limiter or mapping claim.
 - A fixture body copies a payload from [resend.md](../../../../.ai/resend.md) with test addresses
   only, never a captured live response.
 

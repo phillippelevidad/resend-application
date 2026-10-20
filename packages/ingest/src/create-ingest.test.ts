@@ -7,13 +7,16 @@
 // request answers `401`, and an unreadable or non-`whsec_` simulator secret answers `503` for every
 // request. Time for `receivedAt` and the cache moves through `FakeClock`; `svix-timestamp` is
 // wall-clock seconds, because `webhooks.verify` checks its 5-minute window against the wall clock
-// (RS-02).
+// (RS-02). Slice 4 (D33): ingest checks the same window against the clock port first, so the fake
+// clock starts at wall-clock time minus 150 s: a test advancing it up to the 5-minute TTL stays
+// inside both windows.
 import { Buffer } from 'node:buffer';
 import { type IngestEnvelope, ingestEnvelopeSchema } from '@ledger/core';
 import { type SvixHeaders, signWebhook } from '@ledger/core/testing';
 import { createLogger, InProcessQueueAdapter, type QueuePort } from '@ledger/shared';
 import { FakeClock, FakeSecretReader, RecordingMetrics } from '@ledger/shared/testing';
-import { describe, expect, it } from 'vitest';
+import { Resend } from 'resend';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createIngest, SECRET_SET_TTL_MS } from './create-ingest.ts';
 import {
   INGEST_BODY_OK,
@@ -81,8 +84,12 @@ const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolv
 // The real slice 1 queue (pp-testing → fakes: the queue port's double is the in-process queue),
 // drained by a consumer that keeps each body as SQS would hold it; or, for the `503` path, a queue
 // whose `enqueue` rejects.
-const harness = (secrets: TestSecrets, queueOverride?: QueuePort) => {
-  const clock = new FakeClock('2026-10-17T12:00:05.000Z');
+const harness = (
+  secrets: TestSecrets,
+  queueOverride?: QueuePort,
+  clockStart = new Date(Date.now() - 150_000),
+) => {
+  const clock = new FakeClock(clockStart);
   const secretReader = new IdRecordingSecretReader({
     [signingSecretsId]: JSON.stringify(secrets.resend),
     ...(secrets.simulator === undefined ? {} : { [simulatorSecretId]: secrets.simulator }),
@@ -560,5 +567,115 @@ describe('createIngest', () => {
       'unavailable',
     ]);
     expect(INGEST_CONTENT_TYPE).toBe('text/plain; charset=utf-8');
+  });
+});
+
+// Slice 4 Ships 5 (D33, ADR-009): every `401` emits one `ingest.rejected` with its `reason`, and a
+// secret retired from the store stops verifying once the 5-minute cache TTL passes. These cases
+// start the fake clock at wall-clock time, as on Lambda, so the clock-port window and
+// `webhooks.verify`'s agree.
+describe('ingest.rejected{reason} (slice 4 D33)', () => {
+  // The SDK's `Webhooks` class, reached through an instance: `verify` lives on its prototype.
+  const webhooksPrototype = Object.getPrototypeOf(new Resend('ingest-test').webhooks) as {
+    verify: (...args: unknown[]) => unknown;
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const rejections = (metrics: RecordingMetrics) =>
+    metrics.recorded.filter((metric) => metric.name === 'ingest.rejected');
+
+  it('retires a secret dropped from the store once the 5-minute TTL passes, then rejects it with reason signature', async () => {
+    // Started a minute short of the TTL before wall-clock time, so after the TTL the clock sits just
+    // past the wall clock and both 5-minute windows still accept a fresh wall-clock timestamp.
+    const { clock, ingest, metrics, secretReader } = harness(
+      rotation,
+      undefined,
+      new Date(Date.now() - SECRET_SET_TTL_MS + 60_000),
+    );
+
+    expect((await ingest(signed(oldSecret))).status).toBe(200);
+    secretReader.secrets.set(signingSecretsId, JSON.stringify([newSecret]));
+    clock.advance(SECRET_SET_TTL_MS - 60_000);
+    expect((await ingest(signed(oldSecret))).status).toBe(200);
+    expect(rejections(metrics)).toEqual([]);
+
+    clock.advance(60_000);
+    const retired = await ingest(signed(oldSecret));
+    const current = await ingest(signed(newSecret));
+
+    expect(retired).toEqual({ status: 401, body: INGEST_BODY_UNAUTHORIZED });
+    expect(current.status).toBe(200);
+    expect(rejections(metrics)).toEqual([
+      {
+        kind: 'count',
+        name: 'ingest.rejected',
+        value: 1,
+        fields: {},
+        dimensions: { reason: 'signature' },
+      },
+    ]);
+  });
+
+  it('rejects a 6-minute-stale timestamp with reason timestamp before any verify call', async () => {
+    const verify = vi.spyOn(webhooksPrototype, 'verify');
+    const { ingest, metrics, queued } = harness(rotation, undefined, new Date());
+
+    const response = await ingest(
+      signed(oldSecret, eventBody(), { timestamp: nowSeconds() - 360 }),
+    );
+
+    expect(response).toEqual({ status: 401, body: INGEST_BODY_UNAUTHORIZED });
+    expect(verify).not.toHaveBeenCalled();
+    expect(await queued()).toEqual([]);
+    expect(rejections(metrics).map((m) => m.dimensions)).toEqual([{ reason: 'timestamp' }]);
+  });
+
+  it.each([
+    ['6 minutes ahead', () => String(nowSeconds() + 360)],
+    ['not an integer', () => 'soon'],
+    ['empty', () => ''],
+  ])('rejects a timestamp %s with reason timestamp', async (_case, value) => {
+    const verify = vi.spyOn(webhooksPrototype, 'verify');
+    const { ingest, metrics } = harness(rotation, undefined, new Date());
+    const request = signed(oldSecret);
+
+    await ingest({ ...request, headers: { ...request.headers, 'svix-timestamp': value() } });
+
+    expect(verify).not.toHaveBeenCalled();
+    expect(rejections(metrics).map((m) => m.dimensions)).toEqual([{ reason: 'timestamp' }]);
+  });
+
+  it('rejects a missing svix-signature, or a signature no secret matches, with reason signature', async () => {
+    const { ingest, metrics } = harness(rotation, undefined, new Date());
+    const request = signed(oldSecret);
+
+    await ingest({ ...request, headers: { ...request.headers, 'svix-signature': undefined } });
+    await ingest(signed(unconfiguredSecret));
+
+    expect(rejections(metrics).map((m) => m.dimensions)).toEqual([
+      { reason: 'signature' },
+      { reason: 'signature' },
+    ]);
+  });
+
+  it('carries no field on the metric, only its reason dimension, so no attacker-sent id reaches it', async () => {
+    const { ingest, metrics } = harness(rotation, undefined, new Date());
+
+    await ingest(signed(unconfiguredSecret));
+
+    expect(rejections(metrics).map((m) => m.fields)).toEqual([{}]);
+  });
+
+  it('emits nothing on a 200 or a 503', async () => {
+    const accepted = harness(rotation, undefined, new Date());
+    await accepted.ingest(signed(oldSecret));
+    const unavailable = harness(rotation, rejectingQueue, new Date());
+    await unavailable.ingest(signed(oldSecret));
+
+    expect(rejections(accepted.metrics)).toEqual([]);
+    expect(rejections(unavailable.metrics)).toEqual([]);
   });
 });

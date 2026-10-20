@@ -15,12 +15,15 @@ export const apiConfigSchema = z
     // The worker's physical name: its event source mapping (`health.get`) and its resume invoke
     // (`worker.resumeEventSource`), D16, C5.
     [apiEnv.WORKER_FUNCTION_NAME]: required,
+    // Slice 4 D28: the reconciler's physical name, `reconcile.start`'s asynchronous invoke target.
+    [apiEnv.RECONCILER_FUNCTION_NAME]: required,
   })
   .transform((env) => ({
     databaseSecretArn: env[apiEnv.DATABASE_SECRET_ARN],
     queueUrl: env[apiEnv.QUEUE_URL],
     dlqUrl: env[apiEnv.DLQ_URL],
     workerFunctionName: env[apiEnv.WORKER_FUNCTION_NAME],
+    reconcilerFunctionName: env[apiEnv.RECONCILER_FUNCTION_NAME],
   }));
 
 export type ApiConfig = z.output<typeof apiConfigSchema>;

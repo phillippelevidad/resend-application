@@ -114,10 +114,14 @@ describe('the destroy order', () => {
 });
 
 describe('the post-destroy listing', () => {
-  it('exits 0 when only secrets pending deletion remain, after printing the two outside steps', async () => {
+  it('exits 0 when only secrets pending deletion remain, after printing the three outside steps', async () => {
     const run = await teardown(newWorld());
     expect(run.code).toBe(0);
-    expect(run.lines.slice(-3)).toEqual([
+    // Slice 4 D30: the reconciler's key is revoked at Resend, which no destroy does.
+    expect(run.lines).toContain(
+      'aws:teardown: outside AWS: revoke the Resend API key you made for the reconciler (dashboard, or DELETE /api-keys/{id})\n',
+    );
+    expect(run.lines.slice(-4)).toEqual([
       ...OUTSIDE_AWS_STEPS.map((step) => `aws:teardown: ${step}\n`),
       'aws:teardown: done\n',
     ]);

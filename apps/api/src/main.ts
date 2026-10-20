@@ -4,6 +4,7 @@ import {
   createLambdaClient,
   createSecretsManagerClient,
   createSqsClient,
+  LambdaAsyncFunctionInvokeAdapter,
   LambdaEventSourceControlAdapter,
   LambdaFunctionInvokeAdapter,
   SecretsManagerSecretReaderAdapter,
@@ -50,6 +51,12 @@ const workerInvoke = new LambdaFunctionInvokeAdapter({
   client: lambda,
   functionName: config.workerFunctionName,
 });
+// Slice 4 D28: `reconcile.start` hands its run to the reconciler as an `Event` invoke.
+const reconcilerInvoke = new LambdaAsyncFunctionInvokeAdapter({
+  client: lambda,
+  functionName: config.reconcilerFunctionName,
+});
+const clock = { now: () => new Date() };
 
 type Api = ReturnType<typeof createApi>;
 
@@ -68,6 +75,8 @@ async function build(): Promise<Api> {
     eventSource,
     workerInvoke,
     dlq,
+    reconcilerInvoke,
+    clock,
     storageLimitBytes: STORAGE_LIMIT_BYTES,
   });
 }

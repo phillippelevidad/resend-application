@@ -179,13 +179,16 @@ calls `process.exit()`.
   handler is needed.
 
 ```ts
-// apps/cli/src/wait-for-run.ts
-import { setTimeout as sleep } from 'node:timers/promises';
-
+// apps/cli/src/wait-for-run.ts (slice 4, D46)
 // Each poll costs one HTTP API request, one Lambda invocation and one Postgres read, and counts
-// against the HTTP API throttle (AWS-14). Value: slice 4 pre-proposal.
-export const RUN_POLL_INTERVAL_MS = /* slice 4 */;
+// against the HTTP API throttle (AWS-14): at 3 s, a full 14-minute run is 280 polls.
+export const RUN_POLL_INTERVAL_MS = 3_000;
+export const RUN_WAIT_BACKSTOP_MS = 1_200_000; // 20 minutes, above the 14-minute budget
 ```
+
+`waitForRun(client, runId, sleep)` sleeps one interval before each poll and counts polls to the
+backstop, so no clock is read. `sleep` is `CliDeps.sleep`: `node:timers/promises` in `main.ts`, a
+no-op in tests.
 
 - `ledger reconcile` declares `--no-wait` alone, so `options.wait` defaults to `true` and the flag
   sets it `false` ([README](https://github.com/tj/commander.js), "Other option types, negatable
@@ -193,10 +196,20 @@ export const RUN_POLL_INTERVAL_MS = /* slice 4 */;
   [CHANGELOG](https://github.com/tj/commander.js/blob/master/CHANGELOG.md) 15.0.0).
 - The loop calls `reconcile.getRun` until `finished_at` is set or the run carries an `error` (an
   abandoned run has `run_abandoned` and no `finished_at`), so it tests the field, never a `code`
-  literal. A run outcome ends the wait with exit `1`. Each poll unwraps through `runOperation`'s
-  rules: an `error` from `getRun` itself ends the wait with exit `1`.
-- **The wait's own bound is a backstop** (one constant above the run's budget, value and output
-  from the slice 4 pre-proposal): it fires only if the API's derivation does not.
+  literal, for the run's outcome. A run outcome ends the wait with exit `1`. Each poll unwraps
+  through `runOperation`'s rules, with one exception: a poll's own `api_unavailable`,
+  `database_unavailable` or `internal_error` (the read retry of
+  [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions), Idempotency:
+  network, `429`, `5xx`) is retried on the next tick (a stderr notice without `--json`); the
+  `MAX_CONSECUTIVE_POLL_FAILURES`th (5th) in a row ends the wait with exit `1` and that error, and a
+  successful poll resets the count. Any other `getRun` error ends it with exit `1` at once. When the
+  SDK retries reads (slice 5), revisit whether this CLI retry stays, since the two would stack.
+- **The wait's own bound is a backstop**, `RUN_WAIT_BACKSTOP_MS` (20 minutes, above the run's
+  14-minute budget): it fires only if the API's derivation does not, and exits `1` with
+  `internal_error` under `--json`, the constant defect line `ledger: unexpected failure.` without.
+- **The notice** is `ledger: reconcile run <run_id> started; follow it with ledger gaps.`, on
+  stderr in both modes, so under `--json` `ledger reconcile` is the one command whose success
+  writes to stderr.
 - Progress lines, if any, go to stderr through `notice`. Under `--json`, stdout gets only the final
   run, or the run's `error` in the error shape.
 - `sleep` is injected in tests, so a wait test runs without real time

@@ -1,7 +1,12 @@
 // @ledger/shared/testing: the port doubles and port contract suites other packages' tests share
 // (pp-testing → fakes, shared contract suites). Never imported by runtime code.
+export {
+  type AsyncInvokedFunction,
+  asyncFunctionInvokePortContract,
+} from './testing/async-function-invoke-port-contract.ts';
 export { type DlqPortUnderTest, dlqPortContract } from './testing/dlq-port-contract.ts';
 export { eventSourceControlPortContract } from './testing/event-source-control-port-contract.ts';
+export { FakeAsyncFunctionInvoke } from './testing/fake-async-function-invoke.ts';
 export { FakeClock } from './testing/fake-clock.ts';
 export { FakeEventSourceControl } from './testing/fake-event-source-control.ts';
 export { FakeFunctionInvoke } from './testing/fake-function-invoke.ts';

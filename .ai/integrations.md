@@ -28,12 +28,17 @@ Manager, [Secrets layout](#secrets-layout))
    ([api-contract.md → Conventions](api-contract.md#conventions), Rate limits). Each caller is
    single-flight (the reconciler by non-overlapping runs, ADR-007, and by its run claim, which
    absorbs a duplicate async invoke, AWS-53, [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run);
-   the dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. A read-API route that calls
+   the dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. While the
+   owner's `pnpm aws:gap-drill` runs, it is a third caller with its own 2 req/s limiter, polling
+   List Events every 2 s (≤ 0.5 req/s); there is no dispatcher until slice 6, so the total stays
+   ≤ 2 × 2 req/s then too
+   ([pp-infra → scripts](../.agents/skills/pp-infra/references/scripts.md#gap-script)). A read-API route that calls
    Resend directly adds a caller and MUST restate this bound. *Why 2:* Ledger is a
    background consumer of the team's budget. At 2 req/s, recovering a 10,000-event gap (100 List
    Events pages plus 10,000 replays, RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6
    hourly runs because each run stops at its time budget (AWS-03), which is acceptable for recovery
-   work. Evidence: limiter unit tests (rate, yield on low `remaining`, `retry-after` on `429`) ·
+   work. Evidence: limiter unit tests (rate, yield on low `remaining`, `retry-after` on `429`) in
+   [limiter.test.ts](../packages/resend-client/src/limiter.test.ts) ·
    [slice 4](build-checklist.md#4--recovery).
 3. **Default reconcile cadence: hourly** (owner, 2026-10-15). Resend's own retries cover the first
    ≈ 27.6 h (RS-09), so the cadence sets only how quickly loss is detected. It is also the
@@ -51,7 +56,7 @@ Manager, [Secrets layout](#secrets-layout))
 6. **Idempotent writes where Resend allows them.** Every send carries an `Idempotency-Key`
    derived from the outbox `dedupe_key` (RS-24). Keys live 24 h, so the alert-email retry horizon
    stays under 24 h ([resend.md → Constraint 8](resend.md#constraints-and-sharp-edges)). Replays
-   take no key (RS-17): their safety rests on ledger dedupe on `svix_id` and on RS-U01.
+   take no key (RS-17): their safety rests on ledger dedupe on `svix_id` and on a replay keeping the `svix-id` (RS-45).
 7. **Secrets never leave Secrets Manager.** Any `full_access` key can read the signing secret
    (RS-05), and no read-only key exists (RS-18). Keys and signing secrets never appear in logs, CLI
    output, MCP output or Resend-visible response bodies
@@ -118,7 +123,8 @@ database connectors, deduplicated on a unique `svix_id`. It writes synchronously
   at 3 days, and replay every id missing from storage, under 10 req/s. Ledger's reconciler is the
   same approach, with replays landing in the queue path. The ADR that adopts it cites PR #13. The
   PR's live findings (replay keeps `svix-id`, List Events ids equal `svix-id`, ≈ 8 s visibility)
-  are a contributor's observations, not Resend's docs, so they stay RS-U01, RS-U02 and RS-U13. Its
+  are a contributor's observations, not Resend's docs; slice 4 settled the first two live on the
+  owner's webhook (RS-44, RS-45) and measured the third at 5.2 s and 9.4 s (RS-U13). Its
   claim that a disabled endpoint receives no replays (it answers `409` on that basis) stays RS-U04.
 - **[Issue #8](https://github.com/resend/resend-webhooks-ingester/issues/8)** (open) asks for
   per-email event correlation. Ledger's order-independent projection answers that question in its
@@ -263,7 +269,9 @@ Neon compute for at least the 5-minute suspend window
 - **A 15-minute tick does not fit.** About 22 min awake per hour comes to ≈ 67 CU-h.
 - **So:** no scheduled tick that touches Postgres runs more often than hourly by default.
   Database-touching ticks share one hourly cron expression, flexible window `OFF` (AWS-10), so
-  they land in one wake. The dispatcher is therefore not a sub-hourly poller: the worker invokes
+  they land in one wake. The reconciler is the first hourly waker (slice 4): its
+  `LedgerApp-reconcile-hourly` and the worker's `LedgerApp-hourly` are two schedules, one target
+  each (AWS-10), on the one expression ([app.stack.test.ts](../infra/src/app.stack.test.ts)). The dispatcher is therefore not a sub-hourly poller: the worker invokes
   it after commit, plus an hourly sweep
   ([architecture.md → ADR-017](architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep)).
   The worker's resume check probes Postgres only while its ESM is paused
@@ -287,7 +295,7 @@ Ids are stable: never renumber, never reuse.
 | --- | --- | --- | --- | --- |
 | ~~PG-U01~~ | ~~Neon's 90-day inactivity deletion of Free projects does not reach a project that a scheduled tick touches hourly~~ | The rule ("as of October 5, 2026") sits in an Azure-deprecation warning box ([regions](https://neon.com/docs/introduction/regions)). Whether it covered AWS regions, and what counts as activity, was unstated there. Deletion would lose the ledger ([lens clause 6](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | Neon docs or support. The hourly reconciler writes a `reconcile_runs` row either way | **Settled 2026-10-17** by Neon's docs (read 2026-10-17): the [Azure regions deprecation](https://neon.com/docs/import/azure-regions-deprecation) page scopes the rule ("Projects in Free organizations that have been inactive for 90 days or more are subject to deletion") with "Only projects in these Azure regions are affected" (`azure-eastus2`, `azure-westus3`, `azure-gwc`) and "Projects in AWS regions are not affected." No other page read states an inactivity deletion: [plans](https://neon.com/docs/introduction/plans) says of the Free limits "None of these limits delete your data", and neither it, the [Free plan FAQ](https://neon.com/faqs/free-plan-limits-and-quotas) nor [projects](https://neon.com/docs/manage/projects) mentions one. Idle in `aws-us-east-2` means compute suspend after 5 min ([plans](https://neon.com/docs/introduction/plans)), and [branch archiving](https://neon.com/docs/guides/branch-archiving) of branches "Older than **14 days**" not accessed for "the past **24 hours**", unarchived on first access; neither deletes data. What counts as activity for the Azure rule is still undefined, moot for AWS. A change to Neon's terms is the [fallback trigger](#decision--neon) |
 | PG-U02 | `SELECT … FOR UPDATE` locks hold for the whole transaction through Neon's transaction-mode pooler | Inferred from PgBouncer's definition. Neon's page doesn't name it | A deployed concurrency test: two transactions on one `email_id` through the pooled URL serialize | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled |
-| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month), and storage inside the [storage budget](#cadence-and-the-database) (1 GB) | An estimate from the 5-min suspend window. Storage growth is measured: 1,260 bytes per event, 76 bursts of 10,000 left before 1 GB (slice 3 burst, 2026-10-19; [Cadence](#cadence-and-the-database)) | Neon's usage page after 30 idle days (CU-hours and public network transfer), recorded beside [aws.md → Cost shape](aws.md#cost-shape); storage used (`health.get`) against the bursts-left figure | [slice 4](build-checklist.md#4--recovery) (moved from slice 2: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). Safe on cost (Free never bills); on availability, a suspended compute or a full store pauses the worker and the queue holds events ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage), PG-U07) |
+| PG-U03 | Idle use stays inside the wake budget (≈ 18 of 100 CU-h/month), and storage inside the [storage budget](#cadence-and-the-database) (1 GB) | An estimate from the 5-min suspend window. Storage growth is measured: 1,260 bytes per event, 76 bursts of 10,000 left before 1 GB (slice 3 burst, 2026-10-19; [Cadence](#cadence-and-the-database)) | Neon's usage page after 30 idle days (CU-hours and public network transfer), recorded beside [aws.md → Cost shape](aws.md#cost-shape); storage used (`health.get`) against the bursts-left figure | [slice 4](build-checklist.md#4--recovery) (moved from slice 2: the hourly reconciler is the first idle waker, [architecture.md](architecture.md#open-questions-owed-by-slice)). **Proved safe either way** (slice 4): on cost, Free never bills; on availability, a quota suspension or a full store is a database outage, which pauses the worker while the queue holds events and moves none to the DLQ ([database-outage.int.test.ts](../packages/worker/src/database-outage.int.test.ts); slice 3's `pnpm sim --chaos db-outage` on AWS; [ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage), PG-U07). The 30-idle-day usage reading is a named event: 30 days after the reconciler's first configured deploy, it goes beside [aws.md → Cost shape](aws.md#cost-shape) |
 | PG-U04 | A module-scope connection survives the compute suspending under it | Neon doesn't say what happens to open client connections at suspend | A worker or tick test after > 5 min idle | [slice 2](build-checklist.md#2--durable-ingest-on-aws). Safe either way (a connection error is retryable; reconnect on error) |
 | PG-U05 | Drizzle's `aws-data-api/pg` driver supports `db.transaction()` | Neither the connect page nor the transactions page says | Drizzle's source or a test against a real cluster | Not owed while Neon holds. The ADR that switches to the fallback settles it |
 | PG-U06 | Neon's transaction-mode pooler applies role-level settings (`ALTER ROLE … SET`) to the server sessions it opens | The [pooling](https://neon.com/docs/connect/connection-pooling) page offers "Set at the role level" for `search_path` as the transaction-mode workaround, but says nothing of timeouts or of the user the pooler connects as (read 2026-10-16) | A deployed check: `SHOW idle_in_transaction_session_timeout` through the pooled URL | [slice 2](build-checklist.md#2--durable-ingest-on-aws). MUST be settled: if not honored, a stuck lock holder is bounded only by the client timeouts ([Runtime role](#decision--neon)) |

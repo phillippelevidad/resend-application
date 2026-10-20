@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createDatabase, STORAGE_LIMIT_BYTES } from '@ledger/db';
 import {
+  InProcessAsyncFunctionInvokeAdapter,
   InProcessFunctionInvokeAdapter,
   InProcessQueueAdapter,
   type Logger,
@@ -46,6 +47,8 @@ const api = createApi({
   eventSource: new StaticEventSourceControlAdapter(),
   workerInvoke: new InProcessFunctionInvokeAdapter(async () => undefined),
   dlq: queue,
+  reconcilerInvoke: new InProcessAsyncFunctionInvokeAdapter(async () => undefined, silent),
+  clock: { now: () => new Date() },
   storageLimitBytes: STORAGE_LIMIT_BYTES,
 });
 

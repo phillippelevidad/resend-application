@@ -99,7 +99,8 @@ async function rearm(): Promise<0 | 1> {
     return out.failed("reading the budget's spend failed; the stack is restored");
   }
 
-  out.line('then: ledger reconcile → slice 4');
+  // Slice 4 D30: recovers the events Resend gave up on while the stack was stopped.
+  out.line('then: pnpm -s ledger reconcile');
   return out.done();
 }
 

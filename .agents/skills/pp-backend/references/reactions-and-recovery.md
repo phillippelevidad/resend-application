@@ -69,27 +69,46 @@ Lands in slice 6.
 [reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run). Lands in
 slice 4.
 
-- **A run starts in one transaction:** `pg_advisory_xact_lock` on the fixed reconcile key, then the
-  check for an unfinished run inside its time budget (a statement issued after the lock), then the
-  insert. A refused start is `reconcile_in_progress`. The Resend calls run **after** that
-  transaction commits, never inside it.
+- **A run starts in one transaction** (slice 4, D6), in both triggers: the queue snapshot through
+  `QueueAttributesPort` first, outside it; then `pg_advisory_xact_lock` on the fixed reconcile key,
+  the check for an unfinished run inside its time budget (a statement issued after the lock), the
+  anchor, `reconcileHorizon` with the clock port's `now`, and the insert. A refused start is
+  `reconcile_in_progress`. A scheduled start (`startScheduledRun` in `packages/reconciler`) inserts
+  claimed; a manual one (`StartReconcileCommand` in `packages/api`, D18) inserts unclaimed, then,
+  after the commit, `reconcilerInvoke.invokeAsync({ ledger: 'reconcile-run', run_id })`; a rejected
+  hand-off finishes the row `internal_error` in a second statement. Two thin commands, because a
+  shared one in `@ledger/reconciler` would pull the `resend` SDK into the read API's bundle. The
+  Resend calls run **after** the start's transaction commits, never inside it.
 - **The reconciler claims its run before any Resend call:** `UPDATE reconcile_runs SET claimed_at
-  = now() WHERE id = $1 AND claimed_at IS NULL`; zero rows means a duplicate async invoke (AWS-53),
-  which exits without work. Runs never overlap only through this claim
+  = now() WHERE id = $1 AND claimed_at IS NULL AND finished_at IS NULL`; zero rows means a duplicate
+  async invoke (AWS-53) or a finished run, which logs `reconcile.duplicate_invoke` and exits
+  without work. Runs never overlap only through this claim
   ([ADR-007](../../../../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)).
   The invoke retries nothing (`retryAttempts: 0`, [pp-infra](../../pp-infra/SKILL.md)): a lost
   invoke reads abandoned and the next hourly run covers it.
-- **Then, in order:** read the configured webhook's `status` and stop with `webhook_disabled` if it
-  is disabled (RS-11); page List Events newest first (RS-14); skip events younger than the grace
-  window; stop at the lookback horizon; diff ids against `webhook_events`; replay the missing ones
-  (RS-16). A replay re-enters through ingest, so verification and dedupe apply unchanged. Never a
+- **Then, in order** (D15, `executeRun`): no client or webhook id → finish
+  `reconciler_not_configured` with no call; read the configured webhook's `status` and stop with
+  `webhook_disabled` if it is disabled (RS-11); page List Events newest first (RS-14), each item
+  filtered against the horizon fixed at start (younger than its end skipped, older than its start
+  outside), stopping after a page holding an item older than the start or with `has_more` false;
+  diff each page's ids with `presentSvixIds`; replay the missing ones in page order (RS-16), unless
+  a dry run. Every Resend call carries the deadline `started_at + budget − 60 s`; reaching it with
+  paging unfinished finishes `rate_limited`. A replay re-enters through ingest, so verification and dedupe apply unchanged. Never a
   write path that inserts fetched payloads directly.
-- **One failed replay never aborts a run**; it counts in `failed`.
+- **One failed replay never aborts a run**; it counts in `failed` and logs `reconcile.replay_failed`.
+  Only `resend_auth_failed` and `rate_limited` on a replay stop the run with that code.
 - **A time budget below the Lambda timeout** (AWS-03). A run that reaches it stops; the next run
   re-diffs from newest (forward-only pagination, RS-14). The budget is one constant, shared by the
   start check and the abandoned derivation below.
 - **Its outcome is a registered code in `reconcile_runs.error_code`** (`webhook_disabled`,
-  `rate_limited`, `resend_auth_failed`, `resend_unavailable`), never a throw that loses the row
+  `rate_limited`, `resend_auth_failed`, `resend_unavailable`, `reconciler_not_configured`,
+  `internal_error`; `reconcileRunErrorCodes`), never a throw that loses the row. An unexpected throw
+  after the claim is finished best-effort `internal_error`, logged `reconcile.internal_error` by
+  `error_name`, and rethrown as a constant. A clean run, dry runs included, emits
+  `reconcile.missing`, `reconcile.replayed` and `reconcile.failed`; an errored one emits none, the
+  silence the gap alarm reads (D19, D24). Both the `reconcile.run_finished` line and the metrics
+  follow only a finish that stored the row: one that changed no row (finished elsewhere) logs
+  `reconcile.already_finished` and emits nothing (`reconciler.int.test.ts`)
   ([one mapping per surface](../../pp-general/references/errors.md#one-mapping-per-surface)).
 - **`run_abandoned` is derived, never written.** A run with no `finished_at` past its time budget
   (crashed, or its invoke lost) will not finish; the `reconcile.getRun` and `gaps.list` readers in
@@ -97,10 +116,14 @@ slice 4.
   ([Error codes](../../../../.ai/api-contract.md#error-codes),
   [reconcile_runs](../../../../.ai/data-modeling.md#reconcile_runs--one-row-per-recovery-run)).
 - **Every Resend call goes through `resend-client`** and its limiter ([resend-client.md](resend-client.md)).
-- How `reconcile.start` opens its run and invokes the reconciler, how the reconciler reads the
-  source queue's age for the grace window, and the hourly tick's shape are the slice 4
-  pre-proposal's. The conditional parts of ADR-007 (RS-U01, RS-U02, RS-U20) MUST be settled there
-  before recovery is called done.
+- **The hourly tick** (D25) is a second EventBridge schedule, `LedgerApp-reconcile-hourly`, on the
+  shared `cron(0 * * * ? *)`, with the worker's resume schedule's retry and age bounds, its input
+  `RECONCILE_SCHEDULED_EVENT`. The grace window's age is the source queue's
+  `ApproximateAgeOfOldestMessage` through `SqsQueueAttributesAdapter` (AWS-22). The conditional
+  parts of ADR-007 (RS-U01, RS-U02, RS-U20) MUST be settled before recovery is called done.
+- Evidence: [reconciler.test.ts](../../../../packages/reconciler/src/reconciler.test.ts),
+  [reconciler.int.test.ts](../../../../packages/reconciler/src/reconciler.int.test.ts),
+  [recovery.int.test.ts](../../../../packages/reconciler/src/recovery.int.test.ts).
 
 ## DLQ inspect and redrive
 

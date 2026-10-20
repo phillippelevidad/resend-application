@@ -33,6 +33,7 @@ new AppStack(app, APP_STACK_NAME, {
   commit: config.commit,
   guardrailsStackName: GUARDRAILS_STACK_NAME,
   simulator: config.simulator,
+  resendWebhookId: config.resendWebhookId,
 });
 
 // aws.md → Teardown: the one project tag the post-destroy listing filters on (D27).

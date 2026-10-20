@@ -37,7 +37,7 @@ observation.
 - **Slice 0:** the secret scan over the full history, and the README link check.
 - **Slice 2:** the budget, the kill switch and the trip drill; the CDK assertions (`MaximumConcurrency`, no VPC or NAT); both body encodings at ingest; the teardown listing.
 - **Slice 3:** `maxReceiveCount` and the poison run; ingest p99 under the delivery timeout (RS-U08).
-- **Slice 4:** a replay keeps its `svix-id` (RS-U01); rotation overlap (RS-U09); the README claims at the M1 boundary.
+- **Slice 4:** a replay keeps its `svix-id` (settled live as [RS-45](resend.md#facts) by E1); the README claims at the M1 boundary.
 - **Slice 7:** the README claims at the M2 boundary.
 
 ## Deploy configuration
@@ -61,7 +61,7 @@ below are the recurring checks that keep that design true while the stack stays 
 
 | ID | Check | Why it bites | Settle by |
 | --- | --- | --- | --- |
-| CBL-17 | Before any demo or review window, the kept stack is armed and healthy. The kill switch is not tripped, the event source is enabled, and the queue and DLQ are at 0 | A trip sets reserved concurrency `0` on every app function, the read API included (aws.md → Budget alarms, item 4; AWS-16). A paused source holds events in SQS ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)). Either way, a reviewer's first command fails | `ledger health --json`. If it answers `api_unavailable`, the kill switch is likely tripped: run the re-arm script, then `ledger reconcile`. If the event source reads paused, run `ledger worker resume` |
+| CBL-17 | Before any demo or review window, the kept stack is armed and healthy. The kill switch is not tripped, the event source is enabled, and the queue and DLQ are at 0 | A trip sets reserved concurrency `0` on every app function, the read API included (aws.md → Budget alarms, item 4; AWS-16). A paused source holds events in SQS ([ADR-015](architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)). Either way, a reviewer's first command fails | `ledger health --json`. If it answers `api_unavailable`, the kill switch is likely tripped: run the re-arm script, then `ledger reconcile`. If the event source reads paused, run `ledger worker resume`. `last_reconcile_run` is a run finished within the last hour with `error: null` and `missing: 0` (else [LedgerApp-reconcile-gap](../docs/runbook.md#ledgerapp-reconcile-gap)'s steps) |
 | CBL-18 | 30 idle days after the first kept deploy, the measured idle cost is ≤ USD 5/month. No usage type appears that [aws.md → Cost shape](aws.md#cost-shape) does not list | This is the [success metric](about.md#success-metrics), and no slice measures it. Slice 2 closes AWS-U03 and AWS-U07 "safe either way" without a bill. An unlisted line (a retained log group, AWS-38; a public IPv4, AWS-13) bills for as long as the stack stays up | Cost Explorer, grouped by service and usage type, with credits excluded, over the 30 idle days. Write the numbers into the *Measured by* column of aws.md → Cost shape |
 
 ## Public-repo hygiene

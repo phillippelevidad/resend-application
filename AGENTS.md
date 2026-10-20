@@ -145,7 +145,8 @@ This table is the canonical layout (adapted from the frozen
 `package.json`, `tsconfig.json` and a stub entry; created ahead of its slice at the owner's request,
 2026-10-16). Its logic lands in the slice the **Logic lands** column names
 ([build order](.ai/architecture.md#build-order-vertical-slices)). Beyond `export {}` stubs, the
-scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools.
+scaffolds still ahead of their slice hold `apps/mcp`'s server with no tools. `packages/resend-client`,
+`packages/reconciler` and `apps/reconciler` hold their logic (slice 4).
 
 | Project | Role | Logic lands |
 | --- | --- | --- |
@@ -274,7 +275,11 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # then ends `db:setup: failed: Postgres is unreachable …`); optional
                    # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD,
                    # LEDGER_SIMULATOR (on|off; with on, LEDGER_SIMULATOR_SECRET is required, then
-                   # written into the simulator secret).
+                   # written into the simulator secret), LEDGER_DEPLOY_RESEND_API_KEY (re_) and
+                   # LEDGER_DEPLOY_RESEND_WEBHOOK_ID: both or neither, and both whenever
+                   # LEDGER_DEPLOY_WEBHOOK_SECRETS is set; the id goes to CDK as
+                   # ledger:resendWebhookId, the key into ledger/resend-api-key after the deploy
+                   # (`ledger/resend-api-key written`).
                    # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
                    # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
                    # an address-hash key_id mismatch (the owner's kept stack: put only
@@ -285,7 +290,15 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # then `simulator on` or `simulator off`, never the value
 pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag
                    # discards them); destroys LedgerApp, then LedgerGuardrails only if that succeeded;
-                   # lists billable leftovers (exit 1 on any); prints the two steps outside AWS
+                   # lists billable leftovers (exit 1 on any); prints the three steps outside AWS
+                   # (delete the webhook, revoke the reconciler's Resend key, optionally the Neon project)
+pnpm aws:gap-drill # Ask-first: one real gap and its recovery; needs LEDGER_URL (LedgerApp's ApiUrl),
+                   # LEDGER_TOKEN (operate), RESEND_API_KEY and LEDGER_DEPLOY_RESEND_WEBHOOK_ID; refuses a
+                   # tripped stack, a non-empty queue or DLQ, an unfinished run, an existing ingest route
+                   # setting, or a start outside :02-:40 UTC; lowers the ingest route to 0/0, sends once to
+                   # delivered@resend.dev, waits out the grace window, restores the route, then runs
+                   # ledger reconcile --dry-run, ledger reconcile, a final dry run and ledger gaps
+                   # (a restore always runs; a trip mid-drill leaves the route for pnpm aws:rearm)
 pnpm aws:rearm     # restores a tripped stack, warns when the month's spend is at the budget
 pnpm aws:trip-drill   # forces the usage trip, records five ingest status codes, forces a
                    # kill-switch failure until its Errors alarm fires, restores; refuses a disarmed
@@ -324,6 +337,15 @@ pnpm -s ledger token current [--json]    # the token LEDGER_TOKEN holds: id, nam
 pnpm -s ledger dlq inspect [--limit <1-10>] [--json]   # dead messages, ids and counts only, and the
                    # DLQ depth; a stderr notice pointing at the worker logs when the DLQ is not empty
 pnpm -s ledger dlq redrive [--json]      # operate; moves every dead message back to the queue, returns at once
+pnpm -s ledger gaps [--since <duration>] [--json]   # reconcile runs started within --since (1m-30d,
+                   # default 24h), newest 100, each with its counts and outcome; a stderr notice
+                   # when more exist
+pnpm -s ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait] [--json]   # operate; starts
+                   # one manual run (stderr: its run id), then polls every 3 s until it finishes or
+                   # reads run_abandoned (exit 1 with a run's error); a poll's api_unavailable,
+                   # database_unavailable or internal_error is retried next tick, exit 1 on the
+                   # fifth in a row (any other poll error: exit 1 at once); --no-wait prints the started
+                   # run; a 20-minute backstop; locally every run ends reconciler_not_configured
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
                    # without -s (pnpm's banner then precedes the output)

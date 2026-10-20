@@ -2,6 +2,7 @@ import type { IngestEnvelope } from '@ledger/core';
 import {
   type ClockPort,
   errorFields,
+  type IngestRejectReason,
   LedgerError,
   type Logger,
   type MetricsPort,
@@ -19,6 +20,10 @@ import { signingSecretSchema, signingSecretsSchema } from './signing-secrets.sch
 // ADR-009, D13: a successfully read secret set is reused for at most 5 minutes per container, so an
 // added or retired secret takes effect with no redeploy (RS-04).
 export const SECRET_SET_TTL_MS = 300_000;
+
+// Slice 4 D33, resend.md → Constraint 12: the signature's timestamp window, as `webhooks.verify`
+// applies it (standardwebhooks' 5 minutes, either way, in whole seconds).
+export const TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 // D13: both secrets are read through the port by id (Secrets Manager on AWS, the parsed
 // `LEDGER_WEBHOOK_SECRETS` and `LEDGER_SIMULATOR_SECRET` locally). The Resend set is a JSON array of
@@ -120,10 +125,23 @@ export function createIngest({
   };
 
   // D9 step 3: one constant line, no fields. The `svix-id` of an unverified request is
-  // attacker-controlled, so it is never logged.
-  const reject = (): IngestResponse => {
+  // attacker-controlled, so it is never logged. Slice 4 D33: one `ingest.rejected` per `401`, its
+  // `reason` the one dimension, no field.
+  const reject = (reason: IngestRejectReason): IngestResponse => {
     logger.warn('ingest.request_rejected');
+    metrics.count('ingest.rejected', 1, undefined, { reason });
     return unauthorized;
+  };
+
+  // D33: the window `webhooks.verify` applies, read against the clock port, so a stale or skewed
+  // request is told apart from a bad signature before any `verify` call.
+  const timestampOutsideWindow = (header: string): boolean => {
+    const timestamp = Number.parseInt(header, 10);
+    if (Number.isNaN(timestamp)) return true;
+    const now = Math.floor(clock.now().getTime() / 1000);
+    return (
+      now - timestamp > TIMESTAMP_TOLERANCE_SECONDS || timestamp > now + TIMESTAMP_TOLERANCE_SECONDS
+    );
   };
 
   return async (request: IngestRequest): Promise<IngestResponse> => {
@@ -131,7 +149,8 @@ export function createIngest({
     const timestamp = request.headers['svix-timestamp'];
     const signature = request.headers['svix-signature'];
     // D9 step 1. An empty header counts as missing, as `webhooks.verify` itself treats it.
-    if (!svixId || !timestamp || !signature) return reject();
+    if (!svixId || !signature) return reject('signature');
+    if (!timestamp || timestampOutsideWindow(timestamp)) return reject('timestamp');
 
     // D13: an unreadable, unparseable or empty set answers `503`, which Resend retries (RS-10),
     // never `401`. Only the error's name is logged: a parse error must not reach a log line.
@@ -162,7 +181,7 @@ export function createIngest({
         // No match under this secret (D9 step 2): the next one is tried, and none left is a `401`.
       }
     }
-    if (matched === undefined) return reject();
+    if (matched === undefined) return reject('signature');
 
     // D9 step 4, D12: the raw body byte for byte (RS-01); `svix-signature` is not carried.
     const envelope: IngestEnvelope = {

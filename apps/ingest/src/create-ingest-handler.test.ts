@@ -73,7 +73,9 @@ const lambdaContext = () => {
 const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 const harness = (queueOverride?: QueuePort) => {
-  const clock = new FakeClock('2026-10-17T12:00:05.000Z');
+  // Wall-clock time: ingest checks `svix-timestamp`'s window against it (slice 4 D33), and the
+  // signer stamps wall-clock seconds for `webhooks.verify` (RS-02).
+  const clock = new FakeClock(new Date());
   const lines: string[] = [];
   const invocation: InvocationFields = { request_id: undefined, cold_start: true };
   const logger = createLogger({

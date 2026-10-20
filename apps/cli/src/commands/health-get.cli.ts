@@ -8,7 +8,9 @@ import { runOperation } from '../run-operation.ts';
 export function healthGetCli(parent: Command, deps: CliDeps): void {
   parent
     .command('health')
-    .description('show queue and DLQ depth, the worker event source and the database')
+    .description(
+      'show queue and DLQ depth, the worker event source, the database and the last reconcile run',
+    )
     .option('--json', 'print the result or the error object as JSON')
     .action(async (options) => {
       await runOperation(deps, options, (client) => client.health.get(), renderHealth);
@@ -37,6 +39,17 @@ function database(health: Health['database']): string {
   return `reachable, ${used} of ${formatBytes(health.storage_limit_bytes)}`;
 }
 
+// Slice 4 design.md → Surfaces (`health.get`): the last run, finished, running or with its
+// `error.code`; `no run yet` when the database answered none, `—` while it is unreachable.
+function reconcile(health: Health): string {
+  const run = health.last_reconcile_run;
+  if (run === null) return health.database.reachable ? 'no run yet' : printable(null);
+  const id = `run ${printable(run.run_id)}`;
+  if (run.error !== null) return `${id} ${printable(run.error.code)}`;
+  if (run.finished_at === null) return `${id} running`;
+  return `${id} finished ${printable(run.finished_at)}, missing ${run.missing}, replayed ${run.replayed}`;
+}
+
 // design.md → Surfaces (`health.get`): every value passes through printable (D34).
 export function renderHealth(health: Health): string {
   const oldest = health.queue.oldest_age_seconds;
@@ -48,5 +61,6 @@ export function renderHealth(health: Health): string {
     field('dlq', `${health.dlq.visible} visible, ${health.dlq.in_flight} in flight`),
     field('worker', printable(health.event_source.state)),
     field('database', database(health.database)),
+    field('reconcile', reconcile(health)),
   ].join('\n');
 }

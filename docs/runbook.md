@@ -9,8 +9,8 @@ alarm emails the owner once, on `ALARM`, and returns to OK on its own. Commands 
 with `.env.local` holding `LEDGER_URL` and an active `LEDGER_TOKEN`
 ([Commands](../AGENTS.md#commands)). Function logs are in CloudWatch under
 `/ledger/<function name>` (`/ledger/LedgerApp-ingest`, `/ledger/LedgerApp-worker`,
-`/ledger/LedgerApp-api`, `/ledger/LedgerGuardrails-kill-switch`), one JSON object per line, never
-an address or a subject.
+`/ledger/LedgerApp-api`, `/ledger/LedgerApp-reconciler`, `/ledger/LedgerGuardrails-kill-switch`), one
+JSON object per line, never an address or a subject.
 
 ## Alarms
 
@@ -79,7 +79,9 @@ an address or a subject.
     send) and `ingest.secrets_unavailable` (the signing secrets could not be read), and
     `/ledger/LedgerApp-api` for `api.internal_error` by its `request_id`.
   - Check in the Resend dashboard that the webhook is still enabled. If Resend disabled it,
-    re-enable it there. Slice 4 lands `ledger reconcile`, which recovers what Resend gave up on.
+    re-enable it there, then run `pnpm -s ledger reconcile`, which recovers what Resend gave up
+    on. A disabled webhook may create no event for what it missed, so check the dashboard's email
+    log for that span too (RS-U05).
 - **Related:** RS-10 and RS-11 ([resend.md → Facts](../.ai/resend.md#facts)),
   [ADR-001](../.ai/architecture.md#adr-001--verify-then-enqueue), AWS-30
   ([aws.md → CloudWatch and SNS](../.ai/aws.md#cloudwatch-and-sns)).
@@ -99,7 +101,7 @@ an address or a subject.
   2. `pnpm aws:rearm`. It restores what the app stack declares and warns when the month's spend is
      at the budget, because the budget cannot trip again the same month.
   3. `pnpm -s ledger health`: `worker enabled` and the queue draining.
-  4. Slice 4 lands `ledger reconcile`, which recovers the events Resend marked failed meanwhile.
+  4. `pnpm -s ledger reconcile`, which recovers the events Resend marked failed meanwhile.
 - **Related:** [aws.md → Budget alarms](../.ai/aws.md#budget-alarms) items 4, 6 and 7,
   [ADR-010](../.ai/architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack).
 
@@ -119,6 +121,35 @@ an address or a subject.
   - If the trip was a drill, `pnpm aws:rearm` restores the stack.
 - **Related:** [aws.md → Budget alarms](../.ai/aws.md#budget-alarms) item 4, AWS-34 and AWS-53,
   [ADR-010](../.ai/architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack).
+
+### LedgerApp-reconcile-gap
+
+- **Means:** in the last completed UTC hour, a reconcile run found events Resend holds that the
+  ledger does not, or no run finished cleanly at all (an errored run emits no metric, and the
+  alarm reads an hour with no datapoint as breaching). Expected after a gap drill, after a trip, and
+  before the first deploy that configures the reconciler.
+- **First:** `pnpm -s ledger gaps --since 2h`.
+- **Then:**
+  - The newest run has `missing` above 0 and no error: the next hourly run replays them, or run
+    `pnpm -s ledger reconcile` now. If they stay missing, `pnpm -s ledger dlq inspect` (a dead event
+    is missing until it is redriven), and check that the ingest route is not throttled: a crashed
+    gap drill leaves it at `0`, and `pnpm aws:rearm` clears it.
+  - A run with an error follows that code: [reconciler_not_configured](#reconciler_not_configured),
+    [internal_error](#internal_error) and [run_abandoned](#run_abandoned) have their entries. The
+    four whose `docs` point at Resend:
+    - `webhook_disabled`: re-enable the webhook in the Resend dashboard or with
+      `PATCH /webhooks/{id}` and `status: enabled`, then `pnpm -s ledger reconcile`. A disabled
+      webhook may create no event for what it missed, so check the dashboard's email log for that
+      span too (RS-U05).
+    - `resend_auth_failed`: the reconciler's key in `ledger/resend-api-key` was refused (missing,
+      deleted, restricted or suspended); set a `full_access` key in `LEDGER_DEPLOY_RESEND_API_KEY`,
+      then `pnpm aws:deploy` (Ask-first).
+    - `rate_limited` and `resend_unavailable`: the next hourly run retries. `rate_limited` repeating
+      means another caller is spending the team's shared budget.
+  - No run at all: `pnpm -s ledger health`; `api_unavailable` means the stack is tripped
+    ([LedgerApp-usage-trip](#ledgerapp-usage-trip)).
+- **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest),
+  AWS-64 ([aws.md → CloudWatch and SNS](../.ai/aws.md#cloudwatch-and-sns)).
 
 ## Error codes
 
@@ -156,8 +187,8 @@ an address or a subject.
 - **First:** `pnpm -s ledger health`: events may still be queued (`queue` visible) or the worker
   may be paused.
 - **Then:** check the id is a Resend email id. If the queue is draining, wait and retry. If the
-  queue is empty and the worker enabled, the events were missed: slice 4 lands `ledger gaps` and
-  `ledger reconcile` to find and replay them.
+  queue is empty and the worker enabled, the events were missed: `pnpm -s ledger gaps` shows the
+  recent runs, and `pnpm -s ledger reconcile` finds and replays them.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
 ### recipient_not_found
@@ -165,13 +196,13 @@ an address or a subject.
 - **Means:** `404`. No recorded event has ever named this address.
 - **First:** `pnpm -s ledger health`, as for [email_not_found](#email_not_found).
 - **Then:** check the address (it is matched after normalization). If it was emailed recently, the
-  events may be queued or missed; slice 4 lands `ledger gaps`.
+  events may be queued or missed: `pnpm -s ledger gaps`, then `pnpm -s ledger reconcile`.
 - **Related:** [ADR-003](../.ai/architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set).
 
 ### run_not_found
 
-- **Means:** `404`. No reconcile run has this id. Slice 4 lands this operation.
-- **First:** slice 4's `ledger gaps` lists the runs.
+- **Means:** `404`. No reconcile run has this id.
+- **First:** `pnpm -s ledger gaps` lists the runs.
 - **Then:** use a run id from that list.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
@@ -194,8 +225,8 @@ an address or a subject.
 ### reconcile_in_progress
 
 - **Means:** `409`. Another reconcile run is unfinished and still inside its time budget; runs
-  never overlap. Slice 4 lands this operation.
-- **First:** slice 4's `ledger gaps` shows the running run.
+  never overlap.
+- **First:** `pnpm -s ledger gaps` shows the running run.
 - **Then:** wait for it to finish, or for its time budget to pass, then start another.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
@@ -212,11 +243,24 @@ an address or a subject.
 ### run_abandoned
 
 - **Means:** a reconcile run's outcome, not an HTTP status: the run has no `finished_at` past its
-  time budget (it crashed or its invoke was lost), so it will not finish. Slice 4 lands this
-  operation.
-- **First:** slice 4's `ledger gaps` shows the run.
-- **Then:** run `ledger reconcile` again (slice 4); the next hourly run covers the horizon anyway.
+  time budget (it crashed or its invoke was lost), so it will not finish.
+- **First:** `pnpm -s ledger gaps` shows the run; `/ledger/LedgerApp-reconciler` holds its log lines
+  by `run_id`.
+- **Then:** run `pnpm -s ledger reconcile` again; the next hourly run covers the horizon anyway.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
+
+### reconciler_not_configured
+
+- **Means:** a reconcile run's outcome, not an HTTP status: the reconciler has no Resend API key or
+  webhook id, or Resend has no webhook with that id, so the run listed and replayed nothing. Every
+  local-mode run ends here, because local mode composes no Resend client.
+- **First:** `pnpm -s ledger gaps` shows the run and its `error`.
+- **Then:** on a deployed stack, set `LEDGER_DEPLOY_RESEND_API_KEY` (the reconciler's dedicated
+  `full_access` key) and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, then `pnpm aws:deploy` (Ask-first), and
+  `pnpm -s ledger reconcile`. If both are set, check the webhook id against List Webhooks: a
+  deleted webhook reads as not configured.
+- **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest),
+  [ADR-012](../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller).
 
 ### database_unavailable
 
@@ -239,7 +283,9 @@ an address or a subject.
   no internals.
 - **First:** retry the command once.
 - **Then:** if it persists, read `/ledger/LedgerApp-api` for `api.internal_error` with the
-  response's request id (locally, the server's stdout).
+  response's request id (locally, the server's stdout). A reconcile run that ended
+  `internal_error` is in `/ledger/LedgerApp-reconciler` under its `run_id`
+  (`reconcile.internal_error`); start another with `pnpm -s ledger reconcile`.
 - **Related:** [ADR-011](../.ai/architecture.md#adr-011--one-contract-many-surfaces).
 
 ### api_unavailable
@@ -251,3 +297,32 @@ an address or a subject.
   [LedgerApp-usage-trip](#ledgerapp-usage-trip) email, then `pnpm aws:rearm`. Locally, start the
   server with `pnpm dev:full`.
 - **Related:** [aws.md → Budget alarms](../.ai/aws.md#budget-alarms) items 4 and 6.
+
+## Procedures
+
+Planned operator tasks, each in the order that keeps every delivery verifiable.
+
+### Rotate the webhook signing secret
+
+Rotate first, then add the new secret, then retire the old one. Resend returns the new secret only
+from the rotation (RS-13), and both secrets sign for 24 hours after it (RS-04), so no delivery is
+lost in between ([ADR-009](../.ai/architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance)).
+
+1. **Ask-first.** Rotate at Resend, with a `full_access` key:
+   `curl -X POST "https://api.resend.com/webhooks/$WEBHOOK_ID/signing-secret/rotate" -H "Authorization: Bearer $RESEND_API_KEY"`.
+   The response holds the new secret; keep it out of the shell history and every file but
+   `.env.deployed.local`.
+2. Set `LEDGER_DEPLOY_WEBHOOK_SECRETS=<old>,<new>` and run `pnpm aws:deploy` (with
+   `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID` set: the deploy refuses the
+   secrets without them). Ingest reads the new set within 5 minutes, with no restart.
+3. Watch `ingest.rejected` stay flat:
+   `aws cloudwatch get-metric-statistics --namespace Ledger --metric-name ingest.rejected --dimensions Name=reason,Value=signature --statistics Sum --period 300 --start-time <15 min ago> --end-time <now>`
+   returns no datapoint above 0.
+4. Within 24 hours of step 1 (RS-04), set `LEDGER_DEPLOY_WEBHOOK_SECRETS=<new>`, run
+   `pnpm aws:deploy` again, and repeat step 3.
+5. If the old secret was retired too early, deliveries signed with it answer `401` and Resend
+   retries them (RS-10): put it back in the set, redeploy, then run `pnpm -s ledger reconcile` for
+   anything Resend gave up on.
+
+Local mode: the same order with `LEDGER_WEBHOOK_SECRETS` in `.env.local` and a restart of
+`pnpm dev`.

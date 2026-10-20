@@ -28,6 +28,7 @@ new AppStack(app, 'LedgerApp', {
   guardrailsStackName: 'LedgerGuardrails',
   // The owner's shape, so ingest also loads with its optional `SIMULATOR_SECRET_ARN` (slice 3, D12).
   simulator: true,
+  resendWebhookId: 'unset',
 });
 const assembly = app.synth();
 
@@ -66,11 +67,12 @@ const loader = [
 ].join('\n');
 
 describe('function bundles', () => {
-  it('synthesizes the four functions of both stacks', () => {
+  it('synthesizes the five functions of both stacks', () => {
     expect(bundles.map((bundle) => bundle.functionName).sort()).toEqual(
       [
         'LedgerApp-api',
         'LedgerApp-ingest',
+        'LedgerApp-reconciler',
         'LedgerApp-worker',
         'LedgerGuardrails-kill-switch',
       ].sort(),

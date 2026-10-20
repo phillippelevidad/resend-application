@@ -33,8 +33,8 @@ Each name is fixed by the slice that introduces it and written into this table i
 | worker | ARN of `ledger/database` (`workerEnv`: `DATABASE_SECRET_ARN`). It finds its own event source mapping by its own name from the reserved `AWS_LAMBDA_FUNCTION_NAME` (ADR-015, AWS-56), so that is no variable: its mapping's UUID would be a CloudFormation cycle (C5) | 2 |
 | worker | the dispatcher's function name ([ADR-017](../../../../.ai/architecture.md#adr-017--the-dispatcher-is-triggered-after-commit-plus-an-hourly-sweep)) | 6 |
 | read API | ARN of `ledger/database`; queue and DLQ URLs (`health.get`, `dlq.*`); the worker's function name, which `worker.resumeEventSource` invokes and `health.get` finds the mapping by (`apiEnv`: `DATABASE_SECRET_ARN`, `QUEUE_URL`, `DLQ_URL`, `WORKER_FUNCTION_NAME`) | 2, 3 |
-| read API | what `reconcile.start` needs to start the reconciler (slice 4 settles how) | 4 |
-| reconciler | ARNs of `ledger/resend-api-key` and `ledger/database`; the Resend webhook id (a deploy input, not a secret) | 4 |
+| read API | the reconciler's function name, which `reconcile.start` invokes asynchronously (`apiEnv`: `RECONCILER_FUNCTION_NAME`; with it `lambda:InvokeFunction` on the name-built ARN) | 4 |
+| reconciler | ARNs of `ledger/database` and `ledger/resend-api-key`; the Resend webhook id (the deploy input `ledger:resendWebhookId`, `unset` when absent, which `reconciler.config.ts` reads as not configured); both queue URLs for the grace window's age (`reconcilerEnv`: `DATABASE_SECRET_ARN`, `RESEND_API_KEY_SECRET_ARN`, `RESEND_WEBHOOK_ID`, `QUEUE_URL`, `DLQ_URL`) | 4 |
 | dispatcher | ARNs of `ledger/database` and `ledger/resend-sending-key` | 6 |
 | kill switch | the app stack's name it resolves targets from; the alert topic it reports to (`killSwitchEnv`: `APP_STACK_NAME`, `ALERT_TOPIC_ARN`), on the guardrails template (C16) | 2 |
 
@@ -55,7 +55,9 @@ The `ledger/…` names are the logical names of the
   `ledger:killSwitch` (`on` | `off`, default `off`), `ledger:budgetDrill` (`true` | `false`, default
   `false`). Slice 3's: `ledger:simulator` (`true` | `false`, default `false`), which the deploy
   command passes from `LEDGER_SIMULATOR`; `true` adds the simulator secret, ingest's read of it and
-  the `SimulatorSecretArn` output. `pnpm synth` passes none, so each has a default or is optional.
+  the `SimulatorSecretArn` output. Slice 4's: `ledger:resendWebhookId` (non-empty, default `unset`),
+  which the deploy command passes from `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`; it is the reconciler's
+  `RESEND_WEBHOOK_ID`. `pnpm synth` passes none, so each has a default or is optional.
 - **They arrive as CDK context** from the deploy command, as integrations.md already fixes for the
   webhook id; never in `cdk.json` or any tracked file (CBL-10). A local file holding them is
   git-ignored ([CBL-19](../../../../.ai/check-before-launch.md#public-repo-hygiene)).

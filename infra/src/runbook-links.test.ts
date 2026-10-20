@@ -86,6 +86,7 @@ const templates = [
       commit: '0123456789abcdef0123456789abcdef01234567',
       guardrailsStackName: 'LedgerGuardrails',
       simulator: true,
+      resendWebhookId: 'unset',
     }),
   ),
 ];
@@ -103,7 +104,7 @@ const alarms = templates.flatMap((template) =>
 describe('alarm-to-runbook link check (D20)', () => {
   it('links every alarm in both stacks to a heading under ## Alarms in docs/runbook.md', () => {
     // Paired with the count, so a template holding no alarm cannot pass by matching nothing.
-    expect(alarms).toHaveLength(5);
+    expect(alarms).toHaveLength(6);
     expect(alarmsMissingRunbookEntry(alarms, alarmSlugs)).toEqual([]);
   });
 
@@ -111,7 +112,7 @@ describe('alarm-to-runbook link check (D20)', () => {
     const runbookLinked = Object.entries(errorRegistry).filter(([, entry]) =>
       entry.docs.startsWith(`${RUNBOOK_BASE_URL}#`),
     );
-    expect(runbookLinked).toHaveLength(14);
+    expect(runbookLinked).toHaveLength(15);
     const missing = runbookLinked
       .filter(([, entry]) => !errorCodeSlugs.has(entry.docs.slice(RUNBOOK_BASE_URL.length + 1)))
       .map(([code]) => code);

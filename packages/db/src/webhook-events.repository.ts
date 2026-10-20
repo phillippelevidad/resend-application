@@ -73,4 +73,17 @@ export const webhookEventsRepository = {
       .where(inArray(webhookEvents.svixId, [...svixIds]));
     return row?.present ?? 0;
   },
+
+  // Slice 4 D6: which of a List Events page's ids are stored, a primary-key lookup. The reconciler
+  // counts the rest as missing (ADR-007).
+  async presentSvixIds(db: Executor, svixIds: readonly string[]): Promise<Set<string>> {
+    if (svixIds.length === 0) {
+      return new Set();
+    }
+    const rows = await db
+      .select({ svixId: webhookEvents.svixId })
+      .from(webhookEvents)
+      .where(inArray(webhookEvents.svixId, [...svixIds]));
+    return new Set(rows.map((row) => row.svixId));
+  },
 };

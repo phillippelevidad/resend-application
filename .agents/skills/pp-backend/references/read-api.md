@@ -31,6 +31,21 @@ One `<operation>.route.ts` per api-contract entry (`get-email.route.ts` → `get
    one mapper: `dlq.startRedrive` (`POST /dlq/redrive`) answers `202` when a redrive starts and
    `200` when the DLQ is empty
    ([start-dlq-redrive.route.ts](../../../../packages/api/src/start-dlq-redrive.route.ts)).
+5. **The reconcile routes** (slice 4, D27): `gaps.list` (`GET /gaps`, `since` 1m–30d default
+   `24h`, `limit`, `after` a run id), `reconcile.getRun` (`GET /reconcile/runs/{run_id}`, `404
+   run_not_found`) and `reconcile.start` (`POST /reconcile`, `operate`, a JSON object body with
+   optional `dry_run` and `lookback`, `{}` valid, `202`, `409 reconcile_in_progress`). One mapper,
+   `reconcileRunResponseMapper(run, now)`, builds the run on all three and on `health.get`'s
+   `last_reconcile_run`, `now` from `ApiDeps.clock`, so `run_abandoned` is derived on read; `claimed_at`
+   and `updated_at` never reach the wire. The field messages are `since must be a duration from 1m to
+   30d, such as 24h.`, `lookback must be a duration from 1m to 30d, such as 72h.`, `dry_run must be
+   true or false.`, `run_id must be a positive integer.`, `after must be a run id, a positive
+   integer.` (a `routeFieldErrors` entry for `/gaps`) and the body's `The request body must be a JSON
+   object with optional dry_run and lookback fields.`; `POST /reconcile`'s `bodyErrors` entry sets
+   `typedFields`, so a field of the wrong type names itself. A registered component that a field
+   makes optional takes `z.union([schema, z.null()])`, never `.nullable()`, which would make the
+   component itself nullable in the document and the SDK types
+   ([health-response.schema.ts](../../../../packages/api/src/health-response.schema.ts)).
 
 Addresses travel only in request bodies (`recipient.get` is a `POST` for that reason); a path or
 query parameter never carries one ([PII in code](../../pp-general/references/logging-and-pii.md#pii-in-code)).

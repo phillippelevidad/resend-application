@@ -9,6 +9,8 @@ import type {
   Health,
   LedgerClient,
   Recipient,
+  ReconcileRun,
+  ReconcileRunList,
   SdkResult,
   Token,
   TokenList,
@@ -17,12 +19,14 @@ import type {
 type TokensListParams = Parameters<LedgerClient['tokens']['list']>[0];
 type TokensCreateInput = Parameters<LedgerClient['tokens']['create']>[0];
 type DlqListMessagesParams = Parameters<LedgerClient['dlq']['listMessages']>[0];
+type GapsListParams = Parameters<LedgerClient['gaps']['list']>[0];
+type ReconcileStartInput = Parameters<LedgerClient['reconcile']['start']>[0];
 
 // One entry per call, in order: the method and what it was called with (absent for a method that
 // takes nothing).
 export type FakeCall =
   | {
-      readonly method: 'emails.get' | 'recipients.get' | 'tokens.revoke';
+      readonly method: 'emails.get' | 'recipients.get' | 'tokens.revoke' | 'reconcile.getRun';
       readonly argument: string;
     }
   | {
@@ -34,7 +38,9 @@ export type FakeCall =
     }
   | { readonly method: 'tokens.list'; readonly argument: TokensListParams }
   | { readonly method: 'tokens.create'; readonly argument: TokensCreateInput }
-  | { readonly method: 'dlq.listMessages'; readonly argument: DlqListMessagesParams };
+  | { readonly method: 'dlq.listMessages'; readonly argument: DlqListMessagesParams }
+  | { readonly method: 'gaps.list'; readonly argument: GapsListParams }
+  | { readonly method: 'reconcile.start'; readonly argument: ReconcileStartInput };
 
 // Each answer is a result, or a function that may throw to stand in for a defect.
 type Answer<T, A = undefined> =
@@ -52,6 +58,9 @@ export type FakeAnswers = {
   readonly tokensRevoke?: Answer<Token, string>;
   readonly dlqListMessages?: Answer<DlqMessageList, DlqListMessagesParams>;
   readonly dlqStartRedrive?: Answer<DlqRedrive>;
+  readonly gapsList?: Answer<ReconcileRunList, GapsListParams>;
+  readonly reconcileGetRun?: Answer<ReconcileRun, string>;
+  readonly reconcileStart?: Answer<ReconcileRun, ReconcileStartInput>;
 };
 
 async function answer<T, A>(answerFor: Answer<T, A> | undefined, argument: A) {
@@ -68,6 +77,8 @@ export class FakeLedgerClient implements LedgerClient {
   readonly worker: LedgerClient['worker'];
   readonly tokens: LedgerClient['tokens'];
   readonly dlq: LedgerClient['dlq'];
+  readonly gaps: LedgerClient['gaps'];
+  readonly reconcile: LedgerClient['reconcile'];
 
   constructor(answers: FakeAnswers = {}) {
     this.emails = {
@@ -120,6 +131,22 @@ export class FakeLedgerClient implements LedgerClient {
       startRedrive: () => {
         this.calls.push({ method: 'dlq.startRedrive' });
         return answer(answers.dlqStartRedrive, undefined);
+      },
+    };
+    this.gaps = {
+      list: (params) => {
+        this.calls.push({ method: 'gaps.list', argument: params });
+        return answer(answers.gapsList, params);
+      },
+    };
+    this.reconcile = {
+      getRun: (runId) => {
+        this.calls.push({ method: 'reconcile.getRun', argument: runId });
+        return answer(answers.reconcileGetRun, runId);
+      },
+      start: (input) => {
+        this.calls.push({ method: 'reconcile.start', argument: input });
+        return answer(answers.reconcileStart, input);
       },
     };
   }

@@ -1,8 +1,10 @@
 import type { HealthRead } from './get-health.reader.ts';
 import type { HealthResponse } from './health-response.schema.ts';
+import { reconcileRunResponseMapper } from './reconcile-run-response.mapper.ts';
 
-// `health.get`'s one mapper (pp-backend → Mappers): every wire field picked by name.
-export function healthResponseMapper(read: HealthRead): HealthResponse {
+// `health.get`'s one mapper (pp-backend → Mappers): every wire field picked by name. `now` is the
+// clock port's, for the last run's derived outcome (slice 4 D27).
+export function healthResponseMapper(read: HealthRead, now: Date): HealthResponse {
   return {
     object: 'health',
     queue: {
@@ -17,5 +19,9 @@ export function healthResponseMapper(read: HealthRead): HealthResponse {
       storage_bytes: read.storageBytes,
       storage_limit_bytes: read.storageLimitBytes,
     },
+    last_reconcile_run:
+      read.lastReconcileRun === null
+        ? null
+        : reconcileRunResponseMapper(read.lastReconcileRun, now),
   };
 }

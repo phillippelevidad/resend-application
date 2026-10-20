@@ -1,4 +1,9 @@
-import { createDatabase, type Database, STORAGE_LIMIT_BYTES } from '@ledger/db';
+import {
+  createDatabase,
+  type Database,
+  reconcileRunsRepository,
+  STORAGE_LIMIT_BYTES,
+} from '@ledger/db';
 import { type OutageDatabase, startOutageDatabase } from '@ledger/db/testing';
 import { createLogger, type Logger, mintApiToken, type QueueAttributesPort } from '@ledger/shared';
 import { FakeEventSourceControl, FakeQueueAttributes } from '@ledger/shared/testing';
@@ -10,7 +15,8 @@ import { bearer, issueTestToken, testApiDeps } from './testing.ts';
 
 // Ships 6, R10 (D18, D19): `health.get` answers during a database outage on the token's tag alone,
 // through the real middleware, while every other route answers `503`. The server stops, so this
-// file runs its own container (pp-testing → Outage tests).
+// file runs its own container (pp-testing → Outage tests). Slice 4 D27: `last_reconcile_run` is read
+// in the same database attempt, and the three reconcile routes answer `503` during the outage.
 
 const runbook = 'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md';
 
@@ -81,8 +87,51 @@ describe('health.get with Postgres up', () => {
         storage_bytes: expect.any(Number),
         storage_limit_bytes: STORAGE_LIMIT_BYTES,
       },
+      // No run recorded yet in this file's database.
+      last_reconcile_run: null,
     });
     expect(body.database.storage_bytes).toBeGreaterThan(0);
+  });
+
+  it('reports the newest of two runs as last_reconcile_run, in the run shape', async () => {
+    const insert = (dryRun: boolean) =>
+      database.db.transaction((tx) =>
+        reconcileRunsRepository.insert(tx, {
+          trigger: 'scheduled',
+          dryRun,
+          horizonStart: new Date(Date.now() - 72 * 3_600_000),
+          horizonEnd: new Date(Date.now() - 600_000),
+          claimed: true,
+        }),
+      );
+    const older = await insert(false);
+    await reconcileRunsRepository.finish(database.db, older.id, {
+      checked: 0,
+      missing: 0,
+      replayed: 0,
+      failed: 0,
+      errorCode: null,
+    });
+    const newer = await insert(true);
+    await reconcileRunsRepository.finish(database.db, newer.id, {
+      checked: 3,
+      missing: 2,
+      replayed: 0,
+      failed: 0,
+      errorCode: null,
+    });
+    const api = createApi(testApiDeps(database.db));
+
+    const { status, body } = await get(api, '/health', token);
+
+    expect(status).toBe(200);
+    expect(body.last_reconcile_run).toMatchObject({
+      object: 'reconcile_run',
+      run_id: newer.id,
+      dry_run: true,
+      missing: 2,
+      error: null,
+    });
   });
 
   it('a failing queue read answers 500 internal_error and logs the error name', async () => {
@@ -161,6 +210,7 @@ describe('health.get with Postgres stopped', () => {
         storage_bytes: null,
         storage_limit_bytes: STORAGE_LIMIT_BYTES,
       });
+      expect(health.body.last_reconcile_run).toBeNull();
 
       const badTag = mintApiToken(new Uint8Array(32).fill(0x11)).token;
       const forged = await get(api, '/health', badTag);
@@ -170,6 +220,20 @@ describe('health.get with Postgres stopped', () => {
       const email = await get(api, '/emails/e1', token);
       expect(email.status).toBe(503);
       expect(email.body.error.code).toBe('database_unavailable');
+
+      // Slice 4: the three reconcile routes answer the same, through the token lookup.
+      for (const path of ['/gaps', '/reconcile/runs/1']) {
+        const reconcile = await get(api, path, token);
+        expect(reconcile.status, path).toBe(503);
+        expect(reconcile.body.error.code, path).toBe('database_unavailable');
+      }
+      const started = await api.request('/reconcile', {
+        method: 'POST',
+        headers: { ...bearer(token), 'content-type': 'application/json' },
+        body: '{}',
+      });
+      expect(started.status).toBe(503);
+      expect(((await started.json()) as ErrorResponse).error.code).toBe('database_unavailable');
     } finally {
       await outage.start();
     }

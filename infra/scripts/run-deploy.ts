@@ -38,6 +38,8 @@ export type DeployOutputs = {
   signingSecretsArn: string;
   // Slice 3, D12: the `SimulatorSecretArn` output, which the app stack has only with the simulator.
   simulatorSecretArn: string | undefined;
+  // Slice 4 D26: the reconciler's key secret.
+  resendApiKeySecretArn: string;
   killSwitchArmed: boolean;
 };
 
@@ -50,6 +52,8 @@ export type DeployContext = {
   budgetDrill: boolean;
   // Slice 3, D11: `LEDGER_SIMULATOR=on`.
   simulator: boolean;
+  // Slice 4 D29: `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, absent when not set (the app then reads `unset`).
+  resendWebhookId: string | undefined;
 };
 
 export type DeploySteps = {
@@ -281,6 +285,7 @@ async function deploy(
       killSwitch: config.killSwitch,
       budgetDrill: args.budgetDrill,
       simulator: config.simulator !== undefined,
+      resendWebhookId: config.resend?.webhookId,
     }),
   );
   if (await step('scanning cdk.out failed', () => steps.findTemplateSecret())) {
@@ -415,6 +420,14 @@ async function deployAndWrite(
       steps.writeSecret(simulatorSecretArn, simulator.secret),
     );
     out.line(`ledger/simulator-signing-secret ${simulatorWrite}`);
+  }
+  // Slice 4 D29: the reconciler's key, only when set, into the secret CDK created with a placeholder.
+  const resend = config.resend;
+  if (resend !== undefined) {
+    const resendWrite = await step('writing ledger/resend-api-key failed', () =>
+      steps.writeSecret(outputs.resendApiKeySecretArn, resend.apiKey),
+    );
+    out.line(`ledger/resend-api-key ${resendWrite}`);
   }
 
   // 10. The first `operate` token, printed once: only by the run that inserted it (D8).

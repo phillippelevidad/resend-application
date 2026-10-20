@@ -67,7 +67,7 @@ Every change is judged against these; they outrank evidence, cost, scope and pol
 
 | Invariant | Carried by | Evidence | Design test (MUST) |
 | --- | --- | --- | --- |
-| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | sim invariant 1 ([invariant-1.ts](../sim/src/invariants/invariant-1.ts)), run live by `pnpm sim --duplicates 0.2 --shuffle` against `apps/local` (slice 1, local; the checker's pass and fail on real Postgres in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)). On AWS, through a database outage: `pnpm sim --chaos db-outage` (26 of 26 accepted at `200`, DLQ 0, invariant 1 after the resume, slice 3, 2026-10-19). Pending — "down past the retry schedule" fake-API integration test (slice 4) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
+| **No loss**: every event Resend produced for the webhook reaches `webhook_events` | ADR-001, 004, 007, 008, 015 | sim invariant 1 ([invariant-1.ts](../sim/src/invariants/invariant-1.ts)), run live by `pnpm sim --duplicates 0.2 --shuffle` against `apps/local` (slice 1, local; the checker's pass and fail on real Postgres in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)). On AWS, through a database outage: `pnpm sim --chaos db-outage` (26 of 26 accepted at `200`, DLQ 0, invariant 1 after the resume, slice 3, 2026-10-19). Down past the retry schedule: six events 30 h old, three stored, a scheduled run replays the three through ingest and each id is stored once, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) (slice 4, fake Resend API) | A change MUST NOT return `200` to Resend before the event is durably enqueued, MUST NOT drop a message without it reaching the DLQ, and MUST NOT let a database outage move messages to the DLQ |
 | **No duplicate effects**: at-least-once delivery, exactly-once effects | ADR-004, 006, 017 | pending — sim invariant 3 under `--chaos worker-crash` and `--chaos dispatcher-crash` (slice 6) | Every side effect MUST be an outbox row with a `dedupe_key`, written in the event's transaction; no third-party I/O inside the worker transaction |
 | **Order independence**: any arrival order and duplication give the same state | ADR-003 | fast-check properties 1–4 for `projectEmail` in [project-email.projection.prop.test.ts](../packages/core/src/project-email.projection.prop.test.ts) and for `projectRecipient` in [project-recipient.projection.prop.test.ts](../packages/core/src/project-recipient.projection.prop.test.ts) (slice 0); sim invariant 2 ([invariant-2.ts](../sim/src/invariants/invariant-2.ts)) under `--shuffle`, run live against `apps/local` (slice 1, local; pass and fail in [invariants.int.test.ts](../sim/src/invariants/invariants.int.test.ts)) | Projection code MUST NOT read `received_at`, prior projection state or arrival sequence |
 
@@ -155,8 +155,8 @@ No retry, no savepoint.
 A verified event is never dead-lettered for its content: only unexpected code errors reach
 the DLQ (ADR-008), and the simulator's poison message is an injected fault. Dedupe is on `svix_id`,
 which Resend's retries keep (RS-06, RS-08), never on the SQS `messageId`, which redrive changes
-(AWS-21). **Conditional:** a reconciler replay dedupes only if
-it carries the original `svix-id` (RS-U01); slice 4 MUST settle it.
+(AWS-21). A reconciler replay carries the original `svix-id`, so it dedupes too (RS-45, settled
+live in slice 4).
 Rejected: dedupe on `(email_id, type)` (collapses distinct events); one transaction per step.
 **Evidence:** Testcontainers integration tests, as the runtime role: a sequential duplicate, two concurrent copies of one `svix_id` and a copy under a new `messageId` each leave one row and unchanged projections; a `CHECK (false) NOT VALID` fault after the ledger insert commits nothing, and the redelivery commits one row of everything; a NUL in the subject and a lone surrogate in a tag value are stored with U+FFFD, projected and counted once; the unprojectable kinds (unknown type, `contact.created`, `email.received`, a schema-failing outbound event, a JSON array and a JSON `null` payload) are stored raw and committed on their first receive; out-of-order arrival yields the projection of the stored events; two emails sharing recipients in opposite `data.to` order commit in either interleaving without deadlock, in [record-event.command.int.test.ts](../packages/worker/src/record-event.command.int.test.ts) (slice 1). The sanitizer properties in [sanitize-for-jsonb.prop.test.ts](../packages/core/src/sanitize-for-jsonb.prop.test.ts) (slice 1). Pending — sim invariant 1 (slice 1).
 
@@ -196,7 +196,7 @@ Rejected: calling third parties from the worker; dedupe in memory.
 
 ### ADR-007 — Recovery by id diff and replay through ingest
 
-**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03)**; amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-03, AO-12).
+**Accepted; amended 2026-10-15** ([docs review](reviews/2026-10-15-docs-verification/decisions.md): V1-02, V1-03, V2-03)**; amended 2026-10-16** ([pp-skills architecture review](reviews/2026-10-16-pp-skills-arch/decisions.md): AO-03, AO-12)**; amended 2026-10-19** ([slice 4 pre-proposal](pre-proposals/2026-10-19-slice-4-recovery.md): C1, C2, C11, C14, C15, C18).
 On the hourly cron and on demand, the reconciler reads the configured webhook's `status` first
 (its id is a deploy input, [integrations.md → Secrets layout](integrations.md#secrets-layout)) and
 stops with `webhook_disabled` if it is disabled (RS-11, RS-13). It then pages List Events newest
@@ -205,32 +205,41 @@ first (RS-14), skips events younger than its grace window (10 minutes, or the so
 `local_queue_messages` row), so an event ingest acknowledged that is still queued is neither
 counted missing nor replayed. A dead-lettered event is replayed once per run until it is redriven
 or purged; the DLQ alarm already shows it (ADR-008). It stops at a lookback horizon (default 3
-days, above the ≈ 27.6 h retry schedule, RS-09; extended back to the `horizon_end` of the last run
-that finished without an `error_code` when that is older, capped at 30 days, RS-31, and at List
+days, above the ≈ 27.6 h retry schedule, RS-09; the default and an explicit `--lookback` alike are
+extended back to the anchor, the `horizon_end` of the newest run that finished without an
+`error_code` and with nothing missing, when that is older (a run that found events missing never
+anchors, so the next run re-checks its span and anchors once the replays are stored, C1), capped at 30 days, RS-31, and at List
 Events reach, RS-U03, so a span when runs could not run, such as a tripped kill switch, a database
 outage or a quota suspension, is covered with no `--lookback`), diffs ids against
 `webhook_events`, and replays the missing ones (RS-16). A replay re-enters through ingest, so
 verification and dedupe apply unchanged. One failed replay never aborts a run; runs never overlap
 and stay inside a time budget below the Lambda timeout (AWS-03), one constant shared by the start
 check and the abandoned derivation below:
-- **Start:** one transaction takes `pg_advisory_xact_lock` on a fixed reconcile key, refuses with
-  `reconcile_in_progress` if an unfinished run is inside its time budget, and inserts its row.
+- **Start:** both triggers read the queue snapshot first, then one transaction takes
+  `pg_advisory_xact_lock` on a fixed reconcile key, refuses with `reconcile_in_progress` if an
+  unfinished run is inside its time budget, reads the anchor and inserts its row with its horizon,
+  the window the run sets out to check, fixed at start (C14, C18). A scheduled run is claimed at
+  insert; a manual one by its invoke.
 - **Claim:** async invoke is at-least-once and can deliver one event twice without an error
   (AWS-53), so before any Resend call the reconciler runs `UPDATE reconcile_runs SET claimed_at =
-  now() WHERE id = $1 AND claimed_at IS NULL`; zero rows means a duplicate invoke, which exits
-  without work. The invoke sets `MaximumRetryAttempts: 0`.
+  now() WHERE id = $1 AND claimed_at IS NULL AND finished_at IS NULL`; zero rows means a duplicate
+  invoke or a finished run, which exits without work (C11). The invoke sets
+  `MaximumRetryAttempts: 0` and `MaximumEventAgeInSeconds: 60`, so invokes queued during a trip do
+  not run back to back on re-arm (C15, AWS-63).
+- **Deadline:** Resend calls stop at `started_at` plus the budget minus a 60 s finish reserve; the
+  budget reached with paging unfinished finishes the run `rate_limited`, which never anchors (C2).
 - **Abandoned:** a run with no `finished_at` past its time budget (it crashed, or its invoke was
   lost) will not finish. `packages/api` derives `run_abandoned` on read and never writes it to the
   row ([api-contract.md → Error codes](api-contract.md#error-codes)); the next hourly run covers the
   horizon.
 
 Each run writes a `reconcile_runs` row. Same approach as Ingester [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13),
-cited, not claimed. **Conditional:** the id diff holds only if List Events ids are `svix-id`s
-(RS-U02) and a replay keeps the `svix-id` (RS-U01) and passes the timestamp window (RS-U20), all
-three MUST be settled in slice 4; recoverable range is bounded by List Events reach (RS-U03); the
-grace window assumes visibility within minutes (RS-U13).
+cited, not claimed. The id diff's links were settled live in slice 4: List Events ids are the
+delivered `svix-id`s (RS-44), and a replay keeps the `svix-id` and passes the timestamp window
+(RS-45). **Conditional:** recoverable range is bounded by List Events reach (RS-U03); the grace
+window assumes visibility within minutes (RS-U13, two measured sends: 5.2 s and 9.4 s).
 Rejected: a write path that inserts fetched payloads directly (bypasses verification); diffing by delivery status (misses "acknowledged but never stored").
-**Evidence:** pending — fake-API integration tests: outage past the retry schedule → 100 % recovered, 0 duplicates; a 5-day gap since the last good run recovered with no `--lookback`; disabled webhook; `429` with `retry-after`; a queued backlog older than 10 minutes is not replayed; a second invoke of a claimed run makes no Resend call; a run past its budget with no `finished_at` reads `run_abandoned` through `reconcile.getRun` and `gaps.list` (slice 4). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
+**Evidence:** the recovery suite composes the real reconciler, the real `resend-client` against a fake Resend API, real ingest and the real worker over real Postgres: an outage past the retry schedule ends 100 % recovered with 0 duplicates, an out-of-order replay leaves the projection of both events, a 5-day gap since the last good run is recovered with no `--lookback`, a disabled webhook stops before any List Events call, a `429` storm with `retry-after` completes, an event queued behind a 30-minute backlog is neither counted nor replayed, one failed replay counts in `failed`, the budget reached ends `rate_limited` and never anchors, a dry run replays nothing, and a reconciler with no Resend configuration makes no request, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) (slice 4). A second invoke of a claimed run, an invoke of a finished row and a scheduled start over an unfinished run make no Resend call, and an unexpected throw after the claim finishes the row `internal_error`, in [reconciler.int.test.ts](../packages/reconciler/src/reconciler.int.test.ts) (slice 4). Two concurrent starts on two pools yield one run and one `reconcile_in_progress`, and a rejected hand-off finishes the row so the next start is accepted, in [start-reconcile.command.int.test.ts](../packages/api/src/start-reconcile.command.int.test.ts) (slice 4). A run past its budget with no `finished_at` reads `run_abandoned` through `reconcile.getRun` and `gaps.list`, under `@hono/node-server` and through the Lambda adapter, in the SDK ↔ API [contract suite](../packages/api/src/testing/read-api-contract.ts) (slice 4). Locally every run ends `reconciler_not_configured`, through the real `main.ts` and CLI, in [local-reconcile.int.test.ts](../apps/local/src/local-reconcile.int.test.ts) (slice 4). On the deployed stack, 2026-10-20: `pnpm aws:gap-drill` ([run-gap-drill.ts](../infra/scripts/run-gap-drill.ts)) sent one email with the ingest route throttled to `0`, so Resend's deliveries of its two events were refused, then printed `events visible after 5171 ms`, `waiting 625 s for the grace window`, `ingest route restored`, `dry run: missing 2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, `dry run: missing 0`, `gaps: newest run missing 0`, `created_at unchanged by the replay: yes` and `done`; the hour's `reconcile.missing` datapoint read `Maximum 2`, which `LedgerApp-reconcile-gap` reads as breaching. The alarm was already in `ALARM`, since 15:26 UTC, when it read the hour before the deploy (no run, no datapoint) as breaching, so that drill caused no transition of its own. After the clean 17:00 hour it read `OK` (18:00 UTC), and a second drill at 18:02 UTC printed the same lines (`events visible after 9376 ms`, `dry run: missing 2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, `dry run: missing 0`, `done`); `LedgerApp-reconcile-gap` went `OK` → `ALARM` at 19:00:18 UTC, and the owner received its alert email. E1 replayed one stored 41 h old event: ingest answered `200`, the worker logged it as a duplicate, and the email's `event_count` stayed 2 (RS-44, RS-45). Source: [idea §5.5](../docs/idea.md#55-reconciler-recovering-missed-events).
 
 ### ADR-008 — Backpressure: bounded concurrency, partial batch failure, DLQ
 
@@ -250,13 +259,14 @@ Rejected: unbounded concurrency; whole-batch retry; reserved concurrency as the 
 **Accepted.** Ingest verifies against the configured set of signing secrets, one `verify` call per
 secret, first match wins (RS-02), and rejects `svix-timestamp` more than 5 minutes off (RS-02,
 RS-03). Resend signs with both the old and new secret for 24 h after a rotation (RS-04), so the set
-is required, not defensive: the adopter adds the new secret, rotates, retires the old one inside
-24 h. Ingest re-reads the set at most every 5 minutes (a per-container cache TTL), so an added or
+is required, not defensive: the adopter rotates at Resend, which is what returns the new secret
+(RS-13), adds the new secret to the set, and retires the old one inside 24 h of the rotation
+(slice 4 pre-proposal C5; [runbook → Rotate the webhook signing secret](../docs/runbook.md#rotate-the-webhook-signing-secret)). Ingest re-reads the set at most every 5 minutes (a per-container cache TTL), so an added or
 retired secret takes effect within 5 minutes, with no redeploy. The loop ships with ingest in slice
 1; slice 4 adds the rotation runbook and the retired-secret test. **Conditional:** how both
 signatures appear in the header (RS-U09) does not matter to a per-secret loop.
 Rejected: one secret with a redeploy on rotation (drops deliveries for the redeploy window).
-**Evidence:** unit tests with old, new and both signatures in one header, forged and stale (6 min) requests, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), signed by the test signer that `resend`'s `webhooks.verify` accepts in [sign-webhook.test.ts](../packages/ingest/src/sign-webhook.test.ts) (slice 1). Pending — retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
+**Evidence:** unit tests with old, new and both signatures in one header, forged and stale (6 min) requests, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), signed by the test signer that `resend`'s `webhooks.verify` accepts in [sign-webhook.test.ts](../packages/ingest/src/sign-webhook.test.ts) (slice 1). A secret dropped from the store still verifies until the 5-minute cache TTL passes, then answers `401` with one `ingest.rejected` carrying `reason: signature`; a stale, skewed or non-integer `svix-timestamp` answers `401` with `reason: timestamp` before any `verify` call, on a fake clock started at wall-clock time, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts) (slice 4).
 
 ### ADR-010 — Serverless on AWS CDK: an app stack and a guardrails stack
 
@@ -306,7 +316,7 @@ errors are mapped by status, then name, with a default branch (RS-22). Every req
 Every calling function is single-flight (the reconciler by non-overlapping runs, ADR-007; the
 dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s.
 Rejected: calling the `resend` SDK from apps directly; a limiter shared across functions through a table or service (single-flight callers make it unnecessary).
-**Evidence:** pending — limiter unit tests (rate, yield on low `remaining`, `retry-after`); fake-API `429` storm completes the run (slice 4).
+**Evidence:** the limiter on a fake clock spaces starts 500 ms apart at 2 req/s, yields `ratelimit-reset` below half the limit and not at or above it, waits `retry-after` then retries, and throws `rate_limited` on a quota `429`, a `429` with no `retry-after`, or a wait past the deadline, before sleeping, in [limiter.test.ts](../packages/resend-client/src/limiter.test.ts) (slice 4). The real client against the fake Resend API: `baseUrl`, `User-Agent` and `Idempotency-Key` sent; status-then-name mapping with its default branch; a `5xx` or refused connection retried twice then `resend_unavailable`; Retrieve Webhook returns its status alone; nothing reaches `console.error` and no thrown error holds Resend's body, in [create-resend-client.test.ts](../packages/resend-client/src/create-resend-client.test.ts) (slice 4). Five `429`s with `retry-after: 1` on List Events, then the run completes with every missing event replayed, in [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts) (slice 4).
 
 ### ADR-013 — Pure core and local mode
 
@@ -490,7 +500,7 @@ Rejected: NestJS (CDK `NodejsFunction` and Vitest compile with esbuild, which em
 | Workspace orchestration | pnpm workspaces and root `package.json` scripts; no Turborepo (owner, 2026-10-16) | No package emits a build output to cache (packages ship TypeScript source); Biome and Vitest each run as one root process; typecheck is one `tsc` pass. Revisit when a measured `pnpm check` exceeds 60 s or a package emits a build output |
 | Local development database | `compose.yaml`: `postgres:18.6-alpine` on `127.0.0.1:55432`, started by `pnpm dev:full` (owner, 2026-10-16) | Loopback only, no cost. Integration tests never use it (Testcontainers). Slice 2B adds `apps/local` to the same file |
 | Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
-| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`, `worker.payload_sanitized` (ADR-004); vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
+| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`; emitted once per `401` from slice 4), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`, `worker.payload_sanitized` (ADR-004); vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
 | Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `packages/ingest` | ADR-012, ADR-009, ADR-013 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
 | MCP | `@modelcontextprotocol/server` v2, stdio | ADR-019, ADR-011 |
@@ -526,6 +536,7 @@ measured reason in an ADR. Neon Free bills nothing and sits outside the AWS budg
 | Project domain (verified sending domain, stable demo URL) | temporal | Alerts reach the owner's address from `resend.dev` (RS-34) | The first slice that must send email to anyone but the owner's Resend address, or needs a stable public demo URL |
 | Scripted webhook creation | temporal | One-time step while the ingest URL is stable ([features.md → connect webhook](features.md#adopter-lifecycle)) | A redeploy of the same stack changes the ingest URL |
 | A `.ai/test-findings.md` log | temporal | The runner skill (`rsa-manual-test`) landed early at the owner's request (2026-10-16), with `.ai/testing/` as its free-form run folder, created by the first such run; no run has found a defect outside an open change yet, and one inside a change lives in its `WALKTHROUGH-RUN.md` ([run-record.md → Promote](../.agents/skills/rsa-manual-test/references/run-record.md#promote-to-test-findingsmd)). Homeless deploy-time checks go to [check-before-launch.md](check-before-launch.md). A walk that recurs per review MUST be scripted ([lens clause 1](../AGENTS.md#decision-lens--evidence-over-claims-right-sized)) | The first confirmed defect a run finds outside an open change: `rsa-manual-test` creates the file on first use |
+| A live reconcile in local mode (a Resend client and webhook id for `apps/local`) | temporal | A local process has no webhook of its own to replay to; every local run ends `reconciler_not_configured` with no Resend call (slice 4, D23; [local-reconcile.int.test.ts](../apps/local/src/local-reconcile.int.test.ts)) | Slice 2B lands `docker compose`, or the first walk that must replay into a local process through `resend webhooks listen` |
 | Cost Anomaly Detection | temporal | No faster than the budget refresh (AWS-37) | A trip drill or a bill shows spend past 80 % of the cap without an alert |
 
 ## Build order (vertical slices)
@@ -569,7 +580,7 @@ account are Ask-first.
 | 1 | ~~RS-U22~~ → RS-41 | ~~RS-U15~~ → RS-39, ~~RS-U18~~ → RS-40, the slice's library bullets |
 | 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06, ~~RS-U21~~ → RS-43 (moved from slice 1; settled early, 2026-10-17) | RS-U07, ~~RS-U14~~ → RS-42 (settled early, slice 1), AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
 | 3 | ~~PG-U07~~ (settled 2026-10-19 from Neon's source), AWS-U05's burst half (quota 1,000, 2026-10-19) | RS-U08 (closed safe by the burst's p99, 2026-10-19), AWS-U14 (proved safe by [sqs-dlq.adapter.test.ts](../packages/aws/src/sqs-dlq.adapter.test.ts)), ~~AWS-U15~~ (settled 2026-10-19 by `--chaos db-outage`) |
-| 4 | RS-U01, RS-U02, RS-U20 | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay experiment), RS-U13, RS-U17, PG-U03 |
+| 4 | ~~RS-U01~~ → RS-45, ~~RS-U02~~ → RS-44, ~~RS-U20~~ → RS-45 (settled live, 2026-10-20) | RS-U03 (reach ≥ lookback), RS-U04 and RS-U05 (closed safe, the experiments held, 2026-10-20), RS-U06, RS-U09, RS-U10 (replay half observed stable, 2026-10-20), RS-U13 (closed: 5.2 s and 9.4 s, 2026-10-20), ~~RS-U17~~ → RS-46, PG-U03 |
 | 5 | — | The slice's library bullets |
 | 6 | — | RS-U16 |
 | 7 | — | RS-U03 (re-measured before M2 closes) |
@@ -607,9 +618,9 @@ PG-U07 MAY settle in slice 2 and MUST by slice 3's first storage-budget measurem
 | Kill switch tripped: webhooks fail meanwhile | Owner's deployment only; scripted re-arm, then `ledger reconcile` within List Events reach ([about.md → Risk appetite](about.md#risk-appetite)) |
 | Concurrent workers update the same `recipient_state` from different emails | Lock recipient rows in sorted `address_hash` order after the email lock; recompute from all its `email_recipients` rows; concurrency integration test (slice 1) and through the pooler (PG-U02, slice 2); sim invariant 2 under `--burst` on AWS (slice 3) |
 | Postgres connection exhaustion under burst | One connection per container, `MaximumConcurrency` caps worker containers (ADR-008), and the dispatcher is single-flight (ADR-017); Neon's pooler accepts far more |
-| Webhook auto-disabled and nobody notices | The reconciler reads `status` every run and alarms with `webhook_disabled` (ADR-007) |
+| Webhook auto-disabled and nobody notices | Resend emails the account when it disables a webhook (RS-11); the reconciler reads `status` every run and ends `webhook_disabled`, which emits no clean-run metric, so `LedgerApp-reconcile-gap` emails the owner within the hour (ADR-007, slice 4 D24; [app.stack.test.ts](../infra/src/app.stack.test.ts)) |
 | Reconcile competes with the team's sending for 10 req/s | A 2 req/s limiter per single-flight caller, yielding on low `remaining`, ≤ 4 req/s in total (ADR-012) |
-| Replays fail verification or land under a new id (RS-U01, RS-U20) | Settled in slice 4 by one Ask-first replay of a stored event, before recovery is called done |
+| Replays fail verification or land under a new id (RS-U01, RS-U20) | Settled in slice 4: the Ask-first replay of a stored 41 h old event passed verification and deduped on its original `svix-id`, and the gap drill's two replays were stored (RS-44, RS-45; [ADR-007](#adr-007--recovery-by-id-diff-and-replay-through-ingest) Evidence) |
 | Outcome precedence wrong for async bounces or `created_at` semantics | Oracle property test under both answers (ADR-003); RS-U10, RS-U11, RS-U12 in slice 0 |
 | PII or secrets leak through logs, responses or tool output | gitleaks history scan in `pnpm verify` (slice 0); test addresses only; ids in logs, never addresses or bodies, enforced by the logger's allow-list ([data-modeling.md → Log fields](data-modeling.md#log-fields); unit test, slice 1); fixed ingest response body (ADR-001); redaction tests on MCP output (slice 5) |
 

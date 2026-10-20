@@ -113,4 +113,16 @@ describe('webhook_events as the runtime role', () => {
     ).toBe(1);
     expect(await webhookEventsRepository.countPresent(t.db, [])).toBe(0);
   });
+
+  it('presentSvixIds returns only the stored svix_ids of a List Events page', async () => {
+    await webhookEventsRepository.insertIfAbsent(t.db, eventRow('msg_present_a'));
+    await webhookEventsRepository.insertIfAbsent(t.db, eventRow('msg_present_b'));
+    const present = await webhookEventsRepository.presentSvixIds(t.db, [
+      'msg_present_a',
+      'msg_present_missing',
+      'msg_present_b',
+    ]);
+    expect([...present].sort()).toEqual(['msg_present_a', 'msg_present_b']);
+    expect((await webhookEventsRepository.presentSvixIds(t.db, [])).size).toBe(0);
+  });
 });

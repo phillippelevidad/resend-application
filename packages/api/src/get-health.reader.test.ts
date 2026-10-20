@@ -41,6 +41,7 @@ describe('GetHealthReader', () => {
       eventSourceState: 'paused',
       storageBytes: null,
       storageLimitBytes: 1_000,
+      lastReconcileRun: null,
     });
   });
 
