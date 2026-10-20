@@ -42,8 +42,8 @@ new or reworded bullet is a scope change that starts at the card
 ([How to work this checklist](../../../.ai/build-checklist.md#how-to-work-this-checklist)):
 
 - **Ships 11 added** (PP D24, C6): "An alarm `LedgerApp-reconcile-gap` on `reconcile.missing` fires when a run finds missing events or no run finishes cleanly in an hour, with its runbook entry; evidence: a CDK assertion test, the alarm-to-runbook link check, and the alarm email from the recorded gap-script run."
-- **Ships 7's RS-U17 clause** (PP D38) becomes "RS-U17 revoked-key status closed by one Ask-first create and revoke of a throwaway key and a read with it". It tightens the evidence. The owner's ruling clears the [rule gate](../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built).
-- **Ships 9's two counts, corrected as facts** (PP C3, C4): "(1 missing)" becomes "(the send's events missing, RS-39)", because `delivered@` produces two events and List Events lists events. "`ledger gaps` (0 missing)" reads the run of a final `ledger reconcile --dry-run`, because `gaps.list` reads recorded runs only. Neither loosens the bullet.
+- **Ships 7's RS-U17 clause** (PP D38): the opening becomes "RS-U03 reach of at least the 3-day lookback and RS-U13 visibility lag closed by read-only checks, and RS-U17 revoked-key status closed by one Ask-first create and revoke of a throwaway key and a read with it". It tightens RS-U17's evidence and leaves RS-U03 and RS-U13 read-only. The owner's ruling clears the [rule gate](../../../AGENTS.md#never-loosen-a-rule-to-fit-what-was-built).
+- **Ships 9's two counts, corrected as facts** (PP C3, C4): "(1 missing)" becomes "(the send's events missing, RS-39)", because `delivered@` produces two events and List Events lists events. "`ledger reconcile` and `ledger gaps` (0 missing)" becomes "`ledger reconcile`, a final `ledger reconcile --dry-run` and `ledger gaps` (0 missing)", because `gaps.list` reads recorded runs only and the real run records `missing` 2. Neither loosens the bullet.
 
 Task 1.1 edits the card and the quotes above in one step.
 
