@@ -90,7 +90,11 @@ The deployed stack's recorded runs, each with its command, seed and counts, no U
 - the 10,000-event burst and the poison run
   ([ADR-008 → Evidence](.ai/architecture.md#adr-008--backpressure-bounded-concurrency-partial-batch-failure-dlq));
 - the database outage, `pnpm sim --chaos db-outage`
-  ([ADR-015 → Evidence](.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage)).
+  ([ADR-015 → Evidence](.ai/architecture.md#adr-015--the-worker-pauses-its-own-event-source-on-a-database-outage));
+- the gap drill, `pnpm aws:gap-drill`: Resend's deliveries of one send refused at ingest, then found
+  missing and replayed (`missing 2 replayed 2 failed 0`, then `missing 0`), and one replay of a
+  stored event 41 h old deduped on its original `svix-id`
+  ([ADR-007 → Evidence](.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)).
 
 ## Who it's for
 

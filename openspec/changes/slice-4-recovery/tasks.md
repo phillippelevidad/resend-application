@@ -130,7 +130,7 @@ resource) stops uncommitted for the owner.
 
 ## 13. README at the M1 boundary (Ships 10; D36)
 
-- [ ] 13.1 Rewrite `README.md` per D36: the M1 status line, every reliability claim linked to its evidence, reconcile as "the same approach as the Ingester's open PR #13", "Planned for M2" stating no behavior, and one Demo section linking ADR-007's and ADR-008's recorded runs, with no deployed URL or id. check-before-launch.md: the "Owned elsewhere" slice 4 line, now that the README and RS-U01 have landed. Card: tick `Ships` 10. Verify: `node scripts/check-links.mjs` exits 0 with 0 broken; a read of the README finds no reliability claim without a link and no claim on a behavior M1 does not ship; the tenth box reads `[x]`.
+- [x] 13.1 (2026-10-20: the Demo bullet for the recorded gap drill added once ADR-007 held it) Rewrite `README.md` per D36: the M1 status line, every reliability claim linked to its evidence, reconcile as "the same approach as the Ingester's open PR #13", "Planned for M2" stating no behavior, and one Demo section linking ADR-007's and ADR-008's recorded runs, with no deployed URL or id. check-before-launch.md: the "Owned elsewhere" slice 4 line, now that the README and RS-U01 have landed. Card: tick `Ships` 10. Verify: `node scripts/check-links.mjs` exits 0 with 0 broken; a read of the README finds no reliability claim without a link and no claim on a behavior M1 does not ship; the tenth box reads `[x]`.
 - [ ] 13.2 Run `pnpm check`, then commit and push. Verify: `pnpm check` exits 0 before the commit, and `git status --short` is empty after the push.
 
 ## 14. Gate

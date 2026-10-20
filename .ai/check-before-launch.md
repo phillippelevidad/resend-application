@@ -37,7 +37,7 @@ observation.
 - **Slice 0:** the secret scan over the full history, and the README link check.
 - **Slice 2:** the budget, the kill switch and the trip drill; the CDK assertions (`MaximumConcurrency`, no VPC or NAT); both body encodings at ingest; the teardown listing.
 - **Slice 3:** `maxReceiveCount` and the poison run; ingest p99 under the delivery timeout (RS-U08).
-- **Slice 4:** a replay keeps its `svix-id` (RS-U01, the walk's C4–C6).
+- **Slice 4:** a replay keeps its `svix-id` (settled live as [RS-45](resend.md#facts) by E1); the README claims at the M1 boundary.
 - **Slice 7:** the README claims at the M2 boundary.
 
 ## Deploy configuration
