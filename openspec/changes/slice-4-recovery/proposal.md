@@ -128,6 +128,8 @@ and the runbook's "a code from a later slice" scenario, whose operation this sli
   error code has a runbook entry" (the new code; slice 4's operations now real); ADDED "The rotation
   procedure".
 - `local-stack`: ADDED "Local reconcile runs end not configured".
+- `simulator`: MODIFIED "Database-outage knob": the run recycles the reconciler with the worker and
+  the read API, because it too reads the database secret once per container (review finding).
 
 ## Impact
 

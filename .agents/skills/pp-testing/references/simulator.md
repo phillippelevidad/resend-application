@@ -137,11 +137,11 @@ fake clock; `main.ts` composes the real steps with `@ledger/aws`'s client factor
   exit `1`, nothing changed), because the hold below would end at `0m` on a stale alarm, a false
   pass; `OK` and `INSUFFICIENT_DATA` proceed. It repoints the deployed database secret's `pooledUrl` host to
   `ledger-sim-db-outage.invalid` (RFC 2606: every connect fails `ENOTFOUND` under a pg origin,
-  which the classifier counts as connection-class), recycles the worker and the read API with a
-  `Description` update (AWS-U15), sends the history, waits (bounded 10 min) for the event source to
+  which the classifier counts as connection-class), recycles the worker, the read API and the
+  reconciler (each reads the secret once per container) with a `Description` update (AWS-U15), sends the history, waits (bounded 10 min) for the event source to
   read `paused`, then holds (bounded 45 min) until `LedgerApp-queue-age` reads `ALARM` with the DLQ
   at 0. `finally` writes the original back only while the secret still holds the `.invalid` host
-  and recycles both again. It then waits (bounded 65 min) for `enabled`, settles, and checks
+  and recycles all three again, each attempted whatever the others did. It then waits (bounded 65 min) for `enabled`, settles, and checks
   invariants 1, 2 and 4. The secret's value stays in memory, never printed or written.
 - **`--poison <n>`** ([poison-run.ts](../../../../sim/src/poison-run.ts)) re-ids `n` seeded events
   (never the walk probe's) as `simpoison_<namespace>_<k>` in the generated history, before it is

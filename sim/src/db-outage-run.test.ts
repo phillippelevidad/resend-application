@@ -23,13 +23,21 @@ const ORIGINAL = JSON.stringify({
 
 const minute = 60_000;
 
+// Every function that reads the database secret once per container, recycled into the outage and
+// out of it.
+const recycledInAndOut: Record<RecycledFunction, string[]> = {
+  worker: ['ledger-sim db-outage walk', ''],
+  api: ['ledger-sim db-outage walk', ''],
+  reconciler: ['ledger-sim db-outage walk', ''],
+};
+
 // What `world()` prints end to end, in the order Surfaces prints.
 const completedLines = [
-  'chaos db-outage: database repointed, worker and api recycled',
+  'chaos db-outage: database repointed, worker, api and reconciler recycled',
   'sent requests=24 accepted=24 first_attempt_200=24',
   'worker paused after 40s',
   'queue-age alarm ALARM after 6m; dlq depth 0',
-  'chaos db-outage: database restored, worker and api recycled',
+  'chaos db-outage: database restored, worker, api and reconciler recycled',
   'resume: pnpm -s ledger worker resume, or wait for the hourly resume',
   'worker enabled after 3m',
   'settled stored=20/20 after 4s',
@@ -71,7 +79,7 @@ function world(options: Overrides = {}): World {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const secret = { value: ORIGINAL, writes: [] as string[] };
-  const descriptions: Record<RecycledFunction, string[]> = { worker: [], api: [] };
+  const descriptions: Record<RecycledFunction, string[]> = { worker: [], api: [], reconciler: [] };
   const sent = { count: 0 };
   let sentAt: number | undefined;
   let restoredAt: number | undefined;
@@ -174,14 +182,11 @@ describe('dbOutageRun', () => {
     // The fault, then the original back; each function recycled into the outage and out of it.
     expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
     expect(secret.value).toBe(ORIGINAL);
-    expect(descriptions).toEqual({
-      worker: ['ledger-sim db-outage walk', ''],
-      api: ['ledger-sim db-outage walk', ''],
-    });
+    expect(descriptions).toEqual(recycledInAndOut);
     expectNoSecretOrUrl(stdout);
   });
 
-  it('restores the secret and recycles both functions when a step fails after the fault, then exits 1', async () => {
+  it('restores the secret and recycles every function when a step fails after the fault, then exits 1', async () => {
     const { run, stdout, stderr, secret, descriptions } = world();
     // The send, with the fault in place, fails outside any bounded wait (a read inside one is "not
     // yet", next tests).
@@ -192,10 +197,11 @@ describe('dbOutageRun', () => {
     expect(await dbOutageRun(run)).toBe(1);
 
     expect(secret.value).toBe(ORIGINAL);
-    expect(descriptions.worker).toEqual(['ledger-sim db-outage walk', '']);
-    expect(descriptions.api).toEqual(['ledger-sim db-outage walk', '']);
+    expect(descriptions).toEqual(recycledInAndOut);
     expect(stderr).toEqual(['sim: the db-outage run failed (TypeError)']);
-    expect(stdout).toContain('chaos db-outage: database restored, worker and api recycled');
+    expect(stdout).toContain(
+      'chaos db-outage: database restored, worker, api and reconciler recycled',
+    );
     expect(stdout).not.toContain('worker enabled after 3m');
     expectNoSecretOrUrl([...stdout, ...stderr]);
   });
@@ -282,12 +288,11 @@ describe('dbOutageRun', () => {
     expect(await dbOutageRun(run)).toBe(1);
 
     expect(stderr).toEqual(['sim: the db-outage run failed (TimeoutError)']);
-    expect(stdout).toContain('chaos db-outage: database restored, worker and api recycled');
+    expect(stdout).toContain(
+      'chaos db-outage: database restored, worker, api and reconciler recycled',
+    );
     expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
-    expect(descriptions).toEqual({
-      worker: ['ledger-sim db-outage walk', ''],
-      api: ['ledger-sim db-outage walk', ''],
-    });
+    expect(descriptions).toEqual(recycledInAndOut);
     expect((restoreRecycledAt[0] ?? 0) - sentAt).toBeGreaterThanOrEqual(10 * minute);
     expectNoSecretOrUrl([...stdout, ...stderr]);
   });
@@ -303,6 +308,7 @@ describe('dbOutageRun', () => {
     expect(secret.value).toBe(ORIGINAL);
     expect(descriptions.worker.at(-1)).toBe('');
     expect(descriptions.api.at(-1)).toBe('');
+    expect(descriptions.reconciler.at(-1)).toBe('');
     expect(stdout.at(-1)).toBe(
       'resume: pnpm -s ledger worker resume, or wait for the hourly resume',
     );
@@ -352,7 +358,7 @@ describe('dbOutageRun', () => {
 
   // Each function reads the secret once per container, so a recycle skipped after another step
   // failed would leave it on the outage host.
-  it('still recycles the api when the restore recycle of the worker fails, and names the worker', async () => {
+  it('still recycles the api and the reconciler when the restore recycle of the worker fails, and names the worker', async () => {
     const { run, stdout, stderr, secret, descriptions } = world();
     const recycle = run.recycle;
     run.recycle = async (fn, description) => {
@@ -364,14 +370,40 @@ describe('dbOutageRun', () => {
 
     expect(secret.value).toBe(ORIGINAL);
     expect(descriptions.api).toEqual(['ledger-sim db-outage walk', '']);
+    expect(descriptions.reconciler).toEqual(['ledger-sim db-outage walk', '']);
     expect(stderr).toEqual([
       'sim: the database secret is restored, but recycling the worker failed; its containers that read the outage host keep it until recycled',
     ]);
-    expect(stdout).not.toContain('chaos db-outage: database restored, worker and api recycled');
+    expect(stdout).not.toContain(
+      'chaos db-outage: database restored, worker, api and reconciler recycled',
+    );
     expectNoSecretOrUrl([...stdout, ...stderr]);
   });
 
-  it('attempts both restore recycles when the write back fails', async () => {
+  // Slice 4: the reconciler keeps its pool per container too. One that cold-started on an hourly
+  // tick during the outage holds the outage host after the restore unless it is recycled, so every
+  // later run fails and `LedgerApp-reconcile-gap` fires.
+  it('recycles the reconciler on the restore and names it with the worker when both of their restore recycles fail', async () => {
+    const { run, stdout, stderr, secret, descriptions } = world();
+    const recycle = run.recycle;
+    run.recycle = async (fn, description) => {
+      if (fn !== 'api' && description === '') throw new Error('ResourceConflictException');
+      await recycle(fn, description);
+    };
+
+    expect(await dbOutageRun(run)).toBe(1);
+
+    expect(secret.value).toBe(ORIGINAL);
+    expect(descriptions.api).toEqual(['ledger-sim db-outage walk', '']);
+    expect(stderr).toEqual([
+      'sim: the database secret is restored, but recycling the worker and reconciler failed; its containers that read the outage host keep it until recycled',
+    ]);
+    expect(stdout).not.toContain(
+      'resume: pnpm -s ledger worker resume, or wait for the hourly resume',
+    );
+  });
+
+  it('attempts every restore recycle when the write back fails', async () => {
     const { run, stderr, descriptions } = world();
     const write = run.writeDatabaseSecret;
     let writes = 0;
@@ -383,16 +415,13 @@ describe('dbOutageRun', () => {
 
     expect(await dbOutageRun(run)).toBe(1);
 
-    expect(descriptions).toEqual({
-      worker: ['ledger-sim db-outage walk', ''],
-      api: ['ledger-sim db-outage walk', ''],
-    });
+    expect(descriptions).toEqual(recycledInAndOut);
     expect(stderr).toEqual([
       'sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it',
     ]);
   });
 
-  it('leaves a secret someone else rewrote during the run, and still recycles both functions', async () => {
+  it('leaves a secret someone else rewrote during the run, and still recycles every function', async () => {
     const rewritten = JSON.stringify({ pooledUrl: postgresUrl('u:p@other.example.test/ledger') });
     const { run, secret, descriptions } = world({
       send: async () => {
@@ -408,6 +437,7 @@ describe('dbOutageRun', () => {
     expect(secret.value).toBe(rewritten);
     expect(descriptions.worker.at(-1)).toBe('');
     expect(descriptions.api.at(-1)).toBe('');
+    expect(descriptions.reconciler.at(-1)).toBe('');
   });
 
   it('refuses before any write when the event source is already paused, and sends nothing', async () => {
@@ -422,7 +452,7 @@ describe('dbOutageRun', () => {
     ]);
     expect(secret.writes).toEqual([]);
     expect(sent.count).toBe(0);
-    expect(descriptions).toEqual({ worker: [], api: [] });
+    expect(descriptions).toEqual({ worker: [], api: [], reconciler: [] });
   });
 
   it('refuses before any write or recycle when the queue-age alarm already reads ALARM, so a stale alarm never passes as the outage', async () => {
@@ -438,7 +468,7 @@ describe('dbOutageRun', () => {
     expect(stdout).toEqual([]);
     expect(secret.writes).toEqual([]);
     expect(sent.count).toBe(0);
-    expect(descriptions).toEqual({ worker: [], api: [] });
+    expect(descriptions).toEqual({ worker: [], api: [], reconciler: [] });
   });
 
   it('proceeds when the queue-age alarm reads INSUFFICIENT_DATA before the run, and holds until it reads ALARM', async () => {
@@ -451,7 +481,9 @@ describe('dbOutageRun', () => {
     expect(await dbOutageRun(run)).toBe(0);
 
     expect(stderr).toEqual([]);
-    expect(stdout).toContain('chaos db-outage: database repointed, worker and api recycled');
+    expect(stdout).toContain(
+      'chaos db-outage: database repointed, worker, api and reconciler recycled',
+    );
     expect(stdout).toContain('queue-age alarm ALARM after 6m; dlq depth 0');
     expect(secret.writes.map(holdsOutageHost)).toEqual([true, false]);
   });

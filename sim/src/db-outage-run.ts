@@ -9,6 +9,7 @@ import {
   type createSqsClient,
   LambdaEventSourceControlAdapter,
   QUEUE_AGE_ALARM_NAME,
+  RECONCILER_FUNCTION_NAME,
   recycleFunction,
   SecretsManagerSecretReaderAdapter,
   writeSecretIfChanged,
@@ -43,9 +44,9 @@ import {
 } from './wait-until.ts';
 
 // D27 `--chaos db-outage`: repoint the deployed database secret at a host that never resolves,
-// recycle the worker and the read API so they read it, send the history, and prove ADR-015: ingest
-// still answers `200` (ADR-001), the worker pauses its own event source, and nothing reaches the DLQ
-// while the queue ages into its alarm. Then restore, in `finally`, and check after the resume that
+// recycle the worker, the read API and the reconciler so they read it, send the history, and prove
+// ADR-015: ingest still answers `200` (ADR-001), the worker pauses its own event source, and nothing
+// reaches the DLQ while the queue ages into its alarm. Then restore, in `finally`, and check after the resume that
 // nothing was lost (invariants 1, 2 and 4). Ids, counts and durations only on any line (D28): the
 // secret's value lives in memory here and is never printed or written to disk.
 
@@ -58,7 +59,10 @@ export const PAUSE_BOUND: WaitBound = { boundMs: 10 * 60_000, intervalMs: 10_000
 export const QUEUE_AGE_BOUND: WaitBound = { boundMs: 45 * 60_000, intervalMs: 30_000 };
 export const ENABLED_BOUND: WaitBound = { boundMs: 65 * 60_000, intervalMs: 30_000 };
 
-export type RecycledFunction = 'worker' | 'api';
+// Every function that reads `ledger/database` once per container and keeps its pool: the worker
+// and the read API (slice 3), the reconciler (slice 4, `apps/reconciler/src/main.ts`).
+export const RECYCLED_FUNCTIONS = ['worker', 'api', 'reconciler'] as const;
+export type RecycledFunction = (typeof RECYCLED_FUNCTIONS)[number];
 
 export type InvariantOutcome = { readonly pass: boolean; readonly line: string };
 
@@ -86,12 +90,17 @@ export type DbOutageSteps = RunTime & {
 
 export type DbOutageRunInput = DbOutageSteps & { namespace: string };
 
-const repointedLine = 'chaos db-outage: database repointed, worker and api recycled';
-const restoredLine = 'chaos db-outage: database restored, worker and api recycled';
+// `a`, `a and b`, `a, b and c`.
+const listed = (functions: readonly RecycledFunction[]): string =>
+  functions.length < 2
+    ? functions.join('')
+    : `${functions.slice(0, -1).join(', ')} and ${functions.at(-1)}`;
+const repointedLine = `chaos db-outage: database repointed, ${listed(RECYCLED_FUNCTIONS)} recycled`;
+const restoredLine = `chaos db-outage: database restored, ${listed(RECYCLED_FUNCTIONS)} recycled`;
 const notRestoredLine =
   'sim: the database secret was not restored; run pnpm aws:deploy, which rewrites it';
 const notRecycledLine = (functions: readonly RecycledFunction[]): string =>
-  `sim: the database secret is restored, but recycling the ${functions.join(' and ')} failed; its containers that read the outage host keep it until recycled`;
+  `sim: the database secret is restored, but recycling the ${listed(functions)} failed; its containers that read the outage host keep it until recycled`;
 const resumeLine = 'resume: pnpm -s ledger worker resume, or wait for the hourly resume';
 const alreadyRepointedLine = `sim: the database secret already points at ${OUTAGE_HOST} (a crashed run?); run pnpm aws:deploy, which rewrites it`;
 const noPooledUrlLine = 'sim: the database secret holds no Postgres pooledUrl';
@@ -139,11 +148,13 @@ export function holdsOutageHost(value: string): boolean {
   return parseSecret(value)?.url.hostname === OUTAGE_HOST;
 }
 
-// D27 step 7: write the original back if the fault is still there, then recycle both functions so
-// they read it. Each step is attempted whatever the others did: the worker and the read API read the
-// secret once per container (`apps/worker/src/main.ts`, `apps/api/src/main.ts`), so a function left
-// unrecycled keeps the outage host even after the secret is back, and a deploy that finds the secret
-// unchanged recycles nothing.
+// D27 step 7: write the original back if the fault is still there, then recycle every function so
+// it reads it. Each step is attempted whatever the others did: the worker, the read API and the
+// reconciler read the secret once per container (`apps/worker/src/main.ts`, `apps/api/src/main.ts`,
+// `apps/reconciler/src/main.ts`), so a function left unrecycled keeps the outage host even after the
+// secret is back (a reconciler that cold-started on an hourly tick during the outage would fail every
+// later run, and `LedgerApp-reconcile-gap` would fire), and a deploy that finds the secret unchanged
+// recycles nothing.
 async function restore(run: DbOutageRunInput, original: string): Promise<boolean> {
   let secretBack = false;
   try {
@@ -152,10 +163,10 @@ async function restore(run: DbOutageRunInput, original: string): Promise<boolean
     }
     secretBack = true;
   } catch {
-    // Reported below, after both recycles were attempted.
+    // Reported below, after every recycle was attempted.
   }
   const notRecycled: RecycledFunction[] = [];
-  for (const fn of ['worker', 'api'] as const) {
+  for (const fn of RECYCLED_FUNCTIONS) {
     try {
       await run.recycle(fn, '');
     } catch {
@@ -302,8 +313,9 @@ export async function dbOutageRun(run: DbOutageRunInput): Promise<number> {
     let restored = false;
     try {
       await run.writeDatabaseSecret(repointed);
-      await run.recycle('worker', `ledger-sim db-outage ${run.namespace}`);
-      await run.recycle('api', `ledger-sim db-outage ${run.namespace}`);
+      for (const fn of RECYCLED_FUNCTIONS) {
+        await run.recycle(fn, `ledger-sim db-outage ${run.namespace}`);
+      }
       run.out(repointedLine);
       held = await holdOutage(run);
     } catch (error) {
@@ -364,8 +376,10 @@ export function composeDbOutageRun(deps: DbOutageRunDeps): DbOutageRunInput {
     if (value === undefined) throw new Error('a needed stack output is missing');
     return value;
   };
-  const functionName = (fn: RecycledFunction): string =>
-    fn === 'worker' ? output(appOutputKeys.workerFunctionName) : API_FUNCTION_NAME;
+  const functionName = (fn: RecycledFunction): string => {
+    if (fn === 'worker') return output(appOutputKeys.workerFunctionName);
+    return fn === 'api' ? API_FUNCTION_NAME : RECONCILER_FUNCTION_NAME;
+  };
   const secrets = new SecretsManagerSecretReaderAdapter({ client: deps.clients.secretsManager });
   const generated = generatedSvixIds(deps.history);
 
