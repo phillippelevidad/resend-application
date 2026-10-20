@@ -124,7 +124,7 @@ database connectors, deduplicated on a unique `svix_id`. It writes synchronously
   same approach, with replays landing in the queue path. The ADR that adopts it cites PR #13. The
   PR's live findings (replay keeps `svix-id`, List Events ids equal `svix-id`, ≈ 8 s visibility)
   are a contributor's observations, not Resend's docs; slice 4 settled the first two live on the
-  owner's webhook (RS-44, RS-45) and measured the third at ≤ 5.2 s (RS-U13). Its
+  owner's webhook (RS-44, RS-45) and measured the third at 5.2 s and 9.4 s (RS-U13). Its
   claim that a disabled endpoint receives no replays (it answers `409` on that basis) stays RS-U04.
 - **[Issue #8](https://github.com/resend/resend-webhooks-ingester/issues/8)** (open) asks for
   per-email event correlation. Ledger's order-independent projection answers that question in its

@@ -1,8 +1,8 @@
 # Verification — 2026-10-20
 
-**Verdict:** not done — two live items are open: Ships 7 (RS-U03's reach read, on or after
-2026-10-21) and Ships 11 (the gap alarm's drill-caused `ALARM` email, from the owner-approved drill
-re-run once the alarm reads `OK`). The code and docs are otherwise ready for `rsa-manual-test`.
+**Verdict:** not done: one live item is open, Ships 7 (RS-U03's reach read, on or after
+2026-10-21). Ships 11 closed on 2026-10-20: the second drill's `OK` → `ALARM` at 19:00:18 UTC, its
+email confirmed by the owner. The code and docs are otherwise ready for `rsa-manual-test`.
 **Gate:** `pnpm verify` exit 0, every stage run (`VERIFY PASSED`), before and after the repairs.
 **Read:** `5fe2a51...HEAD`: 187 files, +14,502/−346 (4 generated files counted, not read) · the
 four change artifacts and `WALKTHROUGH.md` · the slice 4 card, ADR-007, resend.md, api-contract.md
@@ -22,6 +22,5 @@ four change artifacts and `WALKTHROUGH.md` · the slice 4 card, ADR-007, resend.
 - A late async invoke cannot claim an old run: invoke events older than 60 s are dropped (AWS-63).
 
 ## What this verification could not confirm
-- The drill-caused `OK → ALARM` transition and its email (Ships 11), until the re-run.
 - RS-U03: List Events reach ≥ 72 h, readable on or after 2026-10-21.
 - The `rsa-manual-test` walk itself; this gate only desk-checked `WALKTHROUGH.md` against the code.
