@@ -1,32 +1,32 @@
 # Ledger
 
-Ledger keeps a correct record of your [Resend](https://resend.com) email events. It stores each
-webhook once, works out the current state of every email and recipient, and recovers the events
-your endpoint missed.
+Ledger keeps a correct record of your [Resend](https://resend.com) email events. It stores every
+webhook once, works out what's true about each email and recipient right now, and goes back for the
+events your endpoint missed.
 
 It's an independent open-source project, not affiliated with or endorsed by Resend.
 
-Status: proof of concept. It runs on AWS and receives a real Resend account's webhooks. See the
-[roadmap](#roadmap) for what comes next.
+It's a proof of concept, and it's running: deployed on AWS, receiving a real Resend account's
+webhooks. The [roadmap](#roadmap) has what comes next.
 
 ## Why webhooks alone aren't enough
 
-Resend sends a webhook each time something happens to an email. Storing them is the easy part.
-Knowing what is true right now is harder, because delivery is messy:
+Resend tells you what happens to your emails through webhooks. Catching them is easy. Knowing
+what's true right now is not, because delivery in the real world is messy:
 
-- The same event can arrive twice. Resend delivers at least once, and retries and replays repeat
-  an event ([RS-06, RS-08](.ai/resend.md#facts)).
-- Events arrive in any order. Resend promises none, so a late `email.delivered` can land after the
-  `email.bounced` it should never overwrite.
-- A broadcast sends a burst of webhooks, one per recipient per event, and a busy database turns
-  that burst into errors and more retries.
-- An endpoint that is down longer than Resend's retry schedule, about a day, loses those events,
-  and Resend disables an endpoint that keeps failing ([RS-09, RS-11](.ai/resend.md#facts)).
-  Nothing tells you which events you never stored.
+- You'll get the same event twice. Resend delivers at least once, and retries and replays repeat
+  events ([RS-06, RS-08](.ai/resend.md#facts)).
+- You'll get them out of order. Resend promises no order, so a late `email.delivered` can show up
+  after the `email.bounced` it must never overwrite.
+- You'll get them all at once. A broadcast is a burst, one webhook per recipient per event, and a
+  database under pressure turns that burst into errors and more retries.
+- And sometimes you won't get them at all. If your endpoint is down longer than Resend's retry
+  schedule, about a day, those events are gone, and an endpoint that keeps failing gets disabled
+  ([RS-09, RS-11](.ai/resend.md#facts)). Nothing tells you what you never stored.
 
 ## What it looks like
 
-Say a support ticket comes in: "This customer never gets our emails." You check the address:
+A support ticket comes in: "This customer never gets our emails." So you check the address:
 
 ```
 $ ledger recipient bounced@resend.dev
@@ -36,7 +36,7 @@ since            2026-10-17T21:52:05.326Z
 caused by        01a14bd9-c232-7222-8b8e-0ef322a1cbde
 ```
 
-The address hard-bounced, and Ledger names the email that caused it. Open that email:
+Hard-bounced. And Ledger tells you which email did it. Open that one:
 
 ```
 $ ledger email 01a14bd9-c232-7222-8b8e-0ef322a1cbde
@@ -56,12 +56,13 @@ timeline
   2026-10-17T21:52:05.326Z   email.bounced   msg_3Kq8qFMdgo3E3Pg6KrtVAdDfTBv   Permanent / General
 ```
 
-It's a permanent bounce, so sending to this address again won't work. Ledger masks every address,
-sender and subject in its output, so support can answer the ticket without seeing personal data.
+A permanent bounce. Sending to that address again won't work. Notice the asterisks, too: Ledger
+masks every address, sender and subject, so support can answer the ticket without ever seeing
+personal data.
 
-Order doesn't change the answer. Here a complaint was recorded before the delivery, and the email
-still reads `complained`, because Ledger works out state from the whole set of events, not from
-whichever arrived last:
+Does the order events arrive in change the answer? It shouldn't. Here the complaint landed before
+the delivery, and the email still reads `complained`. Ledger works out state from the whole set of
+events, whichever one happened to show up last:
 
 ```
 $ ledger email 01a14bd8-504a-7908-b8c6-52bd72f69ff0
@@ -74,8 +75,8 @@ timeline
   2026-10-17T21:50:30.817Z   email.delivered    msg_3Kq8eL0sw5HcJFnLy1BUYfvaX2l
 ```
 
-Now the on-call question: "Did we lose anything?" `ledger health` shows the pipeline, and
-`ledger gaps` lists the recovery runs. Each run compares what Resend holds with what Ledger stored:
+Then there's the on-call question: did we lose anything? `ledger health` shows the pipeline.
+`ledger gaps` lists the recovery runs, each one comparing what Resend has with what Ledger stored:
 
 ```
 $ ledger health
@@ -92,10 +93,10 @@ $ ledger gaps --since 3h
   6   scheduled             2026-10-20T18:00:11.522Z   checked 4   missing 0   replayed 0   failed 0   ok
 ```
 
-Runs 7 to 9 are a real outage on purpose: ingest was switched off while one email was sent, so
-Ledger never received its two events. The dry run found them missing, the next run replayed them
-from Resend, and the last run confirmed nothing was left. You can check for gaps yourself at any
-time, and a dry run replays nothing:
+Runs 7 to 9 are an outage I caused on purpose. I switched ingest off, sent one email, and let
+Ledger miss both of its events. The dry run found them, the next run had Resend replay them, and
+the last run confirmed nothing was left. You can run that check whenever you like. A dry run never
+replays anything:
 
 ```
 $ ledger reconcile --dry-run
@@ -107,8 +108,8 @@ horizon    2026-10-17T18:37:35.900Z → 2026-10-20T18:27:35.900Z
 checked 6   missing 0   replayed 0   failed 0
 ```
 
-When something isn't there, the error says what to do next. Every error has the same shape in the
-CLI, the SDK and the API, and links to its [runbook](docs/runbook.md) entry:
+And when something isn't there, the error tells you what to do about it. It's the same shape
+everywhere, in the CLI, the SDK and the API, with a link to its [runbook](docs/runbook.md) entry:
 
 ```
 $ ledger email does-not-exist --json
@@ -122,12 +123,12 @@ $ ledger email does-not-exist --json
 }
 ```
 
-All of this output is real. The bounce and the complaint come from live sends to Resend's test
-addresses on 2026-10-17. The health and gaps output comes from the deployed stack on 2026-10-20.
+Everything above is real output. The bounce and the complaint came from live sends to Resend's test
+addresses on 2026-10-17, the health and gaps from the deployed stack on 2026-10-20.
 
 ## What it guarantees
 
-Each guarantee links the test or recorded run that proves it.
+Claims are cheap, so each one links the test or the recorded run that backs it.
 
 | Guarantee | Evidence |
 | --- | --- |
@@ -142,9 +143,9 @@ Each guarantee links the test or recorded run that proves it.
 | No raw address or subject leaves the read API | Route-level redaction tests such as [get-email.route.int.test.ts](packages/api/src/get-email.route.int.test.ts) |
 | The AWS bill has a ceiling. A budget alarm emails you, and a kill switch stops compute at the monthly cap | [guardrails.stack.test.ts](infra/src/guardrails.stack.test.ts), [aws.md → Budget alarms](.ai/aws.md#budget-alarms) |
 
-Every Resend behavior Ledger relies on is checked against Resend's docs and cited in
-[resend.md](.ai/resend.md). Where the docs are silent, it was tested live on a real account, or
-it is listed there as unverified.
+The same goes for Resend itself. Every Resend behavior Ledger relies on is checked against Resend's
+docs and cited in [resend.md](.ai/resend.md). Where the docs are silent, I tested it live on a real
+account, or it's listed there as unverified.
 
 ## How it works
 
@@ -161,25 +162,29 @@ flowchart LR
   A --> SDK[TypeScript SDK]
 ```
 
-Ingest does as little as possible: it verifies the signature and puts the event on a queue, so it
-stays fast under a burst and doesn't depend on the database. The worker stores each event in an
-append-only table and recomputes the email's and recipient's state from all of their events in the
-same transaction. The reconciler asks Resend which events exist, compares their ids with the ones
-stored, and asks Resend to replay the missing ones, so recovered events go through the same
-verification as live ones.
+Ingest does as little as it can get away with. It checks the signature, puts the event on a queue
+and answers. It never touches the database, so a struggling database can't hold
+it up.
+
+The worker does the real work. It stores each event in an append-only table, then recomputes the
+email's and the recipient's state from all of their events, in the same transaction.
+
+The reconciler is the safety net. Every hour, and whenever you ask, it asks Resend which events exist, compares their ids
+with what's stored, and has Resend replay the missing ones. Recovered events come in through the
+front door, so they're verified like any other.
 
 It runs on AWS Lambda, API Gateway and SQS with Postgres, deployed with AWS CDK and written in
-TypeScript. Everything is serverless and billed per use, with no VPC or NAT gateway
-running in the background, which the CDK tests check ([app.stack.test.ts](infra/src/app.stack.test.ts)). The design
-decisions and their trade-offs are in [architecture.md](.ai/architecture.md), and the
+TypeScript. Everything is serverless and billed per use. No VPC, no NAT gateway, nothing running in
+the background, and the CDK tests check that ([app.stack.test.ts](infra/src/app.stack.test.ts)).
+The design decisions and their trade-offs are in [architecture.md](.ai/architecture.md), and the
 [runbook](docs/runbook.md) has an entry for every alarm and error code.
 
 ## Roadmap
 
-The proof of concept is built and running: durable ingest on AWS, order-independent state,
-recovery of missed events, alarms with a runbook, and the CLI and SDK over one read API.
+The proof of concept is done, and it's running right now: durable ingest on AWS, order-independent
+state, recovery of missed events, alarms with a runbook, and the CLI and SDK over one read API.
 
-The MVP adds:
+Next up, the MVP:
 
 - A local stack with `docker compose up`, so you can run everything without an AWS account.
 - An MCP server, so an AI assistant can answer "why did this email fail?" with a read-only token.
@@ -188,31 +193,31 @@ The MVP adds:
 - A 15-minute quick start for deploying your own copy, and redaction of stored payloads after a
   retention period.
 
-Feature complete adds the CLI and SDK on npm with semantic versioning, and a published load test
+Then feature complete: the CLI and SDK on npm with semantic versioning, and a published load test
 with its latency and cost.
 
 The full plan is in the [build checklist](.ai/build-checklist.md).
 
 ## Ledger and the Webhook Ingester
 
-Resend's [Webhook Ingester](https://resend.com/docs/webhooks/ingester) verifies webhooks and stores
-each event in your database. It answers "what happened?" Ledger builds on the same idea and adds
-what comes after: the current state of each email and recipient, and a check that nothing was
-missed. The recovery approach is the same one proposed in the Ingester's open
+Resend already has a [Webhook Ingester](https://resend.com/docs/webhooks/ingester). It verifies
+webhooks and stores each event in your database, which answers "what happened?" Ledger picks up
+where that leaves off: what's true now, and did we miss anything? The recovery approach is the same
+one proposed in the Ingester's open
 [PR #13](https://github.com/resend/resend-webhooks-ingester/pull/13). More in
 [about.md → Positioning](.ai/about.md#positioning).
 
-You probably don't need Ledger if you send a few hundred emails a day and a missed status costs you
-little. It's for transactional email, such as password resets, receipts and alerts, where a wrong
-status means a support ticket, and for volumes where bounces and complaints affect your sender
-reputation.
+If you send a few hundred emails a day and a wrong status costs you nothing, you don't need this. A
+simple webhook handler will do. Ledger is for transactional email (password resets, receipts,
+alerts) where a wrong status turns into a support ticket. And for volumes where bounces and
+complaints start to hurt your sender reputation.
 
 ## Try it yourself
 
 ### Run it locally
 
-You need Node.js 24, pnpm 10 (`corepack enable` picks the version from `package.json`) and
-Docker.
+No AWS account needed for this one. You need Node.js 24, pnpm 10 (`corepack enable` picks the
+version from `package.json`) and Docker.
 
 ```bash
 git clone https://github.com/phillippelevidad/resend-application.git
@@ -228,9 +233,8 @@ simulated history of emails, with duplicates and shuffled delivery order:
 pnpm sim --seed 2026 --duplicates 0.3 --shuffle
 ```
 
-The simulator signs each event the way Resend does, sends it to the local ingest, and checks
-that every event was stored once and that the state matches what it expected. The same seed gives
-the same history:
+The simulator signs each event the way Resend does and sends it to the local ingest. Then it checks
+the result: every event stored once, and the state it expected. Same seed, same history:
 
 ```
 history emails=8 events=36 duplicates=10 shuffled=true
