@@ -112,8 +112,8 @@ resource) stops uncommitted for the owner.
 
 ## 11. Walkthrough
 
-- [ ] 11.1 Write `openspec/changes/slice-4-recovery/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (names only; `.env.deployed.local`); paths A–F with their personas; every AWS action and live Resend write marked `**Ask-first:**`; C3 dated "on or after 2026-10-21"; the teardown (revoke `review-walk`); the "cannot reach today" table. Verify: every card `UI surfaces` entry is reached by a numbered step; the operator and the reviewer each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; `node scripts/check-links.mjs openspec/changes/slice-4-recovery/WALKTHROUGH.md` exits 0.
-- [ ] 11.2 Run `pnpm check`, then commit and push. Verify: `git status --short` is empty after the push.
+- [x] 11.1 Write `openspec/changes/slice-4-recovery/WALKTHROUGH.md` in the format of [walkthrough-format.md](../../../.agents/skills/rsa-manual-test/references/walkthrough-format.md), following [design.md → Walkthrough plan](design.md#walkthrough-plan): Before you start (names only; `.env.deployed.local`); paths A–F with their personas; every AWS action and live Resend write marked `**Ask-first:**`; C3 dated "on or after 2026-10-21"; the teardown (revoke `review-walk`); the "cannot reach today" table. Verify: every card `UI surfaces` entry is reached by a numbered step; the operator and the reviewer each walk a path; every step has an exact command and an `Expect:` quoting output as the code prints it; `node scripts/check-links.mjs openspec/changes/slice-4-recovery/WALKTHROUGH.md` exits 0.
+- [x] 11.2 Run `pnpm check`, then commit and push. Verify: `git status --short` is empty after the push.
 
 ## 12. Live on AWS and Resend (items 6, 7 and 7a; each action stops for the owner's yes; Ships 6–9, 11; D37–D41)
 
