@@ -47,8 +47,8 @@ export class Limiter {
   }
 
   // Sends through `send` until a response is not a waitable `429`, and returns it. Throws
-  // `rate_limited` for a quota `429`, a `429` with no `retry-after`, or any wait that would end past
-  // `deadline`, before it sleeps.
+  // `rate_limited` for a quota `429`, a `429` with no `retry-after`, any wait that would end past
+  // `deadline`, before it sleeps, or a start already past `deadline`.
   async run<R extends LimitedResponse>(send: () => Promise<R>, deadline: Date): Promise<R> {
     for (;;) {
       await this.#waitUntil(this.#nextStartMs, deadline);
@@ -79,10 +79,13 @@ export class Limiter {
     }
   }
 
+  // No request starts past the deadline, waited for or not: a caller whose requests outlast the
+  // spacing never waits, so the deadline is checked against the start time itself (D2).
   async #waitUntil(atMs: number, deadline: Date): Promise<void> {
-    const waitMs = atMs - this.#clock.now().getTime();
+    const nowMs = this.#clock.now().getTime();
+    if (Math.max(atMs, nowMs) > deadline.getTime()) throw registryError('rate_limited');
+    const waitMs = atMs - nowMs;
     if (waitMs <= 0) return;
-    if (atMs > deadline.getTime()) throw registryError('rate_limited');
     await this.#sleep(waitMs);
   }
 }

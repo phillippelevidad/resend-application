@@ -145,6 +145,18 @@ describe('Limiter', () => {
     expect(sleeps).toEqual([]);
   });
 
+  it('throws rate_limited without sending when the deadline has passed and no wait is due', async () => {
+    const { clock, limiter, starts, sleeps, sender } = setup();
+    const send = sender([ok]);
+    await limiter.run(send, farDeadline);
+    // A request slower than the spacing leaves no wait due, so only the start time can refuse it.
+    clock.advance(10_000);
+    const deadline = new Date(clock.now().getTime() - 1);
+    expect(await codeOf(limiter.run(send, deadline))).toBe('rate_limited');
+    expect(starts).toEqual([0]);
+    expect(sleeps).toEqual([]);
+  });
+
   it('returns a non-429 error response for its caller to map', async () => {
     const { limiter, sender } = setup();
     const send = sender([{ status: 503, name: 'internal_server_error', headers: {} }]);
