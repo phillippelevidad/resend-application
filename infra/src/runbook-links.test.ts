@@ -111,7 +111,7 @@ describe('alarm-to-runbook link check (D20)', () => {
     const runbookLinked = Object.entries(errorRegistry).filter(([, entry]) =>
       entry.docs.startsWith(`${RUNBOOK_BASE_URL}#`),
     );
-    expect(runbookLinked).toHaveLength(14);
+    expect(runbookLinked).toHaveLength(15);
     const missing = runbookLinked
       .filter(([, entry]) => !errorCodeSlugs.has(entry.docs.slice(RUNBOOK_BASE_URL.length + 1)))
       .map(([code]) => code);

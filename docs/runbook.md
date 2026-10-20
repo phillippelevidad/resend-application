@@ -218,6 +218,19 @@ an address or a subject.
 - **Then:** run `ledger reconcile` again (slice 4); the next hourly run covers the horizon anyway.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
+### reconciler_not_configured
+
+- **Means:** a reconcile run's outcome, not an HTTP status: the reconciler has no Resend API key or
+  webhook id, or Resend has no webhook with that id, so the run listed and replayed nothing. Every
+  local-mode run ends here, because local mode composes no Resend client.
+- **First:** `pnpm -s ledger gaps` shows the run and its `error`.
+- **Then:** on a deployed stack, set `LEDGER_DEPLOY_RESEND_API_KEY` (the reconciler's dedicated
+  `full_access` key) and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, then `pnpm aws:deploy` (Ask-first), and
+  `pnpm -s ledger reconcile`. If both are set, check the webhook id against List Webhooks: a
+  deleted webhook reads as not configured.
+- **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest),
+  [ADR-012](../.ai/architecture.md#adr-012--resend-client-is-the-sole-resend-api-caller).
+
 ### database_unavailable
 
 - **Means:** `503`. Postgres is unreachable, or out of storage. Ingest never touches the database,

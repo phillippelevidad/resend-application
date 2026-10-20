@@ -5,6 +5,7 @@ import {
   errorCodes,
   errorRegistry,
   RUNBOOK_BASE_URL,
+  reconcileRunErrorCodes,
 } from './error-codes.ts';
 
 // api-contract.md → Error codes: run-outcome codes are stored on the run, and `api_unavailable` is
@@ -14,6 +15,7 @@ const statuslessCodes: readonly ErrorCode[] = [
   'rate_limited',
   'resend_auth_failed',
   'resend_unavailable',
+  'reconciler_not_configured',
   'run_abandoned',
   'api_unavailable',
 ];
@@ -53,6 +55,17 @@ describe('errorRegistry', () => {
     expect(RUNBOOK_BASE_URL).toBe(
       'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md',
     );
+  });
+
+  it('mirrors the 20 codes of the registry', () => {
+    expect(errorCodes).toHaveLength(20);
+  });
+
+  it('stores only registered run outcomes on a run, never the derived run_abandoned', () => {
+    for (const code of reconcileRunErrorCodes) {
+      expect(errorCodes).toContain(code);
+    }
+    expect(reconcileRunErrorCodes).not.toContain('run_abandoned' as never);
   });
 
   it('accepts every registered code and rejects an unregistered one', () => {

@@ -18,6 +18,7 @@ export const errorCodes = [
   'rate_limited',
   'resend_auth_failed',
   'resend_unavailable',
+  'reconciler_not_configured',
   'run_abandoned',
   'database_unavailable',
   'internal_error',
@@ -27,6 +28,19 @@ export const errorCodes = [
 export const errorCodeSchema = z.enum(errorCodes);
 
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
+
+// Slice 4 D1: the closed set of `reconcile_runs.error_code`, a run's stored outcome. `run_abandoned`
+// is absent by construction: it is derived on read, never written (ADR-007).
+export const reconcileRunErrorCodes = [
+  'webhook_disabled',
+  'rate_limited',
+  'resend_auth_failed',
+  'resend_unavailable',
+  'reconciler_not_configured',
+  'internal_error',
+] as const satisfies readonly ErrorCode[];
+
+export type ReconcileRunErrorCode = (typeof reconcileRunErrorCodes)[number];
 
 // D4: the runbook in this repo's public GitHub tree (`docs/runbook.md`, slice 3); every runbook link
 // resolves to a heading there (`infra/src/runbook-links.test.ts`).
@@ -139,6 +153,13 @@ export const errorRegistry = {
     message: "Resend's API answered `5xx` past the client's retries.",
     hint: 'The next scheduled run retries.',
     docs: 'https://resend.com/docs/api-reference/errors',
+  },
+  reconciler_not_configured: {
+    status: null,
+    message:
+      'The reconciler has no Resend API key or webhook id, or Resend has no webhook with that id, so it cannot list or replay events.',
+    hint: 'Reconcile runs on a deployed stack: set `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, then run `pnpm aws:deploy`.',
+    docs: runbook('reconciler_not_configured'),
   },
   run_abandoned: {
     status: null,

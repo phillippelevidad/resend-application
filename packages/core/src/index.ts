@@ -11,7 +11,9 @@ export {
   errorCodeSchema,
   errorCodes,
   errorRegistry,
+  type ReconcileRunErrorCode,
   RUNBOOK_BASE_URL,
+  reconcileRunErrorCodes,
 } from './error-codes.ts';
 export { eventRank } from './event-rank.ts';
 export {
@@ -35,12 +37,33 @@ export { maskAddress } from './mask-address.ts';
 export { maskFrom } from './mask-from.ts';
 export { maskText } from './mask-text.ts';
 export { normalizeAddress } from './normalize-address.ts';
+export { parseDuration } from './parse-duration.ts';
 export {
   type EmailRecipientState,
   type EmailState,
   projectEmail,
 } from './project-email.projection.ts';
 export { projectRecipient, type RecipientState } from './project-recipient.projection.ts';
+export {
+  type ReconcileHorizon,
+  type ReconcileHorizonInput,
+  reconcileHorizon,
+} from './reconcile-horizon.ts';
+export {
+  RECONCILE_DEFAULT_LOOKBACK_MS,
+  RECONCILE_FINISH_RESERVE_MS,
+  RECONCILE_GRACE_MS,
+  RECONCILE_MAX_LOOKBACK_MS,
+  RECONCILE_RUN_BUDGET_MS,
+  RECONCILE_SCHEDULED_EVENT,
+  type ReconcileRunEvent,
+  type ReconcileRunTimes,
+  type ReconcileTrigger,
+  reconcileRunEventSchema,
+  reconcileScheduledEventSchema,
+  reconcileTriggers,
+  runOutcome,
+} from './reconcile-run.ts';
 export { type SanitizeForJsonbResult, sanitizeForJsonb } from './sanitize-for-jsonb.ts';
 export { type SoftSignal, softSignalSchema } from './soft-signal.schema.ts';
 export { type StickySignal, stickySignalSchema } from './sticky-signal.schema.ts';
