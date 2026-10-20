@@ -408,7 +408,7 @@ from F1.
    link.
 
    Expect: every claim links a test, an invariant or a recorded run; reconcile is described as the
-   same approach as the Ingester's open PR #13; MCP and reactions sit under "Planned for M2" with no
+   same approach as the Ingester's open PR #13; MCP and reactions sit under the roadmap's MVP stage with no
    behavior claimed.
 
 ## Teardown
