@@ -6,7 +6,7 @@ See [proposal.md → Why](proposal.md#why). The pre-proposal
 [2026-10-19-slice-4-recovery.md](../../../.ai/pre-proposals/2026-10-19-slice-4-recovery.md) (*PP*) is
 decision-complete and checked (31 repairs; the two owner items were ruled on 2026-10-19). Each
 decision below keeps its PP number (D1–D41) and carries what `opsx:apply` needs to build it. The PP
-keeps the authority trail for every decision and the contradictions C1–C22. D42–D47 are build-level
+keeps the authority trail for every decision and the contradictions C1–C22. D42–D48 are build-level
 choices this design adds where the PP left the mechanism open or a fact surfaced at propose time.
 None of them changes a spec, a contract or a PP decision.
 
@@ -92,7 +92,7 @@ files mirror the synchronous `function-invoke` set (D42).
 | `packages/resend-client` | `create-resend-client.ts` + `create-resend-client.test.ts` (D9, D11, D12); `limiter.ts` + `limiter.test.ts` (D10); `map-resend-error.ts` (D12); `testing/fake-resend-api.ts`, `testing/fake-resend-client.ts` (D13); `testing.ts`; `index.ts`; `package.json` (`resend: 6.33.0`, `./testing` export) |
 | `packages/reconciler` | `create-reconciler.ts` (D14–D17, D19); `start-run.ts` (the scheduled start, D6); `reconciler.test.ts` (unit, `FakeResendClient`); `reconciler.int.test.ts` (claim, D16); `recovery.int.test.ts` (D43); `index.ts`; `package.json` |
 | `packages/ingest` | `create-ingest.ts` (D33); `create-ingest.test.ts` |
-| `packages/api` | `list-gaps.route.ts`, `list-gaps.reader.ts`; `get-reconcile-run.route.ts`, `get-reconcile-run.reader.ts`; `start-reconcile.route.ts`, `start-reconcile.command.ts`; `reconcile-run-response.mapper.ts` + test, `reconcile-run-response.schema.ts`, `reconcile-run-list-response.schema.ts`, `run-id.schema.ts`, `duration.schema.ts` (D27, D28); `get-health.reader.ts`, `health-response.mapper.ts`, `health-response.schema.ts` (D27); `create-api.ts` (`ApiDeps.reconcilerInvoke`, the routes, `bodyErrors` and `routeFieldErrors` entries); route int tests `list-gaps.route.int.test.ts`, `get-reconcile-run.route.int.test.ts`, `start-reconcile.route.int.test.ts`, `start-reconcile.command.int.test.ts`; `get-health.route.int.test.ts`; `testing/api-test-deps.ts`, `testing/read-api-contract.ts` |
+| `packages/api` | `list-gaps.route.ts`, `list-gaps.reader.ts`; `get-reconcile-run.route.ts`, `get-reconcile-run.reader.ts`; `start-reconcile.route.ts`, `start-reconcile.command.ts`; `reconcile-run-response.mapper.ts` + test, `reconcile-run-response.schema.ts`, `reconcile-run-list-response.schema.ts`, `run-id.schema.ts`, `duration.schema.ts` (D27, D28); `get-health.reader.ts`, `health-response.mapper.ts`, `health-response.schema.ts` (D27); `create-api.ts` (`ApiDeps.reconcilerInvoke`, the routes, `bodyErrors` and `routeFieldErrors` entries); route int tests `list-gaps.route.int.test.ts`, `get-reconcile-run.route.int.test.ts`, `start-reconcile.route.int.test.ts`, `start-reconcile.command.int.test.ts`; `get-health.route.int.test.ts`; `testing/api-test-deps.ts`, `testing/read-api-contract.ts`; `scripts/export-openapi.ts` (an inert `reconcilerInvoke`, D48) |
 | `packages/sdk` | `create-ledger-client.ts` (`gaps.list`, `reconcile.getRun`, `reconcile.start`), `testing.ts` (`FakeLedgerClient`); regenerated `openapi.json`, `src/openapi-types.ts` |
 | `packages/aws` | `lambda-async-function-invoke.adapter.ts` + test (D7); `ingest-route-throttle.ts` + test (D31); `ledger-stacks.ts` (`RECONCILER_FUNCTION_NAME`, `RECONCILE_SCHEDULE_NAME`, `RECONCILE_GAP_ALARM_NAME`, `appOutputKeys.resendApiKeySecretArn`); `index.ts` |
 | `apps/reconciler` | `reconciler.config.ts`, `database-secret.schema.ts` (one field, D21), `create-reconciler-handler.ts` + test (D20), `reconciler.handler.ts`, `main.ts`; `package.json` |
@@ -646,32 +646,64 @@ rules, in the change that records the result.
 
 ### Build-level choices (not in the PP)
 
-- **D42 — File names.** The async invoke files mirror the synchronous set already in the repo
-  (`function-invoke.port.ts`, `lambda-function-invoke.adapter.ts`,
-  `in-process-function-invoke.adapter.ts`, `testing/function-invoke-port-contract.ts`,
-  `testing/fake-function-invoke.ts`), each prefixed `async-` / named `…AsyncFunctionInvoke…`.
-- **D43 — Where the recovery suite lives.** `packages/reconciler/src/recovery.int.test.ts`, with
-  `@ledger/ingest` and `@ledger/worker` as `workspace:*` dev dependencies, the precedent
-  `packages/api` set for its contract suite (pp-testing → vitest-layout). `onReplay(eventId)` signs
-  the stored fixture with a test secret and calls the composed ingest; the in-process queue feeds the
-  real worker. The subject is the reconciler; no app composes it for the test.
-- **D44 — Runbook facts the PP's list missed.** `docs/runbook.md:159` (`email_not_found`) and
-  `:168` (`recipient_not_found`) also say "slice 4 lands `ledger gaps`"; PP D35's "every 'Slice 4
-  lands' line becomes a real command" covers them, and its list named the other five. And PP D35's
-  "a run carrying an error: follow that code's entry" has no entry to follow for `webhook_disabled`,
-  `rate_limited`, `resend_auth_failed` and `resend_unavailable`, whose registry `docs` point at
-  Resend's pages (`packages/core/src/error-codes.ts:121-141`), so the gap-alarm entry handles those
-  four inline (D35). Neither loosens a rule.
-- **D45 — Spec scenario names kept.** OpenSpec 1.14.2 refuses a MODIFIED block that drops a
-  scenario name (`validator.js` "omits scenario(s)"). The scenarios named for five alarms and for
-  "a code from a later slice" therefore keep their names, with bodies rewritten to stay true (the
-  five existing alarms named; the later-slice rule stated generally), and each new fact is its own
-  scenario.
-- **D46 — The wait helper.** `apps/cli/src/wait-for-run.ts` exports `RUN_POLL_INTERVAL_MS = 3_000`
-  and `RUN_WAIT_BACKSTOP_MS = 1_200_000`, with `sleep` injected (pp-cli → command-anatomy, Waiting).
-- **D47 — `sleep` at the roots.** `resend-client` and the gap drill take `sleep: (ms) =>
-  Promise<void>`; roots pass `setTimeout` from `node:timers/promises`, and tests pass a fake that
-  advances the fake clock, so no test waits in real time.
+#### D42 — File names
+
+The async invoke files mirror the synchronous set already in the repo (`function-invoke.port.ts`,
+`lambda-function-invoke.adapter.ts`, `in-process-function-invoke.adapter.ts`,
+`testing/function-invoke-port-contract.ts`, `testing/fake-function-invoke.ts`), each prefixed
+`async-` / named `…AsyncFunctionInvoke…`.
+
+#### D43 — Where the recovery suite lives
+
+`packages/reconciler/src/recovery.int.test.ts`, with `@ledger/ingest` and `@ledger/worker` as
+`workspace:*` dev dependencies, the precedent `packages/api` set for its contract suite (pp-testing
+→ vitest-layout). `onReplay(eventId)` signs the stored fixture with a test secret and calls the
+composed ingest; the in-process queue feeds the real worker. The subject is the reconciler; no app
+composes it for the test. Its fake clock starts at wall-clock time, because `started_at` (the
+deadline's origin, D15) and `hasUnfinishedRun` read Postgres's `now()` (Data model, D6) while the
+horizon and the limiter read the clock port: a clock started elsewhere puts the deadline hours away
+from the limiter's `now`.
+
+#### D44 — Runbook facts the PP's list missed
+
+`docs/runbook.md:159` (`email_not_found`) and `:168` (`recipient_not_found`) also say "slice 4
+lands `ledger gaps`"; PP D35's "every 'Slice 4 lands' line becomes a real command" covers them, and
+its list named the other five. And PP D35's "a run carrying an error: follow that code's entry" has
+no entry to follow for `webhook_disabled`, `rate_limited`, `resend_auth_failed` and
+`resend_unavailable`, whose registry `docs` point at Resend's pages
+(`packages/core/src/error-codes.ts:121-141`), so the gap-alarm entry handles those four inline
+(D35). Neither loosens a rule.
+
+#### D45 — Spec scenario names kept
+
+OpenSpec 1.14.2 refuses a MODIFIED block that drops a scenario name (`validator.js` "omits
+scenario(s)"). The scenarios named for five alarms and for "a code from a later slice" therefore
+keep their names, with bodies rewritten to stay true (the five existing alarms named; the
+later-slice rule stated generally), and each new fact is its own scenario.
+
+#### D46 — The wait helper
+
+`apps/cli/src/wait-for-run.ts` exports `RUN_POLL_INTERVAL_MS = 3_000` and
+`RUN_WAIT_BACKSTOP_MS = 1_200_000`, with `sleep` injected (pp-cli → command-anatomy, Waiting).
+
+#### D47 — `sleep` at the roots
+
+`resend-client` and the gap drill take `sleep: (ms) => Promise<void>`; roots pass `setTimeout` from
+`node:timers/promises`, and tests pass a fake that advances the fake clock, so no test waits in real
+time.
+
+#### D48 — `reconcilerInvoke` lands with every reader of the types it changes
+
+`pnpm check` typechecks every project in one pass (root AGENTS.md → Commands), so a required
+`ApiDeps.reconcilerInvoke` fails to compile in each `createApi` caller that does not pass it:
+`apps/api/src/main.ts:61`, `apps/local/src/main.ts:127` and `packages/api/scripts/export-openapi.ts:39`.
+A new `apiEnv` key fails the same way in `infra/src/function-env.ts` (`apiEnvironment` returns
+`EnvOf<typeof apiEnv>`) and in `app.stack.test.ts:555` (the API's keys equal `apiEnv`'s). The
+three callers, `apiEnv.RECONCILER_FUNCTION_NAME` and its value on the API function therefore land
+in one task (8.1), and `LambdaAsyncFunctionInvokeAdapter` lands with the port it implements (4.1),
+before `apps/api` needs it. `export-openapi.ts` passes an `InProcessAsyncFunctionInvokeAdapter`
+over a no-op, as it passes `workerInvoke`. Rejected: an optional `reconcilerInvoke`, which would
+compile while leaving `reconcile.start` able to insert a run nothing invokes.
 
 ### Evidence map
 
@@ -685,7 +717,7 @@ Each row: the claim, its test, and the mutation that makes it fail (run once, th
 | Closed sets, anchor choice, runtime role (reconciler) | `reconcile-runs.repository.int.test.ts` | the `CHECK` admits `run_abandoned`; the anchor omits `missing = 0` |
 | Runs never overlap (reconciler, Ships 2) | `start-reconcile.command.int.test.ts` | the advisory lock is removed (two rows appear) |
 | Claim before Resend (reconciler, Ships 2) | `reconciler.int.test.ts` | `claimed_at IS NULL` is dropped from the claim; `finished_at IS NULL` is dropped |
-| Recovery past the retry schedule, 5-day gap, disabled webhook, `429` storm, backlog, failed replay, deadline, dry run, not configured (reconciler, Ships 2 and 3) | `recovery.int.test.ts` | the anchor is ignored (5-day case); the grace window ignores the queue age (backlog case); the status read is skipped (disabled case) |
+| Recovery past the retry schedule, out-of-order replay, 5-day gap, disabled webhook, `429` storm, backlog, failed replay, deadline, dry run, not configured (reconciler, Ships 2 and 3) | `recovery.int.test.ts` | the anchor is ignored (5-day case); the grace window ignores the queue age (backlog case); the status read is skipped (disabled case) |
 | Failed hand-off finishes the row (read-api) | `start-reconcile.route.int.test.ts` | the second statement is removed (the next start answers `409`) |
 | Routes, shapes, errors, abandoned derived (read-api, sdk, Ships 4) | `readApiContract` under `@hono/node-server` and the Lambda adapter; route int tests; `get-health.route.int.test.ts` | the mapper stores or skips `runOutcome` |
 | CLI output, wait, backstop (cli, Ships 4) | `gaps-list.cli.test.ts`, `reconcile-start.cli.test.ts`, `health-get.cli.test.ts` | the wait tests a code literal instead of `error`; the notice goes to stdout |

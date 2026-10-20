@@ -85,6 +85,10 @@ A run SHALL recover a missing event only by asking Resend to replay it (RS-16), 
 - **WHEN** a replayed delivery carries a `svix_id` the ledger already holds
 - **THEN** `webhook_events` still holds one row for it and the projections are unchanged
 
+#### Scenario: A recovered event older than what is stored
+- **WHEN** an email's `email.delivered` is stored, its `email.sent` was missed, and the run replays `email.sent`
+- **THEN** the email's projection equals the one its full event set yields (status `delivered`), as if both had arrived in order
+
 ### Requirement: An outage past the retry schedule is fully recovered
 After an outage longer than Resend's ≈ 27.6 h retry schedule (RS-09), a run that finishes with no `error_code` SHALL leave every event List Events holds for its window stored exactly once. A gap too large for one run's budget SHALL end that run `rate_limited` and be finished by the following runs.
 
