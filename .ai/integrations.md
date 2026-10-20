@@ -28,7 +28,11 @@ Manager, [Secrets layout](#secrets-layout))
    ([api-contract.md → Conventions](api-contract.md#conventions), Rate limits). Each caller is
    single-flight (the reconciler by non-overlapping runs, ADR-007, and by its run claim, which
    absorbs a duplicate async invoke, AWS-53, [reconcile_runs](data-modeling.md#reconcile_runs--one-row-per-recovery-run);
-   the dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. A read-API route that calls
+   the dispatcher by its transaction lock, ADR-017), so Ledger's total stays ≤ 2 × 2 req/s. While the
+   owner's `pnpm aws:gap-drill` runs, it is a third caller with its own 2 req/s limiter, polling
+   List Events every 2 s (≤ 0.5 req/s); there is no dispatcher until slice 6, so the total stays
+   ≤ 2 × 2 req/s then too
+   ([pp-infra → scripts](../.agents/skills/pp-infra/references/scripts.md#gap-script)). A read-API route that calls
    Resend directly adds a caller and MUST restate this bound. *Why 2:* Ledger is a
    background consumer of the team's budget. At 2 req/s, recovering a 10,000-event gap (100 List
    Events pages plus 10,000 replays, RS-14, RS-16) takes ≈ 85 min of request time, spread over ≈ 6

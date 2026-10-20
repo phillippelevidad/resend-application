@@ -11,6 +11,8 @@ const HEX_64 = /^[0-9a-f]{64}$/;
 const POSTGRES_URL = /^postgres(ql)?:\/\//;
 // RS-02: a signing secret in its `whsec_` form, as ingest parses it (signing-secrets.schema.ts).
 const SIGNING_SECRET = /^whsec_[A-Za-z0-9+/=]+$/;
+// Slice 4 D29: a Resend API key's form; the reconciler reads any other value as not configured.
+const RESEND_API_KEY = /^re_[A-Za-z0-9_]+$/;
 
 const unsetIfEmpty = (value: unknown): unknown => (value === '' ? undefined : value);
 
@@ -79,9 +81,52 @@ export const deployEnvSchema = z
     ),
     // Read and checked only with LEDGER_SIMULATOR=on (below): `.env.local` holds it for local mode too.
     LEDGER_SIMULATOR_SECRET: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // Slice 4 D29: the reconciler's dedicated `full_access` key and the webhook it reconciles; set
+    // both or neither (below).
+    LEDGER_DEPLOY_RESEND_API_KEY: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .regex(RESEND_API_KEY, { error: 'must be a Resend API key starting re_' })
+        .optional(),
+    ),
+    LEDGER_DEPLOY_RESEND_WEBHOOK_ID: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .trim()
+        .min(1, { error: 'must be the Resend webhook id' })
+        .regex(/^\S+$/, { error: 'must be the Resend webhook id' })
+        .optional(),
+    ),
   })
   // D11: with `on`, the value the deploy writes into the simulator secret must be one RS-02 secret,
   // asserted before contacting AWS. The message names the variable's form, never its value.
+  // Slice 4 D29: the reconciler is configured by both inputs or by neither, and a deploy that sets
+  // the signing secrets (the owner's live webhook) sets both, so a redeploy cannot silently leave
+  // the reconciler unconfigured. The first missing one is named, never a value.
+  .superRefine((env, ctx) => {
+    const key = env.LEDGER_DEPLOY_RESEND_API_KEY;
+    const id = env.LEDGER_DEPLOY_RESEND_WEBHOOK_ID;
+    const required =
+      (key !== undefined) !== (id !== undefined) || env.LEDGER_DEPLOY_WEBHOOK_SECRETS !== undefined;
+    if (!required) return;
+    if (key === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['LEDGER_DEPLOY_RESEND_API_KEY'],
+        message:
+          "must be set to the reconciler's full_access Resend key, with LEDGER_DEPLOY_RESEND_WEBHOOK_ID and LEDGER_DEPLOY_WEBHOOK_SECRETS",
+      });
+    } else if (id === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['LEDGER_DEPLOY_RESEND_WEBHOOK_ID'],
+        message:
+          'must be set to the Resend webhook id, with LEDGER_DEPLOY_RESEND_API_KEY and LEDGER_DEPLOY_WEBHOOK_SECRETS',
+      });
+    }
+  })
   .superRefine((env, ctx) => {
     if (env.LEDGER_SIMULATOR !== 'on') return;
     const secret = env.LEDGER_SIMULATOR_SECRET;
@@ -109,6 +154,15 @@ export const deployEnvSchema = z
     simulator:
       env.LEDGER_SIMULATOR === 'on' && env.LEDGER_SIMULATOR_SECRET !== undefined
         ? { secret: env.LEDGER_SIMULATOR_SECRET }
+        : undefined,
+    // Slice 4 D29: both or neither, the refinement above guarantees.
+    resend:
+      env.LEDGER_DEPLOY_RESEND_API_KEY !== undefined &&
+      env.LEDGER_DEPLOY_RESEND_WEBHOOK_ID !== undefined
+        ? {
+            apiKey: env.LEDGER_DEPLOY_RESEND_API_KEY,
+            webhookId: env.LEDGER_DEPLOY_RESEND_WEBHOOK_ID,
+          }
         : undefined,
   }));
 

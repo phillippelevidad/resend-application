@@ -313,6 +313,7 @@ tears down ([features.md → tear down](features.md#adopter-lifecycle)). This li
 | CDKToolkit bootstrap stack, staging bucket, ECR repo, roles | `DeletionPolicy: Retain` (AWS-39) | Normally kept; AWS advises not to delete and recreate it. To remove it fully: empty the versioned bucket, then delete the `CDKToolkit` stack |
 | Postgres database (Neon) | External to AWS stacks | Bills nothing on Free. Deleting the Neon project removes the data. It is optional and recoverable for 7 days ([integrations.md](integrations.md#decision--neon)) |
 | Resend webhook | Lives in Resend | The adopter deletes it, or Resend retries a dead endpoint and then auto-disables it ([RS-09, RS-11](resend.md#facts)) |
+| Resend API key (reconciler's) | Lives in Resend: destroying `ledger/resend-api-key` deletes Ledger's copy, not the key | The owner revokes it (dashboard, or `DELETE /api-keys/{id}`): a `full_access` key can read every signing secret ([RS-05, RS-18](resend.md#facts)). The teardown prints this step (slice 4, [run-teardown.test.ts](../infra/scripts/run-teardown.test.ts)) |
 | SNS email subscription | Deleted with its topic | Nothing to do |
 
 **Evidence:** a post-destroy listing of stack-tagged resources and of `/aws/lambda/*` log groups

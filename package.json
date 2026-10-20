@@ -27,6 +27,7 @@
     "aws:rearm": "node --env-file-if-exists=.env.local infra/scripts/rearm.ts",
     "aws:trip-drill": "node --env-file-if-exists=.env.local infra/scripts/trip-drill.ts",
     "aws:db-check": "node --env-file-if-exists=.env.local infra/scripts/db-check.ts",
+    "aws:gap-drill": "node --env-file-if-exists=.env.local infra/scripts/gap-drill.ts",
     "openapi:export": "node packages/api/scripts/export-openapi.ts && pnpm --filter @ledger/sdk exec openapi-typescript openapi.json -o src/openapi-types.ts",
     "sim": "node --env-file-if-exists=.env.local sim/src/main.ts",
     "ledger": "node --env-file-if-exists=.env.local apps/cli/src/main.ts"

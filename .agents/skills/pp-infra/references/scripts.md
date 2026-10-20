@@ -152,4 +152,12 @@ run is slice 2's evidence and settles AWS-U01, AWS-U02 and AWS-U09
 ## Gap script
 
 The [slice 4](../../../../.ai/build-checklist.md#4--recovery) Ships bullet is the script's spec,
-read there. Same shape and rules as the others; its one send goes through `@ledger/resend-client`.
+read there, and the slice 4 change's
+[design.md → D32](../../../../openspec/changes/slice-4-recovery/design.md#d32--pnpm-awsgap-drill) its
+steps. Same shape and rules as the others: `run-gap-drill.ts` holds the order and every refusal
+over injected steps ([run-gap-drill.test.ts](../../../../infra/scripts/run-gap-drill.test.ts)), and
+`gap-drill.ts` composes the real ones: the stack outputs and kill-switch state through
+`@ledger/aws`, the health read through `@ledger/sdk`, its own `resend-client` (`ledger-gap-drill`,
+RS-21) for List Events, the one send and Retrieve Event, the ingest route throttle of
+`ingest-route-throttle.ts` (D31, restored in a `finally` unless the stack tripped), and the CLI as
+child processes with no shell. It is a third Resend caller while it runs (integrations.md rule 2).

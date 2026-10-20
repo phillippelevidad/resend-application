@@ -31,9 +31,12 @@ export type RunTeardownOptions = {
 
 const SCRIPT = 'aws:teardown';
 
-// features.md → Adopter lifecycle: what teardown cannot do for the owner.
+// features.md → Adopter lifecycle: what teardown cannot do for the owner. Slice 4 D30: a destroyed
+// secret does not revoke the reconciler's key at Resend, and a full_access key can read every signing
+// secret (RS-05, RS-18).
 export const OUTSIDE_AWS_STEPS = [
   'outside AWS: delete the Resend webhook that points at the ingest URL (dashboard, or DELETE /webhooks/{id})',
+  'outside AWS: revoke the Resend API key you made for the reconciler (dashboard, or DELETE /api-keys/{id})',
   'outside AWS, optional: delete the Neon project (recoverable for 7 days)',
 ] as const;
 

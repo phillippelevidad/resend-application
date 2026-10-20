@@ -275,7 +275,11 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # then ends `db:setup: failed: Postgres is unreachable …`); optional
                    # LEDGER_DEPLOY_WEBHOOK_SECRETS, LEDGER_KILL_SWITCH (on|off), LEDGER_BUDGET_USD,
                    # LEDGER_SIMULATOR (on|off; with on, LEDGER_SIMULATOR_SECRET is required, then
-                   # written into the simulator secret).
+                   # written into the simulator secret), LEDGER_DEPLOY_RESEND_API_KEY (re_) and
+                   # LEDGER_DEPLOY_RESEND_WEBHOOK_ID: both or neither, and both whenever
+                   # LEDGER_DEPLOY_WEBHOOK_SECRETS is set; the id goes to CDK as
+                   # ledger:resendWebhookId, the key into ledger/resend-api-key after the deploy
+                   # (`ledger/resend-api-key written`).
                    # Refuses a dirty tree, a tripped stack, a disarming deploy, an unsafe contract
                    # step, a CBL-01 hit in cdk.out, a token tag key unlike the deployed one,
                    # an address-hash key_id mismatch (the owner's kept stack: put only
@@ -286,7 +290,15 @@ pnpm aws:deploy [--issue-operate-token <name>] [--budget-drill]
                    # then `simulator on` or `simulator off`, never the value
 pnpm aws:teardown [--discard-queued]   # refuses while either queue holds a message (the flag
                    # discards them); destroys LedgerApp, then LedgerGuardrails only if that succeeded;
-                   # lists billable leftovers (exit 1 on any); prints the two steps outside AWS
+                   # lists billable leftovers (exit 1 on any); prints the three steps outside AWS
+                   # (delete the webhook, revoke the reconciler's Resend key, optionally the Neon project)
+pnpm aws:gap-drill # Ask-first: one real gap and its recovery; needs LEDGER_URL (LedgerApp's ApiUrl),
+                   # LEDGER_TOKEN (operate), RESEND_API_KEY and LEDGER_DEPLOY_RESEND_WEBHOOK_ID; refuses a
+                   # tripped stack, a non-empty queue or DLQ, an unfinished run, an existing ingest route
+                   # setting, or a start outside :02-:40 UTC; lowers the ingest route to 0/0, sends once to
+                   # delivered@resend.dev, waits out the grace window, restores the route, then runs
+                   # ledger reconcile --dry-run, ledger reconcile, a final dry run and ledger gaps
+                   # (a restore always runs; a trip mid-drill leaves the route for pnpm aws:rearm)
 pnpm aws:rearm     # restores a tripped stack, warns when the month's spend is at the budget
 pnpm aws:trip-drill   # forces the usage trip, records five ingest status codes, forces a
                    # kill-switch failure until its Errors alarm fires, restores; refuses a disarmed

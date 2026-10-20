@@ -209,7 +209,8 @@ async function drill(): Promise<0 | 1> {
   out.line(
     `summary: trip ${tripSeconds}s; ingest ${codes.join(' ')}; Errors alarm ${errorsSeconds}s; restore ${restoreSeconds}s`,
   );
-  out.line('then: ledger reconcile → slice 4');
+  // Slice 4 D30: recovers the events Resend gave up on while the stack was stopped.
+  out.line('then: pnpm -s ledger reconcile');
   return out.done();
 }
 
