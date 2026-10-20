@@ -504,7 +504,8 @@ _Evidence (slice 4):_
   retry schedule ends 100 % recovered with 0 duplicates and a disabled webhook writes
   `error_code = webhook_disabled`, in
   [recovery.int.test.ts](../packages/reconciler/src/recovery.int.test.ts).
-- Pending in this slice: two concurrent starts yield one run.
+- Two concurrent starts yield one run and one `reconcile_in_progress`, in
+  [start-reconcile.command.int.test.ts](../packages/api/src/start-reconcile.command.int.test.ts).
 
 - **Slices:** 4 — Recovery
 
