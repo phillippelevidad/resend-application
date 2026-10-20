@@ -62,13 +62,17 @@ export class StartReconcileCommand {
     try {
       await reconcilerInvoke.invokeAsync({ ledger: 'reconcile-run', run_id: run.id });
     } catch (err) {
-      await reconcileRunsRepository.finish(db, run.id, {
-        checked: 0,
-        missing: 0,
-        replayed: 0,
-        failed: 0,
-        errorCode: 'internal_error',
-      });
+      // Best effort: a failed finish leaves the row to read `run_abandoned` past its budget, and the
+      // refused hand-off stays the error the caller gets.
+      await reconcileRunsRepository
+        .finish(db, run.id, {
+          checked: 0,
+          missing: 0,
+          replayed: 0,
+          failed: 0,
+          errorCode: 'internal_error',
+        })
+        .catch(() => undefined);
       throw internalError(err);
     }
     return run;
