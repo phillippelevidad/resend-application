@@ -527,7 +527,7 @@ Over `readStage` and `withThrottle` (`http-api-stage.ts`):
      once a second (one that gets through answers `401` and stores nothing) until five in a row
      answer `429`, bounded at 60 s, printing `ingest route refusing: 429 x5`; at the bound, fail
      `the ingest route never refused`, still inside the guard. A throttle update is not instant: a
-     delivery ≈ 20 s after the lower was accepted on 2026-10-20 (AWS-14, AWS-U16).
+     delivery ≈ 3 s after the lower was accepted on 2026-10-20 (AWS-14, AWS-U16).
   3. `sendEmail` from `onboarding@resend.dev` to `delivered@resend.dev`, subject `Ledger gap drill`,
      a one-line text, `Idempotency-Key` `ledger-gap-drill-<UTC timestamp>` (RS-42).
   4. Poll List Events every 2 s, up to 120 s, until the ids absent from step 1's page hold an

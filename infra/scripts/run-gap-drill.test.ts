@@ -366,7 +366,7 @@ describe('runGapDrill', () => {
     },
   );
 
-  // Measured 2026-10-20: a delivery ≈ 20 s after the lower was accepted (AWS-14, AWS-U16), so the
+  // Measured 2026-10-20: a delivery ≈ 3 s after the lower was accepted (AWS-14, AWS-U16), so the
   // send waits until the route refuses five probes in a row.
   it('sends only after the ingest route refuses five probes in a row', async () => {
     const world = newWorld({ probeStatuses: [401, 401, 429, 429, 429, 429, 429] });

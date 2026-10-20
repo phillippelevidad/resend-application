@@ -183,7 +183,7 @@ async function drill(
     // nothing lowered changes nothing.
     out.line('lowering the ingest route throttle');
     await step('lowering the ingest route throttle failed', () => steps.lowerIngestRoute());
-    // Measured 2026-10-20: a delivery ≈ 20 s after the lower was accepted and stored (AWS-14), so
+    // Measured 2026-10-20: a delivery ≈ 3 s after the lower was accepted and stored (AWS-14), so
     // nothing is sent until the route refuses.
     let refusals = 0;
     for (let waited = 0; refusals < REFUSALS_IN_A_ROW; waited += PROBE_INTERVAL_MS) {
@@ -253,7 +253,7 @@ async function drill(
   // the send's recovery is read from `ledger email`, and the final dry run's 0 covers every refused
   // event older than the grace window.
   // First, none of the send's events is stored: the counts below only prove recovery if the send was
-  // missing. Measured 2026-10-20, a delivery ≈ 20 s after the lower was accepted (AWS-14, AWS-U16),
+  // missing. Measured 2026-10-20, a delivery ≈ 3 s after the lower was accepted (AWS-14, AWS-U16),
   // which step 2's confirmation now rules out before the send.
   const beforeReconcile = await step('ledger email failed', () =>
     steps.ledger(['email', emailId, '--json']),
