@@ -1,3 +1,4 @@
+import { RECONCILE_GRACE_MS } from '@ledger/core';
 import type { Env } from '@ledger/shared';
 import { createScriptOutput, type ScriptOutput, type ScriptSink } from './script-output.ts';
 
@@ -56,7 +57,7 @@ const LAST_MINUTE = 40;
 const POLL_INTERVAL_MS = 2_000;
 const POLL_BOUND_MS = 120_000;
 // ADR-007's grace window plus a margin, so the reconcile counts the send's events.
-const GRACE_WAIT_MS = 600_000 + 30_000;
+const GRACE_WAIT_MS = RECONCILE_GRACE_MS + 30_000;
 
 class DrillStopped extends Error {
   readonly kind: 'refused' | 'failed';
