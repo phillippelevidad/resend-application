@@ -14,7 +14,7 @@
 - **THEN** no key is written, and the reconciler's webhook id is `unset`
 
 ### Requirement: The gap drill
-`pnpm aws:gap-drill` SHALL, on the owner's armed and untripped deploy, lower the ingest route throttle to the kill switch's stop value, send one email to `delivered@resend.dev` (RS-39, RS-42), restore the throttle after the grace window and before Resend's next scheduled retry (RS-09), confirm through `ledger email` that none of the send's events is stored, then run a dry run, a real run and a final dry run.
+`pnpm aws:gap-drill` SHALL, on the owner's armed and untripped deploy, lower the ingest route throttle to the kill switch's stop value, confirm the route refuses (`429` five times in a row within 60 s, AWS-U16), send one email to `delivered@resend.dev` (RS-39, RS-42), restore the throttle after the grace window and before Resend's next scheduled retry (RS-09), confirm through `ledger email` that none of the send's events is stored, then run a dry run, a real run and a final dry run.
 
 #### Scenario: Refusals before any change
 - **WHEN** the drill runs with `LEDGER_URL` not the deployed API URL, a tripped stack, a non-empty queue or DLQ, an unfinished last run, `LEDGER_DEPLOY_RESEND_WEBHOOK_ID` or `RESEND_API_KEY` unset, the minute outside `:02`–`:40`, or an ingest route setting already present
@@ -24,13 +24,17 @@
 - **WHEN** any step after the lower fails on an untripped stack
 - **THEN** the ingest route setting is deleted before the drill exits `1`
 
+#### Scenario: The lowered route never refuses
+- **WHEN** unsigned probes of the ingest route, one a second after the lower, do not meet `429` five times in a row within 60 s (a throttle update is not instant, AWS-14)
+- **THEN** the drill sends nothing, deletes the ingest route setting, and ends `aws:gap-drill: failed: the ingest route never refused`
+
 #### Scenario: A trip during the drill
 - **WHEN** the stack is tripped while the drill runs
 - **THEN** the drill leaves the route settings to the re-arm and does not delete them
 
 #### Scenario: The recorded run
 - **WHEN** the drill runs on the owner's deployment and no other mail reaches the webhook while the route is lowered
-- **THEN** it prints `stored before the reconcile: 0`, `dry run: missing 2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, `dry run: missing 0`, `gaps: newest run missing 0`, an `events visible after <ms> ms` line and a `created_at unchanged by the replay` line, then `aws:gap-drill: done`
+- **THEN** it prints `ingest route refusing: 429 x5`, `stored before the reconcile: 0`, `dry run: missing 2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, `dry run: missing 0`, `gaps: newest run missing 0`, an `events visible after <ms> ms` line and a `created_at unchanged by the replay` line, then `aws:gap-drill: done`
 
 ### Requirement: The gap drill's counts
 Other mail on the webhook while the route is lowered is refused too, and List Events names no email (RS-14), so `pnpm aws:gap-drill` SHALL fail unless the dry run and the real run each find at least the send's 2 missing, the real run replays every event it found with 0 failed, `ledger email` then stores the send's 2, and the final dry run, repeated every 2 s for up to 120 s, reaches 0.

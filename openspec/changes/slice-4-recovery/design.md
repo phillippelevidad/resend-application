@@ -522,7 +522,12 @@ Over `readStage` and `withThrottle` (`http-api-stage.ts`):
   outside `:02`–`:40` ("the hourly reconcile at :00 would overlap the drill"); or D31 refuses.
 - **Steps:**
   1. Read the newest List Events page (the drill's own `resend-client`, `ledger-gap-drill`).
-  2. Lower the ingest route throttle, with a `finally` that restores it (D31's guard).
+  2. Lower the ingest route throttle, with a `finally` that restores it (D31's guard). Then confirm
+     the route refuses before anything is sent: an unsigned `POST` to `<LEDGER_URL>/webhooks/resend`
+     once a second (one that gets through answers `401` and stores nothing) until five in a row
+     answer `429`, bounded at 60 s, printing `ingest route refusing: 429 x5`; at the bound, fail
+     `the ingest route never refused`, still inside the guard. A throttle update is not instant: a
+     delivery ≈ 20 s after the lower was accepted on 2026-10-20 (AWS-14, AWS-U16).
   3. `sendEmail` from `onboarding@resend.dev` to `delivered@resend.dev`, subject `Ledger gap drill`,
      a one-line text, `Idempotency-Key` `ledger-gap-drill-<UTC timestamp>` (RS-42).
   4. Poll List Events every 2 s, up to 120 s, until the ids absent from step 1's page hold an
@@ -551,7 +556,9 @@ Over `readStage` and `withThrottle` (`http-api-stage.ts`):
   8. Compare each stored `event_created_at` with `retrieveWebhookEventCreatedAt`; print `created_at
      unchanged by the replay: yes | no` (RS-U10).
 - Root script: `"aws:gap-drill": "node --env-file-if-exists=.env.local infra/scripts/gap-drill.ts"`.
-- `run-gap-drill.test.ts`: each refusal changes nothing; a failure after the lower restores; a trip
+- `run-gap-drill.test.ts`: each refusal changes nothing; a failure after the lower restores; the send
+  waits for five `429` probes in a row, and a route that never refuses within 60 s fails, sends
+  nothing and restores; a trip
   mid-drill leaves the setting; a count mismatch fails after restoring; the send's events stored
   before the reconcile fail the drill; other mail refused alongside the send ends `done` with higher
   run counts, yet fails when the send's own events are not stored or the run replays fewer than it

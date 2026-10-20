@@ -37,6 +37,8 @@ const SUBJECT = 'Ledger gap drill';
 const TEXT = 'One send by pnpm aws:gap-drill, to make one real gap and recover it.';
 // One Resend call's own bound: the drill never waits past it.
 const CALL_DEADLINE_MS = 60_000;
+// One ingest probe's own bound, so a hung request cannot stall the confirmation.
+const PROBE_TIMEOUT_MS = 5_000;
 
 // The client's default-branch log line would bypass the script's prefix: nothing is logged.
 const silent: Logger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -110,6 +112,17 @@ function createSteps(config: GapDrillConfig): GapDrillSteps {
       (await resend.retrieveWebhookEventCreatedAt(config.webhookId, eventId, deadline())).createdAt,
     lowerIngestRoute: () => lowerIngestRouteThrottle(apiGateway, names),
     restoreIngestRoute: () => restoreIngestRouteThrottle({ apiGateway, lambda }, names),
+    // Unsigned, so a request the route lets through is refused by ingest (`401`) and stores nothing;
+    // the same probe as the trip drill's.
+    async probeIngest() {
+      const response = await fetch(`${config.ledgerUrl.replace(/\/+$/, '')}/webhooks/resend`, {
+        method: 'POST',
+        body: '{}',
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      });
+      await response.body?.cancel();
+      return response.status;
+    },
     // No shell, the drill's own LEDGER_URL and LEDGER_TOKEN, and no `.env.local`.
     async ledger(args) {
       const child = spawn(process.execPath, [CLI_MAIN, ...args], {

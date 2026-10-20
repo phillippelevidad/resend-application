@@ -258,7 +258,7 @@ makes no transition, so D4 would show no drill email.
    ```
 
    Expect: exit `0` in about 12 to 14 minutes; lines in order `aws:gap-drill: lowering the ingest
-   route throttle`, `sent one email`, `events visible after <ms> ms` (RS-U13), `waiting <s> s for
+   route throttle`, `ingest route refusing: 429 x5`, `sent one email`, `events visible after <ms> ms` (RS-U13), `waiting <s> s for
    the grace window`, `ingest route restored`, `stored before the reconcile: 0`, `dry run: missing
    2`, `reconcile: missing 2 replayed 2 failed 0`, `stored 2 of 2`, `dry run: missing 0`,
    `gaps: newest run missing 0`, `created_at unchanged by the replay: yes` (RS-U10), and

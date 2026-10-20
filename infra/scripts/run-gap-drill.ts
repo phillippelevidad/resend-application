@@ -30,6 +30,9 @@ export type GapDrillSteps = {
   // D31's two steps.
   lowerIngestRoute(): Promise<void>;
   restoreIngestRoute(): Promise<'restored' | 'left: tripped'>;
+  // One unsigned `POST` to the ingest route: its status code. Through the route it answers `401` and
+  // stores nothing; a refusing route answers `429`.
+  probeIngest(): Promise<number>;
   ledger(args: readonly string[]): Promise<LedgerRun>;
   now(): Date;
   sleep(ms: number): Promise<void>;
@@ -62,6 +65,11 @@ const POLL_INTERVAL_MS = 2_000;
 const POLL_BOUND_MS = 120_000;
 // ADR-007's grace window plus a margin, so the reconcile counts the send's events.
 const GRACE_WAIT_MS = RECONCILE_GRACE_MS + 30_000;
+// The lowered route is confirmed before the send: a throttle update is not shown to apply at once
+// (AWS-14, AWS-U16), so it must refuse this many probes in a row, one a second, within the bound.
+const REFUSALS_IN_A_ROW = 5;
+const PROBE_INTERVAL_MS = 1_000;
+const PROBE_BOUND_MS = 60_000;
 
 class DrillStopped extends Error {
   readonly kind: 'refused' | 'failed';
@@ -175,6 +183,16 @@ async function drill(
     // nothing lowered changes nothing.
     out.line('lowering the ingest route throttle');
     await step('lowering the ingest route throttle failed', () => steps.lowerIngestRoute());
+    // Measured 2026-10-20: a delivery ≈ 20 s after the lower was accepted and stored (AWS-14), so
+    // nothing is sent until the route refuses.
+    let refusals = 0;
+    for (let waited = 0; refusals < REFUSALS_IN_A_ROW; waited += PROBE_INTERVAL_MS) {
+      if (waited >= PROBE_BOUND_MS) throw fail('the ingest route never refused');
+      const status = await step('probing the ingest route failed', () => steps.probeIngest());
+      refusals = status === 429 ? refusals + 1 : 0;
+      if (refusals < REFUSALS_IN_A_ROW) await steps.sleep(PROBE_INTERVAL_MS);
+    }
+    out.line(`ingest route refusing: 429 x${REFUSALS_IN_A_ROW}`);
     const key = `ledger-gap-drill-${steps.now().toISOString().replace(/[-:.]/g, '')}`;
     const sent = await step('the send failed', () => steps.sendEmail(key));
     if ('rejectedStatus' in sent) {
@@ -231,19 +249,21 @@ async function drill(
   }
 
   // 7. The recovery, through the CLI as the operator runs it. The runs count every refused event on
-  // the webhook, the send's and any other mail's, so they find at least the send's own; the send's
-  // recovery is read from `ledger email`, and the final dry run's 0 covers every refused event older
-  // than the grace window.
-  // First, none of the send's events is stored: a throttle is best-effort (AWS-14), and the counts
-  // below only prove recovery if the send was missing.
+  // the webhook, the send's and any other mail's, so they find at least the send's own refused ones;
+  // the send's recovery is read from `ledger email`, and the final dry run's 0 covers every refused
+  // event older than the grace window.
+  // First, none of the send's events is stored: the counts below only prove recovery if the send was
+  // missing. Measured 2026-10-20, a delivery ≈ 20 s after the lower was accepted (AWS-14, AWS-U16),
+  // which step 2's confirmation now rules out before the send.
   const beforeReconcile = await step('ledger email failed', () =>
     steps.ledger(['email', emailId, '--json']),
   );
+  if (beforeReconcile.code === 0) throw fail("the send's events were stored before the reconcile");
   if (
     beforeReconcile.code !== 1 ||
     field(field(beforeReconcile.json, 'error'), 'code') !== 'email_not_found'
   ) {
-    throw fail("the send's events were stored before the reconcile");
+    throw fail('ledger email failed');
   }
   out.line('stored before the reconcile: 0');
 
