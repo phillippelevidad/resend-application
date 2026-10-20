@@ -106,7 +106,9 @@ slice 4.
   after the claim is finished best-effort `internal_error`, logged `reconcile.internal_error` by
   `error_name`, and rethrown as a constant. A clean run, dry runs included, emits
   `reconcile.missing`, `reconcile.replayed` and `reconcile.failed`; an errored one emits none, the
-  silence the gap alarm reads (D19, D24)
+  silence the gap alarm reads (D19, D24). Both the `reconcile.run_finished` line and the metrics
+  follow only a finish that stored the row: one that changed no row (finished elsewhere) logs
+  `reconcile.already_finished` and emits nothing (`reconciler.int.test.ts`)
   ([one mapping per surface](../../pp-general/references/errors.md#one-mapping-per-surface)).
 - **`run_abandoned` is derived, never written.** A run with no `finished_at` past its time budget
   (crashed, or its invoke lost) will not finish; the `reconcile.getRun` and `gaps.list` readers in

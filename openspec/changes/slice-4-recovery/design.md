@@ -330,7 +330,10 @@ configured. `runScheduled` starts (D6, `scheduled`) then runs; a refused start l
    `failed`, logs `reconcile.replay_failed` (`run_id`, `svix_id`, `error_code`), and the run goes on.
 6. A List Events error stops the run with its code. The deadline reached with paging unfinished
    finishes it `rate_limited` (PP C2).
-7. Finish (D6) with the counts and the code, then emit D19's metrics.
+7. Finish (D6) with the counts and the code, then, only when the finish stored the row, log
+   `reconcile.run_finished` and emit D19's metrics. A finish that changes no row (the row finished
+   elsewhere) logs `reconcile.already_finished` and emits nothing, so no `reconcile.*` datapoint
+   describes an outcome `reconcile_runs` does not hold (`reconciler.int.test.ts`).
 
 An unexpected throw after the claim is caught at the factory edge, finished best-effort
 `internal_error`, logged `reconcile.internal_error` by `error_name`, and rethrown as a constant so
@@ -354,13 +357,14 @@ refused inside the lock answers `409 reconcile_in_progress`.
 
 #### D19 — Metrics and logs
 
-A run with no `error_code` emits `reconcile.missing`, `reconcile.replayed` and `reconcile.failed`
-(value the count, field `run_id`, no dimension), dry runs included. An errored run emits none: the
-gap alarm reads that silence (D24). Log lines, constant messages, allow-listed fields only:
+A run with no `error_code` whose finish stored the row emits `reconcile.missing`,
+`reconcile.replayed` and `reconcile.failed` (value the count, field `run_id`, no dimension), dry
+runs included. An errored run emits none: the gap alarm reads that silence (D24). Nor does a run
+whose finish changed no row (D15 step 7). Log lines, constant messages, allow-listed fields only:
 `reconcile.run_started` (`run_id`), `reconcile.run_finished` (`run_id`, `checked_count`,
 `missing_count`, `replayed_count`, `failed_count`, `error_code` when set),
 `reconcile.replay_failed`, `reconcile.duplicate_invoke`, `reconcile.start_refused`,
-`reconcile.internal_error` (`error_name`). Every key is already allowed
+`reconcile.already_finished` (`run_id`, warn), `reconcile.internal_error` (`error_name`). Every key is already allowed
 ([Log fields](../../../.ai/data-modeling.md#log-fields): `<name>_count` by pattern,
 `packages/shared/src/create-logger.ts:46-47`); `run_id` is a string field (`:38`), so the id is
 logged as `String(id)`.

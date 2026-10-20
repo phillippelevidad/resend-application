@@ -76,6 +76,13 @@ export function createReconciler({
           ? NOT_CONFIGURED
           : await executeRun(claimed, { resend, webhookId, presentSvixIds, clock, logger });
       const finished = await reconcileRunsRepository.finish(db, claimed.id, outcome);
+      if (finished === undefined) {
+        // Zero rows: the row was finished elsewhere (D18's refused hand-off, say, whose invoke landed
+        // anyway), so this outcome is not stored. Nothing is reported: a `reconcile.*`
+        // datapoint the gap alarm reads must describe an outcome `reconcile_runs` holds (D19, D24).
+        logger.warn('reconcile.already_finished', { run_id: String(claimed.id) });
+        return undefined;
+      }
       reportRunFinished({ logger, metrics }, claimed.id, outcome);
       return finished;
     } catch (error) {

@@ -1,12 +1,17 @@
 // Slice 4 D16, D6, D15, ADR-007, as the runtime role: a run is claimed before any Resend call, so a
 // duplicate invoke (AWS-53) or a finished row makes none; a scheduled start never overlaps an
-// unfinished run; an unexpected throw after the claim finishes the row `internal_error`. The real
+// unfinished run; an unexpected throw after the claim finishes the row `internal_error`; a finish
+// that stores nothing (the row finished elsewhere) emits no `reconcile.*` metric (D19, D24). The real
 // client runs against the fake Resend API on a fake clock started at wall-clock time, because
 // `started_at` and the overlap check read Postgres's `now()` (D43).
 import { RUNTIME_ROLE, reconcileRunsRepository } from '@ledger/db';
 import { createTestDatabase, type TestDatabase } from '@ledger/db/testing';
 import { createResendClient } from '@ledger/resend-client';
-import { type FakeResendApi, startFakeResendApi } from '@ledger/resend-client/testing';
+import {
+  type FakeResendApi,
+  FakeResendClient,
+  startFakeResendApi,
+} from '@ledger/resend-client/testing';
 import type { LedgerError, LogFields } from '@ledger/shared';
 import { FakeClock, FakeQueueAttributes, RecordingMetrics } from '@ledger/shared/testing';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -144,6 +149,57 @@ describe('the scheduled start (D6)', () => {
     expect(run?.claimedAt).toBeInstanceOf(Date);
     expect(run?.finishedAt).toBeInstanceOf(Date);
     expect(api.requests[0]?.path).toBe(`/webhooks/${WEBHOOK_ID}`);
+  });
+});
+
+describe('a finish that stores nothing (D19, D24)', () => {
+  it('emits no reconcile.* metric and no run_finished line when the row was finished elsewhere', async () => {
+    await finishAll();
+    const run = await insertManualRun();
+    // Another writer finishes the row after the claim and before this run's finish: the fake's
+    // first call, which `executeRun` makes after the claim (RS-11).
+    class FinishedElsewhere extends FakeResendClient {
+      override async retrieveWebhook(...args: Parameters<FakeResendClient['retrieveWebhook']>) {
+        await reconcileRunsRepository.finish(t.db, run.id, {
+          checked: 0,
+          missing: 0,
+          replayed: 0,
+          failed: 0,
+          errorCode: 'internal_error',
+        });
+        return super.retrieveWebhook(...args);
+      }
+    }
+    const resend = new FinishedElsewhere();
+    resend.events = [
+      { id: 'msg_elsewhere_1', type: 'email.sent', createdAt: new Date(Date.now() - 3_600_000) },
+    ];
+    const metrics = new RecordingMetrics();
+    const leveled: { level: string; message: string; fields: LogFields | undefined }[] = [];
+    const log = (level: string) => (message: string, fields?: LogFields) =>
+      leveled.push({ level, message, fields });
+
+    const result = await createReconciler({
+      db: t.db,
+      resend,
+      webhookId: WEBHOOK_ID,
+      queueAttributes: new FakeQueueAttributes(),
+      clock: new FakeClock(new Date()),
+      logger: { info: log('info'), warn: log('warn'), error: log('error') },
+      metrics,
+    }).runClaimed(run.id);
+
+    expect(result).toBeUndefined();
+    // The other writer's outcome stands; this run's (one missing event, replayed) was not stored.
+    const stored = await reconcileRunsRepository.get(t.db, run.id);
+    expect(stored).toMatchObject({ errorCode: 'internal_error', missing: 0, replayed: 0 });
+    expect(metrics.recorded).toEqual([]);
+    expect(leveled.map((line) => line.message)).not.toContain('reconcile.run_finished');
+    expect(leveled.at(-1)).toEqual({
+      level: 'warn',
+      message: 'reconcile.already_finished',
+      fields: { run_id: String(run.id) },
+    });
   });
 });
 
