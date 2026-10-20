@@ -1,10 +1,26 @@
-import { apiUnavailable, internalError, type ReconcileRun, type SdkError } from '@ledger/sdk';
+import {
+  apiUnavailable,
+  internalError,
+  type ReconcileRun,
+  type SdkError,
+  type SdkResult,
+} from '@ledger/sdk';
 import { type FakeAnswers, FakeLedgerClient } from '@ledger/sdk/testing';
 import { describe, expect, it } from 'vitest';
 import { runCli, VALID_ENV } from '../testing/run-cli.ts';
-import { forbidden, unauthorized, unknownCode, validationFailed } from '../testing/sdk-errors.ts';
-import { RUN_POLL_INTERVAL_MS, RUN_WAIT_BACKSTOP_MS } from '../wait-for-run.ts';
-import { startedNotice } from './reconcile-start.cli.ts';
+import {
+  databaseUnavailable,
+  forbidden,
+  unauthorized,
+  unknownCode,
+  validationFailed,
+} from '../testing/sdk-errors.ts';
+import {
+  MAX_CONSECUTIVE_POLL_FAILURES,
+  RUN_POLL_INTERVAL_MS,
+  RUN_WAIT_BACKSTOP_MS,
+} from '../wait-for-run.ts';
+import { retryNotice, startedNotice } from './reconcile-start.cli.ts';
 
 // `ledger reconcile` against the fake SDK, `sleep` injected (pp-cli → cli-tests, Waiting; slice 4
 // design.md → Surfaces, `reconcile.start`): the start, the run-id notice on stderr, the wait on
@@ -51,6 +67,19 @@ function client(polls: readonly ReconcileRun[], answers: Partial<FakeAnswers> = 
       return { data: run, error: null };
     },
     ...answers,
+  });
+}
+
+// `getRun` answers each result in turn, the last one forever after: a poll's own error included.
+function pollAnswers(answers: readonly SdkResult<ReconcileRun>[]) {
+  let next = 0;
+  return new FakeLedgerClient({
+    reconcileStart: { data: running, error: null },
+    reconcileGetRun: () => {
+      const answer = answers[Math.min(next, answers.length - 1)] ?? { data: running, error: null };
+      next += 1;
+      return answer;
+    },
   });
 }
 
@@ -184,13 +213,87 @@ describe('ledger reconcile', () => {
     }
   });
 
-  it('a getRun error during the wait exits 1 with it', async () => {
-    const fake = client([], { reconcileGetRun: { data: null, error: apiUnavailable } });
+  it.each([
+    ['api_unavailable', apiUnavailable],
+    ['database_unavailable', databaseUnavailable()],
+    ['internal_error', internalError],
+  ])(
+    'a transient %s poll error mid-wait is retried, and the run finishing exits 0',
+    async (_code, error) => {
+      const fake = pollAnswers([
+        { data: running, error: null },
+        { data: null, error },
+        { data: null, error },
+        { data: finished, error: null },
+      ]);
 
-    const result = await run(['reconcile', '--json'], fake);
+      const result = await run(['reconcile', '--json'], fake);
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(finished);
+      expect(result.stderr).toBe(`${startedNotice(42)}\n`);
+      expect(fake.calls.filter((call) => call.method === 'reconcile.getRun')).toHaveLength(4);
+    },
+  );
+
+  it('a retried poll writes its notice to stderr without --json, stdout only the final run', async () => {
+    const fake = pollAnswers([
+      { data: null, error: apiUnavailable },
+      { data: finished, error: null },
+    ]);
+
+    const result = await run(['reconcile'], fake);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split('\n')[0]).toBe('run 42   manual');
+    expect(result.stderr).toBe(`${startedNotice(42)}\n${retryNotice(42, apiUnavailable)}\n`);
+    expect(retryNotice(42, apiUnavailable)).toBe(
+      'ledger: polling run 42 failed with api_unavailable; retrying.',
+    );
+  });
+
+  it('a non-transient getRun error during the wait exits 1 with it at once, no poll after it', async () => {
+    const notFound: SdkError = { ...unauthorized, code: 'run_not_found' };
+    for (const error of [unauthorized, notFound]) {
+      const fake = pollAnswers([
+        { data: running, error: null },
+        { data: null, error },
+      ]);
+
+      const result = await run(['reconcile', '--json'], fake);
+
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toEqual({ error });
+      expect(fake.calls.filter((call) => call.method === 'reconcile.getRun')).toHaveLength(2);
+    }
+  });
+
+  it('transient poll errors in a row up to the bound exit 1 with the last one', async () => {
+    const fake = client([], { reconcileGetRun: { data: null, error: apiUnavailable } });
+    const { waits, sleep } = recordingSleep();
+
+    const result = await run(['reconcile', '--json'], fake, sleep);
 
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout)).toEqual({ error: apiUnavailable });
+    expect(waits).toHaveLength(MAX_CONSECUTIVE_POLL_FAILURES);
+  });
+
+  it('a success between transient errors resets the bound', async () => {
+    const blip = { data: null, error: apiUnavailable };
+    const stillRunning = { data: running, error: null };
+    const almostBound = Array.from({ length: MAX_CONSECUTIVE_POLL_FAILURES - 1 }, () => blip);
+    const fake = pollAnswers([
+      ...almostBound,
+      stillRunning,
+      ...almostBound,
+      { data: finished, error: null },
+    ]);
+
+    const result = await run(['reconcile', '--json'], fake);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(finished);
   });
 
   it('a registry error without --json prints message and hint on stderr only, exit 1', async () => {

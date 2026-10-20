@@ -196,8 +196,14 @@ no-op in tests.
   [CHANGELOG](https://github.com/tj/commander.js/blob/master/CHANGELOG.md) 15.0.0).
 - The loop calls `reconcile.getRun` until `finished_at` is set or the run carries an `error` (an
   abandoned run has `run_abandoned` and no `finished_at`), so it tests the field, never a `code`
-  literal. A run outcome ends the wait with exit `1`. Each poll unwraps through `runOperation`'s
-  rules: an `error` from `getRun` itself ends the wait with exit `1`.
+  literal, for the run's outcome. A run outcome ends the wait with exit `1`. Each poll unwraps
+  through `runOperation`'s rules, with one exception: a poll's own `api_unavailable`,
+  `database_unavailable` or `internal_error` (the read retry of
+  [api-contract.md → Conventions](../../../../.ai/api-contract.md#conventions), Idempotency:
+  network, `429`, `5xx`) is retried on the next tick (a stderr notice without `--json`); the
+  `MAX_CONSECUTIVE_POLL_FAILURES`th (5th) in a row ends the wait with exit `1` and that error, and a
+  successful poll resets the count. Any other `getRun` error ends it with exit `1` at once. When the
+  SDK retries reads (slice 5), revisit whether this CLI retry stays, since the two would stack.
 - **The wait's own bound is a backstop**, `RUN_WAIT_BACKSTOP_MS` (20 minutes, above the run's
   14-minute budget): it fires only if the API's derivation does not, and exits `1` with
   `internal_error` under `--json`, the constant defect line `ledger: unexpected failure.` without.

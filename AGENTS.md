@@ -342,7 +342,9 @@ pnpm -s ledger gaps [--since <duration>] [--json]   # reconcile runs started wit
                    # when more exist
 pnpm -s ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait] [--json]   # operate; starts
                    # one manual run (stderr: its run id), then polls every 3 s until it finishes or
-                   # reads run_abandoned (exit 1 with a run's error); --no-wait prints the started
+                   # reads run_abandoned (exit 1 with a run's error); a poll's api_unavailable,
+                   # database_unavailable or internal_error is retried next tick, exit 1 on the
+                   # fifth in a row (any other poll error: exit 1 at once); --no-wait prints the started
                    # run; a 20-minute backstop; locally every run ends reconciler_not_configured
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same

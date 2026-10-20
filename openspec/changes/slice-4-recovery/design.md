@@ -691,7 +691,15 @@ later-slice rule stated generally), and each new fact is its own scenario.
 #### D46 — The wait helper
 
 `apps/cli/src/wait-for-run.ts` exports `RUN_POLL_INTERVAL_MS = 3_000` and
-`RUN_WAIT_BACKSTOP_MS = 1_200_000`, with `sleep` injected (pp-cli → command-anatomy, Waiting).
+`RUN_WAIT_BACKSTOP_MS = 1_200_000`, with `sleep` injected (pp-cli → command-anatomy, Waiting). A
+poll's own error that says nothing about the run (`api_unavailable`, `database_unavailable`,
+`internal_error`: the codes a read answers on a network failure, a `429` or a `5xx`, pp-backend →
+sdk.md, Retries) is retried on the next tick, up to `MAX_CONSECUTIVE_POLL_FAILURES = 5` in a row,
+then the wait ends on it with exit `1`; any other poll error ends it at once. Every poll counts
+toward the backstop. Without it, one throttled or `503` poll exited `1` while the run finished
+cleanly, and `pnpm aws:gap-drill` keys on that exit code. This supersedes the pre-proposal's step 4
+line "A `getRun` error exits `1` with it". When the SDK retries reads (slice 5), revisit whether
+this CLI retry stays, since the two would stack.
 
 #### D47 — `sleep` at the roots
 
@@ -801,7 +809,10 @@ The outcome column is `ok`, `running`, or `error.code` as sent. `--json`: the li
 
 stderr `ledger: reconcile run <run_id> started; follow it with ledger gaps.`; `--no-wait` prints the
 `202` run, exit `0`; otherwise poll every 3 s until `finished_at` or `error`; a run with `error`
-exits `1` in the error shape; the 20-minute backstop exits `1` with `internal_error` (under
+exits `1` in the error shape; a poll's own `api_unavailable`, `database_unavailable` or
+`internal_error` is retried on the next tick (without `--json`, stderr
+`ledger: polling run <run_id> failed with <code>; retrying.`), the fifth in a row exits `1` with it,
+and any other poll error exits `1` at once (D46); the 20-minute backstop exits `1` with `internal_error` (under
 `--json`) or the constant defect line. Finished, no error:
 
 ```text

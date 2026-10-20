@@ -44,6 +44,21 @@
 - **WHEN** it runs with a `read` token
 - **THEN** it exits `1` with `code` `forbidden`, and no run starts
 
+### Requirement: A transient poll error does not end the reconcile wait
+A poll that itself answers `api_unavailable`, `database_unavailable` or `internal_error` SHALL be retried on the next tick, and the fifth such answer in a row SHALL exit `1` with it. A poll answering any other error SHALL exit `1` with it at once.
+
+#### Scenario: A transient poll error
+- **WHEN** a poll answers `database_unavailable` while the run keeps going, and the next poll reads it finished
+- **THEN** it exits `0` with the finished run, and under `--json` stderr holds only the run-id notice
+
+#### Scenario: A poll error that persists
+- **WHEN** five polls in a row answer `api_unavailable`
+- **THEN** it exits `1`, and under `--json` stdout holds that error object
+
+#### Scenario: A poll error that is not transient
+- **WHEN** a poll answers `unauthorized`
+- **THEN** it exits `1` with that error, and no poll follows it
+
 ### Requirement: The reconcile wait has a backstop
 `ledger reconcile` SHALL stop waiting after 20 minutes, above the run budget the API derives `run_abandoned` from, and SHALL then exit `1` with the `internal_error` object under `--json`, or one constant defect line otherwise. The CLI SHALL NOT compute the run's budget itself.
 

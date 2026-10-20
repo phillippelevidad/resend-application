@@ -1,5 +1,5 @@
 import type { Command } from '@commander-js/extra-typings';
-import { internalError, type ReconcileRun } from '@ledger/sdk';
+import { internalError, type ReconcileRun, type SdkError } from '@ledger/sdk';
 import { ConfigError } from '@ledger/shared';
 import { printable } from '../create-output.ts';
 import type { CliDeps } from '../create-program.ts';
@@ -10,6 +10,11 @@ import { waitForRun } from '../wait-for-run.ts';
 // still leaves the run id behind (pp-cli → Waiting).
 export const startedNotice = (runId: number): string =>
   `ledger: reconcile run ${runId} started; follow it with ledger gaps.`;
+
+// A transient poll error, retried on the next tick (wait-for-run.ts); the code passes through
+// printable, as every value the API sent.
+export const retryNotice = (runId: number, error: SdkError): string =>
+  `ledger: polling run ${runId} failed with ${printable(error.code)}; retrying.`;
 
 // The backstop's line without `--json`: the constant defect line, as any defect prints it.
 class WaitBackstopReached extends Error {}
@@ -41,7 +46,12 @@ export function reconcileStartCli(parent: Command, deps: CliDeps): void {
           print(deps, options, started.data);
           return;
         }
-        const outcome = await waitForRun(client, started.data.run_id, deps.sleep);
+        // Human mode only: under `--json` stderr holds the started notice alone.
+        const runId = started.data.run_id;
+        const onRetry = options.json
+          ? undefined
+          : (error: SdkError) => deps.output.notice(retryNotice(runId, error));
+        const outcome = await waitForRun(client, runId, deps.sleep, onRetry);
         if (outcome.kind === 'backstop') throw new WaitBackstopReached();
         const { data, error } = outcome.result;
         if (error !== null) {

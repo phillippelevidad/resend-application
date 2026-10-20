@@ -66,6 +66,13 @@ For `ledger reconcile` (slice 4), with `sleep` injected so no test waits in real
   `RUN_WAIT_BACKSTOP_MS / RUN_POLL_INTERVAL_MS` polls (400), exits `1` with `internal_error` under
   `--json` and the constant defect line without, and the test asserts
   it stops.
+- A transient poll error (`api_unavailable`, `database_unavailable`, `internal_error`) mid-wait,
+  then the run finished: exit `0`, stdout under `--json` holds only the final run and stderr only
+  the run-id notice; without `--json`, stderr also holds the retry notice.
+- A poll error that is not transient (`unauthorized`, `run_not_found`): exit `1` with it, and no poll
+  follows it.
+- Transient poll errors in a row: the wait stops after `MAX_CONSECUTIVE_POLL_FAILURES` polls and
+  exits `1` with the last one; a success between them resets the count.
 
 ## Never
 
