@@ -12,7 +12,7 @@
 | Earlier pre-proposal | None for this slice |
 | Branch | `worktree-slice-4-reconcile` (at `5fe2a51`, clean) |
 | Owner round | 2026-10-19: two decisions (D1 the `reconciler_not_configured` code, D24 the `LedgerApp-reconcile-gap` alarm) and the itemized Ask-first approvals (§7), items 1–5 approved, AWS runs and live Resend writes held per action |
-| Checked | Not yet |
+| Checked | 2026-10-19: 31 repaired, 0 for the owner |
 
 ## 1. Why now
 
@@ -137,11 +137,14 @@ slice 2). The API's request-id, auth and error middleware need nothing new (`pac
 | C12 | [pp-backend → resend-client.md → Error mapping](../../.agents/skills/pp-backend/references/resend-client.md#error-mapping): the default branch is "logged by `error_name` and the status" **vs.** [Log fields](../data-modeling.md#log-fields), which allow no status key | **Logged by `error_name` (the SDK's `name`, a closed set) and `error_code`** (D12). The status stays out of the line. The skill text is corrected as a fact (§22): it drops a field, so it loosens no privacy rule |
 | C13 | [resend.md → Onboarding reality](../resend.md#onboarding-reality): "Not done: no webhook exists (live read)" (2026-10-15) **vs.** slice 2's walk, which created and kept the production webhook (2026-10-18) | **The docs lag the walk.** The row is updated with the date (§22), a fact correction |
 | C14 | [`reconcile_runs`](../data-modeling.md#reconcile_runs--one-row-per-recovery-run): "`horizon_start`, `horizon_end` | The lookback horizon and the grace boundary actually checked" **vs.** a run that stops at its deadline before reaching `horizon_start` (C2) | **The columns hold the window the run set out to check**, fixed at start (D6), and `error_code` says when it stopped early. The wording is corrected (§22) |
-| C15 | [AWS-10](../aws.md#eventbridge-scheduler)'s consequence: "the next tick supersedes a missed one" **vs.** [AWS-53](../aws.md#lambda): throttled async events are retried "for up to 6 hours by default". While the kill switch holds the reconciler at concurrency `0`, every hourly invoke queues, and after the re-arm up to six run back to back | **The reconciler's async invoke config sets `maxEventAge` to its 60 s minimum beside `retryAttempts: 0`** (D20). `aws-cdk-lib` 2.273.0's `EventInvokeConfigOptions` documents "Minimum: 60 seconds, Maximum: 6 hours" for `maxEventAge` and 0–2 for `retryAttempts` (installed `aws-lambda/lib/event-invoke-config.d.ts:22-39`). This becomes AWS-63 (§22). pp-infra's cost-brake wiring row grows the second property (§22) |
+| C15 | [AWS-10](../aws.md#eventbridge-scheduler)'s consequence: "the next tick supersedes a missed one" **vs.** [AWS-53](../aws.md#lambda): throttled async events are retried "for up to 6 hours by default". While the kill switch holds the reconciler at concurrency `0`, every hourly invoke queues, and after the re-arm up to six run back to back | **The reconciler's async invoke config sets `maxEventAge` to its 60 s minimum beside `retryAttempts: 0`** (D20). `aws-cdk-lib` 2.273.0's `EventInvokeConfigOptions` documents "Minimum: 60 seconds, Maximum: 6 hours" for `maxEventAge` and 0–2 for `retryAttempts` (`node_modules/.pnpm/aws-cdk-lib@2.273.0_constructs@10.8.1/node_modules/aws-cdk-lib/aws-lambda/lib/event-invoke-config.d.ts:23-40`). This becomes AWS-63 (§22). pp-infra's cost-brake wiring row grows the second property (§22) |
 | C16 | [integrations.md → Locked rules](../integrations.md#locked-rules-must) rule 2: "Ledger's total stays ≤ 2 × 2 req/s", with the reconciler and the dispatcher as the callers **vs.** the gap drill, an owner script whose one send and List Events polls go through `resend-client` too ([pp-infra → scripts.md → Gap script](../../.agents/skills/pp-infra/references/scripts.md#gap-script)) | **The drill is a third caller only while it runs**, with its own 2 req/s limiter, and polls every 2 s (≤ 0.5 req/s). While it runs there is no dispatcher (slice 6), so the total stays ≤ 2 × 2 req/s. Rule 2 restates the bound with it (§22), as the rule requires of any new caller |
 | C17 | [pp-general → logging-and-pii.md](../../.agents/skills/pp-general/references/logging-and-pii.md): "The only dimension in the set is `ingest.rejected`'s `reason`" **vs.** `LogMetricsAdapter`, which writes a metric through the logger, whose allow-list has no `reason` key, so local mode would drop it | **`reason` joins the Log fields allow-list, typed to its closed set** `signature` \| `timestamp` (D34). It is a closed-set value like `error_code`: no id, no PII. The data-modeling list and pp-general gain it (§22) |
 | C18 | [pp-backend → reactions-and-recovery.md → Reconciler](../../.agents/skills/pp-backend/references/reactions-and-recovery.md#reconciler): "A run starts in one transaction: `pg_advisory_xact_lock` …, then the check …, then the insert", plus [commands-and-readers.md](../../.agents/skills/pp-backend/references/commands-and-readers.md#a-command-owns-its-transaction): "No external call inside it" **vs.** the grace window, which needs the queue's oldest age, an AWS read | **The queue snapshot is read before the transaction opens**. Inside the transaction run the lock, the check, the anchor read, the horizon computed by a pure core function, then the insert (D6). The horizons are fixed at start, so both triggers compute them one way |
 | C19 | Card Ships 1: "every response checked and mapped by status then name" **vs.** D1's `reconciler_not_configured` for "Resend has no webhook with that id": a `404` otherwise falls to the default branch's `internal_error` | **Only Retrieve Webhook maps `404` to `reconciler_not_configured`**, because its one input is the configured id (D12). Every other `404`, a replay's included, takes the default branch |
+| C20 | [reconcile.start](../api-contract.md#reconcilestart) Kind: "`dry_run` reports missing ids without replaying any" **vs.** the same entry's In / Out ("→ a [reconcile_runs](../data-modeling.md#reconcile_runs--one-row-per-recovery-run) row") and that table, whose only loss fields are counts ("`missing > 0` is the loss signal") | **A dry run reports the missing count, not ids** (D27's `ReconcileRun`, owner-approved in §7 item 3). The In / Out and the table are the more specific ratified statements, and no row in [What this project must demonstrate](../about.md#what-this-project-must-demonstrate) needs the ids. The Kind sentence is corrected (§22) |
+| C21 | Ships 11 and D24: the alarm fires when "no run finishes cleanly in an hour", read through `TreatMissingData: BREACHING` **vs.** CloudWatch's default sliding window: when some datapoints in the evaluation range are missing but at least **Evaluation Periods** real ones exist, "CloudWatch evaluates the alarm state based on the most recent real data points … the value you set for how to treat missing data is not needed and is ignored" ([alarms-and-missing-data](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html), read 2026-10-19). With one evaluation period, a reconciler that stops emitting would keep evaluating its last clean `0` | **The alarm uses a wall clock evaluation window** (D24): it "retrieve[s] exactly the data points in the aligned window … and do[es] not query additional data points from farther back", and each evaluation "looks at the data for the most recently completed clock hour" ([alarm-evaluation-window](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarm-evaluation-window.html), read 2026-10-19; 1-hour periods supported). An hour with no clean run then has no datapoint and reads breaching. `aws-cdk-lib` 2.273.0 exposes it on `CfnAlarm` only (`evaluationWindow`, `node_modules/.pnpm/aws-cdk-lib@2.273.0_constructs@10.8.1/node_modules/aws-cdk-lib/aws-cloudwatch/lib/cloudwatch.generated.d.ts:794`), so the alarm sets it on its `node.defaultChild`. This becomes AWS-64 (§22) |
+| C22 | [pp-backend → resend-client.md → What it is](../../.agents/skills/pp-backend/references/resend-client.md#what-it-is): "`main.ts` reads the key through the secret port at module scope" **vs.** the repo's pattern, which reads secrets on the first invocation through one memoized promise so the bundle loads with no AWS access (`apps/worker/src/main.ts:16`, `apps/api/src/main.ts:21`, slice 2 D32) | **The repo governs** (D20): the key is read through the secret port on the first invocation and passed to the constructor, never through config. The skill sentence is corrected as a fact (§22); every rule it states about the key still holds |
 
 None found, having also checked these pairs: the card's UI surfaces ↔ the api-contract Surfaces
 lines (`ledger gaps [--since <duration>]` with default `24h`, `ledger reconcile [--dry-run]
@@ -165,7 +168,7 @@ change nothing).
 | 2. Schema / migration | New table `reconcile_runs` (§8): `0004_create-reconcile-runs.sql` (generated) and `0005_grant-reconcile-runs.sql` (custom: `GRANT SELECT, INSERT, UPDATE ON reconcile_runs TO` the runtime role). No frozen migration touched | owner-approved 2026-10-19 | Group 3 |
 | 3. Public contract | Routes `gaps.list` → `GET /gaps?since&limit&after`, `reconcile.getRun` → `GET /reconcile/runs/{run_id}`, `reconcile.start` → `POST /reconcile` (`202`), with this document's wire shapes (D27); `health.get` gains `last_reconcile_run`; SDK `ledger.gaps.list({ since?, limit?, after? })`, `ledger.reconcile.getRun(runId)`, `ledger.reconcile.start({ dry_run?, lookback? })`; CLI `ledger gaps [--since <duration>] [--json]` and `ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait] [--json]`, and a `reconcile` line in `ledger health`; registry row `reconciler_not_configured` (D1); the api-contract edits in §22 | owner-approved 2026-10-19 | Groups 1, 8 |
 | 4. Public variables and commands | `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, read by `pnpm aws:deploy` (D29); `pnpm aws:gap-drill` (D32), which reads `LEDGER_URL`, `LEDGER_TOKEN`, `RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, existing names with a new reader | owner-approved 2026-10-19 | Groups 1, 10 |
-| 5. Template resources | App stack: Lambda `LedgerApp-reconciler` and its log group `/ledger/LedgerApp-reconciler`; secret `ledger/resend-api-key` (USD 0.40/month, AWS-11; the M1 count integrations.md already plans); schedule `LedgerApp-reconcile-hourly`; one `AWS::Lambda::EventInvokeConfig` (`MaximumRetryAttempts: 0`, `MaximumEventAgeInSeconds: 60`); IAM (D22); the read API's `lambda:InvokeFunction` on the reconciler; alarm `LedgerApp-reconcile-gap` (D24; 6 of 10 free, AWS-28); output `ResendApiKeySecretArn` | owner-approved 2026-10-19 | Group 9 |
+| 5. Template resources | App stack: Lambda `LedgerApp-reconciler` and its log group `/ledger/LedgerApp-reconciler`; secret `ledger/resend-api-key` (USD 0.40/month, AWS-11; the M1 count integrations.md already plans); schedule `LedgerApp-reconcile-hourly`; one `AWS::Lambda::EventInvokeConfig` (`MaximumRetryAttempts: 0`, `MaximumEventAgeInSeconds: 60`); IAM (D22); the read API's `lambda:InvokeFunction` on the reconciler; alarm `LedgerApp-reconcile-gap` (D24, wall clock evaluation window; 6 of 10 free, AWS-28); output `ResendApiKeySecretArn` | owner-approved 2026-10-19 | Group 9 |
 | 6. AWS runs | Each `pnpm aws:deploy`, the gap drill, and every read-only `aws` CLI read in the walk | held — approved per action at walk time | Group 12 |
 | 7. Live Resend writes | Creating the reconciler's dedicated `full_access` key (dashboard or `POST /api-keys`, §25); E1's one replay of a stored event (D37); E3's test-webhook experiments: one create, two sends, two `PATCH status`, one replay, one delete (D39); the gap drill's one send and the replays its `ledger reconcile` makes (D32); and, by deploying the reconciler, its **automatic hourly replays** of missing events on the production webhook (ADR-007) | held — approved per action at walk time; the redeploy's approval covers the hourly replays | Group 12 |
 | CI change | None: every new test runs in an existing `pnpm verify` stage; `scripts/verify.mjs` is untouched | — | — |
@@ -204,6 +207,14 @@ source:
 The reconciler Lambda's timeout is `900` s (D20). A crash leaves `finished_at` null, and the run
 reads `run_abandoned` once its budget has passed.
 
+Authority: [ADR-007](../architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest)
+(one budget constant "below the Lambda timeout", the 10-minute grace, the 3-day default and the
+30-day cap) and [integrations.md → rule 2](../integrations.md#locked-rules-must) ("≈ 85 min … spread
+over ≈ 6 hourly runs", so ≈ 14 min a run). The reserve is the lens's correctness clause
+([decision lens](../../AGENTS.md#decision-lens--evidence-over-claims-right-sized), clause 6):
+`hasUnfinishedRun` ignores a run past its budget, so a run still calling Resend after it could
+overlap the next start, which [rule 3](../integrations.md#locked-rules-must) forbids.
+
 **D3 — Pure functions**, in `packages/core`, unit- and property-tested:
 
 - `parseDuration(text)`: `^[1-9][0-9]{0,4}[mhd]$`, minutes, hours or days, from `1m` to `30d`
@@ -233,6 +244,10 @@ replays stored, and anchors then. A persistently missing event (say, one whose r
 failing) pins the anchor. The lookback then grows hour by hour to 30 days, and the gap alarm
 stays in `ALARM` (D24). That is loud, bounded by the run's budget, and the right answer under
 the tie-break.
+
+Authority: [Reliability core](../architecture.md#reliability-core), No loss, and the
+[decision lens](../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) tie-break
+(correctness first), C1. ADR-007 is amended to say so (§22).
 
 **D5 — Events and closed sets.** Beside `RESUME_EVENT` (`packages/core/src/event-source-states.ts:13`):
 `RECONCILE_SCHEDULED_EVENT = { ledger: 'reconcile-scheduled' } as const`, and the manual invoke
@@ -295,7 +310,10 @@ to fail ([pp-testing → Fakes](../../.agents/skills/pp-testing/references/fakes
 `MetricDimensions[name]` (`{ 'ingest.rejected': { reason: 'signature' | 'timestamp' } }`). Every
 other name takes none, a type error otherwise. `EmfMetricsAdapter` writes `Dimensions: [['reason']]`
 and a top-level `reason` for it, and `Dimensions: [[]]` for the rest. `LogMetricsAdapter` writes
-`reason` as a log field (D34). Evidence: both adapters' unit tests.
+`reason` as a log field (D34). Evidence: both adapters' unit tests. Authority: card Ships 5
+(`ingest.rejected{reason}`), and [pp-general → Metrics](../../.agents/skills/pp-general/references/logging-and-pii.md#metrics)
+with `packages/shared/src/metrics.port.ts:3-5` (the fixed set; `reason` is its one dimension, from
+slice 4). Ids stay fields, never dimensions (AWS-12).
 
 ### `packages/resend-client`
 
@@ -351,7 +369,8 @@ with backoff of 1 s, then 2 s, each inside the deadline (D10 step 4). It then th
 | --- | --- |
 | `2xx` | the method's return |
 | `429` | D10 step 3 |
-| `401` or `403`, any name | `resend_auth_failed` (RS-22) |
+| `401` or `403`, any name, from a reconciler method | `resend_auth_failed` (RS-22) |
+| `401` or `403` from `sendEmail` | Returned by status and name for its caller, as [Error mapping](../../.agents/skills/pp-backend/references/resend-client.md#error-mapping) requires (slice 6's dispatcher records it in `last_error`; a `403 validation_error` there can be RS-34). The drill fails on it (`failed: resend_auth_failed`) |
 | `400` named `validation_error` with message `API key is invalid` | `resend_auth_failed` (RS-U17, [Constraint 14](../resend.md#constraints-and-sharp-edges)) |
 | `5xx`, or `statusCode: null` | D11, then `resend_unavailable` |
 | `404` from `retrieveWebhook` | `reconciler_not_configured` (D1, C19): the configured id names no webhook |
@@ -408,19 +427,29 @@ unexpected throw anywhere after the claim is caught at the factory edge, finishe
 counts it ([pp-general → errors](../../.agents/skills/pp-general/references/errors.md)). If the
 finish itself fails (the database is down), the row stays unfinished and reads `run_abandoned`.
 
+Authority: ADR-007's order, and [pp-backend → Reconciler](../../.agents/skills/pp-backend/references/reactions-and-recovery.md#reconciler)
+("Then, in order: read the configured webhook's `status` … replay the missing ones"; "One failed
+replay never aborts a run"; "never a throw that loses the row"). Step 6's deadline stop is C2's.
+
 **D16 — The claim** (ADR-007 Claim, C11): `claim(db, runId)` before any Resend call. Zero rows
 means a duplicate invoke, an already-finished row, or no such row: log
-`reconcile.duplicate_invoke` with `run_id` and return with no Resend call.
+`reconcile.duplicate_invoke` with `run_id` and return with no Resend call. Authority:
+[`reconcile_runs` → Claim](../data-modeling.md#reconcile_runs--one-row-per-recovery-run) ("zero
+rows means a duplicate invoke, which exits without work"), tightened by C11.
 
 **D17 — Outcomes stored**, one per run: `null` (a clean finish), or a code from
-`reconcileRunErrorCodes` (D1). A time-budget stop is `rate_limited` (C2).
+`reconcileRunErrorCodes` (D1). A time-budget stop is `rate_limited` (C2). Authority:
+[Error codes](../api-contract.md#error-codes), `rate_limited`'s Meaning ("left no room inside the
+run's time budget … so the run stopped before its horizon").
 
 **D18 — The manual start** (`packages/api`'s `StartReconcileCommand`): D6's start with
 `trigger = manual` and the request's `dry_run` and `lookback` (default 72 h). After the commit it
 calls `reconcilerInvoke.invokeAsync({ ledger: 'reconcile-run', run_id })`. If the invoke rejects, a
 second statement finishes the row as `internal_error` (so it neither blocks the next start for the
 budget nor runs late, C11), and the route answers `500 internal_error`. A start refused inside the
-lock answers `409 reconcile_in_progress`.
+lock answers `409 reconcile_in_progress`. Authority: [reconcile.start](../api-contract.md#reconcilestart)
+("starts one manual run … asynchronously and answers `202` with the run"; the HTTP API's 30 s
+timeout, AWS-02) and ADR-007 Start.
 
 **D19 — Metrics and logs.** A run that finishes with no `error_code` emits `reconcile.missing`,
 `reconcile.replayed` and `reconcile.failed`, one EMF line each, value the count, field `run_id`, no
@@ -437,7 +466,7 @@ only: `reconcile.run_started` (`run_id`), `reconcile.run_finished` (`run_id`, `c
 The handler Zod-parses either event (D5), catches at its edge, logs `error_name`, and rethrows a
 constant ([pp-backend → ingest-and-worker.md](../../.agents/skills/pp-backend/references/ingest-and-worker.md#ingest-in-order)'s
 edge rule). `main.ts` parses config at module scope and reads both secrets on the first invocation
-through one memoized promise, so the bundle loads with no AWS access (slice 2 D32).
+through one memoized promise, so the bundle loads with no AWS access (slice 2 D32, C22).
 
 **D21 — Its configuration.** `reconcilerEnv = { DATABASE_SECRET_ARN, RESEND_API_KEY_SECRET_ARN,
 RESEND_WEBHOOK_ID, QUEUE_URL, DLQ_URL }` in `packages/shared/src/function-env.ts`. The webhook id is
@@ -448,7 +477,11 @@ needs, and none imports another (ADR-013). `ledger/resend-api-key` holds a bare 
 starting `re_` (the CDK placeholder, before a deploy writes the key) parses as not configured; the
 `re_` prefix is Resend's documented key form (RS-02's examples, the gitleaks `re_` rule). The
 grace window's age comes from `SqsQueueAttributesAdapter` over both queue URLs, the adapter
-`health.get` already uses (C18).
+`health.get` already uses (C18); it takes the age from CloudWatch, since `GetQueueAttributes`
+returns none (`packages/aws/src/sqs-queue-attributes.adapter.ts:21-27`, AWS-22). Authority:
+[Secrets layout](../integrations.md#secrets-layout) ("The Resend webhook id is not a secret: it is
+a deploy input … passed to `apps/reconciler` only"; `ledger/resend-api-key` read by
+`apps/reconciler` only) and [pp-infra → Deploy inputs](../../.agents/skills/pp-infra/references/env-and-inputs.md#deploy-inputs).
 
 **D22 — IAM, least privilege.** Reconciler: `grantRead` on `ledger/resend-api-key` and
 `ledger/database` only ([Secrets layout](../integrations.md#secrets-layout)); `sqs:GetQueueAttributes`
@@ -469,9 +502,14 @@ lens clause 3 (the slice is walked on the deployed stack, where recovery lives) 
 
 **D24 — Alarm `LedgerApp-reconcile-gap`** (owner-ruled 2026-10-19, C6). The metric is `Ledger` /
 `reconcile.missing` (no dimension), `Maximum`, period `3600` s, one evaluation period, threshold
-`> 0`, `TreatMissingData: BREACHING`, one `ALARM` action on the alert topic (as slice 3 D14–D16).
-It fires when a run found missing events, and when no run finished cleanly in the hour: a run
-that errored, a reconciler not configured, a tripped kill switch. Description: "A reconcile run
+`> 0`, `TreatMissingData: BREACHING`, a **wall clock evaluation window** in UTC (C21: set as
+`(alarm.node.defaultChild as CfnAlarm).evaluationWindow = { wallClockWindow: {} }`, because the L2
+`Alarm` has no such prop in 2.273.0), one `ALARM` action on the alert topic (as slice 3 D14–D16).
+Each evaluation reads the most recently completed UTC hour, which holds that hour's scheduled run
+(`HOURLY_CRON` is `cron(0 * * * ? *)`, minute 0, `infra/src/app.stack.ts:93`) and any manual run. It fires when a run in that hour found missing
+events, and when none finished cleanly in it: a run that errored, a reconciler not configured, a
+tripped kill switch. The email therefore lands within about an hour after the hour that holds the
+cause. Description: "A reconcile run
 found missing events, or none finished cleanly this hour", then the runbook link (`alarmDescription`).
 `LedgerApp-reconcile-gap` joins `packages/aws/src/ledger-stacks.ts`. Six standard alarms deploy,
 inside the AWS-28 constant's 10 free; the cost-brake test's count reads the constant. Expected
@@ -487,7 +525,8 @@ wake ([Cadence](../integrations.md#cadence-and-the-database)); pp-infra's physic
 gains it (§22).
 
 **D26 — Outputs.** `ResendApiKeySecretArn` (the deploy writes the key there, D29). The app
-template otherwise keeps slice 2's outputs.
+template otherwise keeps slice 2's outputs. Authority: [Secrets layout](../integrations.md#secrets-layout)
+("secrets take no physical name … The deploy script reads secret ARNs from stack outputs").
 
 ### Read API (`packages/api`)
 
@@ -553,8 +592,9 @@ write runs. Evidence: `run-deploy.test.ts` cases for each refusal, the write and
 
 **D30 — Teardown and re-arm text.** `pnpm aws:teardown`'s closing steps outside AWS gain "revoke
 the Resend API key you made for the reconciler". Destroying its secret does not revoke the key at
-Resend, and a forgotten `full_access` key can read every signing secret (RS-05, RS-18; lens
-clause 6). `aws.md → Teardown` gains the row (§22). `rearm.ts` and `trip-drill.ts` replace
+Resend, and a forgotten `full_access` key can read every signing secret (RS-05, RS-18;
+[decision lens](../../AGENTS.md#decision-lens--evidence-over-claims-right-sized) clause 6, security
+exposure). [aws.md → Teardown](../aws.md#teardown) gains the row (§22). `rearm.ts` and `trip-drill.ts` replace
 `then: ledger reconcile → slice 4` with `then: pnpm -s ledger reconcile`.
 
 **D31 — The ingest route throttle** (`packages/aws/src/ingest-route-throttle.ts`), over
@@ -570,6 +610,10 @@ clause 6). `aws.md → Teardown` gains the row (§22). `rearm.ts` and `trip-dril
   cannot tell whose they are, and the re-arm deletes every route setting
   (`kill-switch.ts:218-227`).
 - Unit-tested over the `StubClient` (pp-testing → AWS adapters), with each case named.
+
+Authority: card Ships 9 ([build-checklist.md → 4](../build-checklist.md#4--recovery): "lowers the
+ingest route throttle to its stop value … restores the throttle"), with the stop value and the
+re-arm's behavior read from `packages/aws/src/kill-switch.ts` (§5).
 
 **D32 — `pnpm aws:gap-drill`** (`infra/scripts/gap-drill.ts`), the card's gap script
 ([pp-infra → scripts.md → Gap script](../../.agents/skills/pp-infra/references/scripts.md#gap-script)).
@@ -657,11 +701,17 @@ step 3, which leaves the mechanism to this slice):
   health` (a tripped stack answers `api_unavailable`). Expected after a gap drill and before the
   first configured deploy.
 - `### reconciler_not_configured` under Error codes.
-- `reconcile_in_progress`, `run_not_found` and `run_abandoned`: "Slice 4 lands this operation" and
-  "slice 4's" are removed; their First and Then steps become real commands.
+- Every "Slice 4 lands" line becomes a real command: the `reconcile_in_progress`, `run_not_found`
+  and `run_abandoned` entries ("Slice 4 lands this operation", "slice 4's",
+  `docs/runbook.md:173-174, 197-198, 215-217`), and the two alarm-entry steps that say "Slice 4
+  lands `ledger reconcile`" (`docs/runbook.md:82, 102`), which become `pnpm -s ledger reconcile`.
 - `internal_error`: a run that ended `internal_error` is in `/ledger/LedgerApp-reconciler` under its
   `run_id`.
 - The intro's log-group list gains `/ledger/LedgerApp-reconciler`.
+
+Authority: card Ships 5 and 11, [ADR-009](../architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance)
+("slice 4 adds the rotation runbook"), C5's order, and the `operations-runbook` spec's "Every alarm
+has a runbook entry" and "Every runbook-linked error code has a runbook entry".
 
 **D36 — README at the M1 boundary** (Ships 10; [features.md → discover](../features.md#adopter-lifecycle);
 [about.md → Positioning](../about.md#positioning)):
@@ -707,8 +757,12 @@ needs to be at least 72 h (the webhook's oldest event is from 2026-10-18, §4). 
 drill's `events visible after <ms> ms` (D32 step 4). RS-U17: one `GET /webhooks/{id}` with a
 well-formed key no account issued (`re_` plus random characters). It is expected to answer `400`
 `validation_error` "API key is invalid" (api-reference/errors: "a key that doesn't exist or was
-deleted"), and the row records the observed status and name. Creating and revoking a real key
-would be two Ask-first writes for the same documented answer.
+deleted"), and the row records the observed status and name. That call settles the
+never-issued half only. The deleted (revoked) half is closed as safe in both outcomes, as the row's
+own Owed-by cell states: Constraint 14 maps the documented answer by message, and any other answer
+takes the default branch. Creating and revoking a real key would be two Ask-first writes for the
+same documented answer. Authority: card Ships 7 ("closed by read-only checks") and
+[resend.md → \[Unverified\]](../resend.md#unverified), the RS-U03, RS-U13 and RS-U17 rows.
 
 **D39 — E3: the disabled-webhook experiments (RS-U04, RS-U05)**, on a throwaway test webhook,
 every write Ask-first. The test webhook points at the deployed ingest URL with its secret **not**
@@ -726,20 +780,23 @@ reaches the ledger. The production webhook delivers each send normally.
    (**RS-U05**, second half).
 7. Delete the test webhook.
 
-If the owner holds E3, both rows are proved safe either way, as Ships 8 allows. RS-U04: the
-status is read before any replay (rule 5). RS-U05: within the No-loss invariant's scope ("every
-event Resend produced for the webhook"); if Resend creates no event for a disabled webhook, no
-replay can recover it, and the runbook's `webhook_disabled` entry says so.
+If the owner holds E3, both rows close as safe in both outcomes, which Ships 8 allows. RS-U04:
+the status is read before any replay (rule 5). RS-U05: within the No-loss invariant's scope
+("every event Resend produced for the webhook"); if Resend creates no event for a disabled
+webhook, no replay can recover it, and the runbook's `webhook_disabled` entry says so. Authority:
+card Ships 8 and [resend.md → \[Unverified\]](../resend.md#unverified), the RS-U04 and RS-U05 rows,
+whose Owed-by cells already name these two safeguards (status checked first; reconcile after
+re-enable).
 
 **D40 — RS-U06, RS-U09, RS-U10, PG-U03.**
 
 - **RS-U06** is proved safe by the status read every run, evidenced by the disabled-webhook
   fake-API integration test.
-- **RS-U09** is proved safe either way (§3). Ingest makes one `verify` per secret, and the "both
+- **RS-U09** is safe in both outcomes (§3). Ingest makes one `verify` per secret, and the "both
   signatures in one header" case passes ([create-ingest.test.ts](../../packages/ingest/src/create-ingest.test.ts)).
 - **RS-U10** is settled by the gap drill's `created_at unchanged by the replay` line (D32 step 8),
   and by `event_created_at` falling seconds after the send.
-- **PG-U03:** its row says "proved safe either way". On cost, Neon Free never bills
+- **PG-U03:** the card closes it as safe in both outcomes (Ships 7). On cost, Neon Free never bills
   ([integrations.md → Decision](../integrations.md#decision--neon)). On availability, a suspended
   compute or a full store pauses the worker while the queue holds events, which
   `database-outage.int.test.ts` and slice 3's `--chaos db-outage` run prove (ADR-015). The 30-day
@@ -921,6 +978,7 @@ mirrored in `packages/core/src/error-codes.ts`). The new and route-specific ones
 | `validation_failed` (`since`) | since must be a duration from 1m to 30d, such as 24h. | Fix the field the message names, then retry. |
 | `validation_failed` (`lookback`) | lookback must be a duration from 1m to 30d, such as 72h. | (registry) |
 | `validation_failed` (`dry_run`) | dry_run must be true or false. | (registry) |
+| `validation_failed` (the body of `POST /reconcile`: not JSON, not an object, or a field of the wrong type) | The request body must be a JSON object with optional dry_run and lookback fields. | `bodyHint`, as the other body routes. `POST /reconcile` joins `bodyErrors` with fields `dry_run` and `lookback` (`packages/api/src/create-api.ts:87-89`: "Each JSON-body route's body message and the fields its own message names") |
 | `validation_failed` (`run_id`) | run_id must be a positive integer. | (registry) |
 | `validation_failed` (`after` on `/gaps`) | after must be a run id, a positive integer. | (registry); route-scoped like `dlq.listMessages`'s `limit` (`create-api.ts` `routeFieldErrors`) |
 | `validation_failed` (`limit` on `/gaps`) | limit must be an integer from 1 to 100. | (registry) |
@@ -969,8 +1027,10 @@ These become `spec.md` requirements:
    `webhook_events`.
 5. A replayed event that is already stored, delivered twice or out of order MUST leave exactly one
    `webhook_events` row and unchanged projections (dedupe on `svix_id`).
-6. An outage longer than Resend's retry schedule MUST end, after one run, with every event List
-   Events holds for the window present exactly once (100 % recovered, 0 duplicates).
+6. After an outage longer than Resend's retry schedule, a run that finishes with no `error_code`
+   MUST leave every event List Events holds for its window present exactly once (100 % recovered,
+   0 duplicates). A gap too large for one run's budget ends that run `rate_limited` and is finished
+   by the next ones ([rule 2](../integrations.md#locked-rules-must): ≈ 6 runs for 10,000 events).
 7. Two concurrent starts MUST yield one run and one `reconcile_in_progress`.
 8. A second invoke of a claimed run, or any invoke of a finished one, MUST make no Resend call.
 9. One failed replay MUST NOT abort a run; it counts in `failed`.
@@ -981,8 +1041,8 @@ These become `spec.md` requirements:
 11. `resend-client` MUST space request starts at its rate, yield when `ratelimit-remaining` falls
     below half of `ratelimit-limit`, wait `retry-after` on a `429`, and stop before any wait that
     passes its deadline.
-12. No Resend response body, key or signing secret MUST reach a log line, an error message, a stored
-    row or any surface's output.
+12. A Resend response body, the API key and a signing secret MUST NOT reach a log line, an error
+    message, a stored row or any surface's output.
 13. Ingest MUST emit `ingest.rejected` with `reason` `timestamp` or `signature` on every `401`, and
     MUST stop accepting a removed secret once the 5-minute cache has passed.
 14. A dry run MUST replay nothing and MUST report the same missing count a real run would.
@@ -1108,7 +1168,7 @@ requests, and a status column.
 | 13 | unit, fake clock | `create-ingest.test.ts`: **retired secret** (the store holds `[old, new]`, `old` accepted; the store drops `old`; before the TTL `old` still accepted; after 5 min `old` → `401` and `ingest.rejected` with `reason: 'signature'`); a 6-minute-stale timestamp → `reason: 'timestamp'` with no `verify` call; a missing `svix-signature` → `signature`. The fake clock starts at wall-clock time minus the TTL, so the SDK's wall-clock window agrees ([Constraint 12](../resend.md#constraints-and-sharp-edges)) |
 | 13 | unit | `emf-metrics.adapter.test.ts`: `ingest.rejected` line has `Dimensions: [['reason']]` and `reason`; every other name `[[]]`; `log-metrics.adapter.test.ts` keeps `reason` |
 | D7 | unit | `asyncFunctionInvokePortContract` against both implementations; `lambda-async-function-invoke.adapter.test.ts` (`InvocationType: 'Event'`, non-`202` rejects) |
-| D20–D24, D25 | unit (`Template`) | `app.stack.test.ts`: the reconciler's arm64/`nodejs24.x`/log group/no VPC (the existing all-function assertions now count it); its environment equals `reconcilerEnv`'s keys; the API's gains `RECONCILER_FUNCTION_NAME`; one `EventInvokeConfig` with `MaximumRetryAttempts: 0` and `MaximumEventAgeInSeconds: 60`; two schedules, both `HOURLY_CRON`, window off, explicit retry policy; secrets count 3 (4 with the simulator), each function's `GetSecretValue` set equal to its Secrets-layout row; the alarm (metric, statistic, period, `BREACHING`, action); alarm count ≤ the AWS-28 constant; `runbook-links.test.ts` finds `LedgerApp-reconcile-gap`; `bundle-smoke.test.ts` loads the reconciler bundle |
+| D20–D24, D25 | unit (`Template`) | `app.stack.test.ts`: the reconciler's arm64/`nodejs24.x`/log group/no VPC (the existing all-function assertions now count it); its environment equals `reconcilerEnv`'s keys; the API's gains `RECONCILER_FUNCTION_NAME`; one `EventInvokeConfig` with `MaximumRetryAttempts: 0` and `MaximumEventAgeInSeconds: 60`; two schedules, both `HOURLY_CRON`, window off, explicit retry policy; secrets count 3 (4 with the simulator), each function's `GetSecretValue` set equal to its Secrets-layout row; the alarm (metric, statistic, period, `BREACHING`, `EvaluationWindow: { WallClockWindow: {} }`, action); alarm count ≤ the AWS-28 constant; `runbook-links.test.ts` finds `LedgerApp-reconcile-gap`; `bundle-smoke.test.ts` loads the reconciler bundle |
 | D29–D32 | unit, fake steps | `run-deploy.test.ts` (D29's refusals, the write, no write when unset); `run-teardown.test.ts` (the printed revoke line); `ingest-route-throttle.test.ts` (D31); `run-gap-drill.test.ts` (D32) |
 | 6, 5 (live) | the walk | E1 (RS-U01, RS-U20, RS-U02), the gap drill (Ships 9, RS-U10, RS-U13), E3 |
 
@@ -1175,7 +1235,7 @@ E1–E7.
 
 **Path E — Disabled-webhook experiments (E3, D39). Walked as: Operator.** Each of E1–E7 is
 **Ask-first**: create, send, disable, replay, send, enable, delete, each with its `curl` and the
-observation that settles RS-U04 or RS-U05. Held → both rows close "safe either way" (D39).
+observation that settles RS-U04 or RS-U05. Held → both rows close as safe in both outcomes (D39).
 
 **Path F — The M1 review. Walked as: Reviewer.**
 
@@ -1217,7 +1277,10 @@ At apply time, in this order:
   - The two variables in Conventions → Public environment variables.
   - `reconcile.start` In/Out: the anchor is "the newest finished run with no `error_code` and
     nothing missing", and it extends an explicit `lookback` too (D3, D4).
-  - `reconcile.start` Errors: the outcome list gains `reconciler_not_configured`.
+  - `reconcile.start` Kind: "`dry_run` reports missing ids" becomes "`dry_run` reports the
+    missing count" (C20).
+  - `reconcile.start` Errors: the outcome list gains `reconciler_not_configured` and
+    `internal_error` (D1's stored set).
   - `health.get`'s Kind names `last_reconcile_run`.
 - `.env.example` (§18).
 
@@ -1253,6 +1316,10 @@ At apply time, in this order:
   - Constraint 9 resolved by RS-45.
 - [aws.md](../aws.md):
   - AWS-63 (`EventInvokeConfig`: `maxEventAge` 60 s–6 h, `retryAttempts` 0–2, aws-cdk-lib 2.273.0 docs).
+  - AWS-64 (CloudWatch alarm evaluation: a sliding window ignores the missing-data treatment while
+    enough real datapoints sit in its evaluation range; a wall clock window reads exactly the most
+    recently completed aligned period, 1 h supported; `CfnAlarm.evaluationWindow` only in
+    aws-cdk-lib 2.273.0), with its two Sources rows, read 2026-10-19 (C21).
   - AWS-28's count "Six deploy, 6 of 10 free".
   - Cost shape: the reconciler lines and the secret count.
   - Teardown's leftovers table: a "Resend API key (reconciler's)" row (D30).
@@ -1281,7 +1348,8 @@ At apply time, in this order:
     deploy's two new variables.
 - Skills (fact updates, none loosening a rule):
   - pp-backend: the ports table gets the async invoke row; `resend-client.md` gets D9–D12's settled
-    choices and the C12 log fields; `reactions-and-recovery.md` drops "the slice 4 pre-proposal's"
+    choices, the C12 log fields, and C22's "on the first invocation through one memoized promise"
+    in place of "at module scope"; `reactions-and-recovery.md` drops "the slice 4 pre-proposal's"
     and states D6, D15, D18 and D25.
   - pp-cli: `RUN_POLL_INTERVAL_MS = 3_000`, the 20-minute backstop and its output.
   - pp-infra:
@@ -1311,7 +1379,7 @@ At apply time, in this order:
 | `cli` | **MODIFIED** | Adds `ledger gaps`, `ledger reconcile` with its wait and backstop; `ledger health`'s reconcile line |
 | `webhook-ingest` | **MODIFIED** | Adds "Rejections are counted by reason" (13); "The secret set refreshes within 5 minutes" gains the retired-secret scenario |
 | `aws-stacks` | **MODIFIED** | Adds the reconciler function, its secret, its environment, its invoke config, its schedule, its IAM and the gap alarm; "Each function's environment is exactly its names" and "Secrets least privilege" grow the reconciler; "Operational alarms email through the alert topic" grows the sixth |
-| `deploy-and-teardown` | **MODIFIED** | "Deploy inputs are asserted first" gains D29's refusals; adds "Deploy writes the reconciler's key"; "Teardown order …" gains the revoke line; adds "The gap drill" (D31, D32) |
+| `deploy-and-teardown` | **MODIFIED** | "Deploy inputs are asserted first" gains D29's refusals; adds "Deploy writes the reconciler's key"; "Teardown order and the post-destroy listing" gains the revoke line; adds "The gap drill" (D31, D32) |
 | `operations-runbook` | **MODIFIED** | "Every alarm has a runbook entry" and "Every runbook-linked error code has a runbook entry" cover the new alarm and code; adds "The rotation procedure" |
 | `local-stack` | **MODIFIED** | Adds "Local reconcile runs end not configured" (D23) |
 
@@ -1349,6 +1417,7 @@ At apply time, in this order:
 | A tripped stack queues hourly invokes that run back to back on re-arm | Removed by C15 | — | The invoke-config `Template` assertion |
 | A deploy without the new variables on the owner's stack | Medium (the next redeploy) | Refused, by design (D29) | The deploy's refusal names the variable |
 | The alarm emails at expected times (first deploy, gap drill, trips) and is ignored | Medium | Alert fatigue | The runbook entry lists the expected firings; one email per incident, no OK action |
+| The gap alarm stays `OK` while the reconciler is silent (a sliding window evaluates the last real datapoint) | Removed by C21 | A missed-recovery signal | The `EvaluationWindow` `Template` assertion; walk B5 and D4 |
 
 ## 25. Owner ops still open
 
