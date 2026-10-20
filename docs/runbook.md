@@ -80,7 +80,8 @@ JSON object per line, never an address or a subject.
     `/ledger/LedgerApp-api` for `api.internal_error` by its `request_id`.
   - Check in the Resend dashboard that the webhook is still enabled. If Resend disabled it,
     re-enable it there, then run `pnpm -s ledger reconcile`, which recovers what Resend gave up
-    on.
+    on. A disabled webhook may create no event for what it missed, so check the dashboard's email
+    log for that span too (RS-U05).
 - **Related:** RS-10 and RS-11 ([resend.md → Facts](../.ai/resend.md#facts)),
   [ADR-001](../.ai/architecture.md#adr-001--verify-then-enqueue), AWS-30
   ([aws.md → CloudWatch and SNS](../.ai/aws.md#cloudwatch-and-sns)).

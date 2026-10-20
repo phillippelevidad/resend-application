@@ -580,7 +580,7 @@ account are Ask-first.
 | 1 | ~~RS-U22~~ → RS-41 | ~~RS-U15~~ → RS-39, ~~RS-U18~~ → RS-40, the slice's library bullets |
 | 2 | AWS-U01, AWS-U02, AWS-U11, PG-U01, PG-U02, PG-U06, ~~RS-U21~~ → RS-43 (moved from slice 1; settled early, 2026-10-17) | RS-U07, ~~RS-U14~~ → RS-42 (settled early, slice 1), AWS-U03, AWS-U04, AWS-U05, AWS-U06, AWS-U07, AWS-U09, AWS-U10, AWS-U12, PG-U04, the slice's library bullets |
 | 3 | ~~PG-U07~~ (settled 2026-10-19 from Neon's source), AWS-U05's burst half (quota 1,000, 2026-10-19) | RS-U08 (closed safe by the burst's p99, 2026-10-19), AWS-U14 (proved safe by [sqs-dlq.adapter.test.ts](../packages/aws/src/sqs-dlq.adapter.test.ts)), ~~AWS-U15~~ (settled 2026-10-19 by `--chaos db-outage`) |
-| 4 | ~~RS-U01~~ → RS-45, ~~RS-U02~~ → RS-44, ~~RS-U20~~ → RS-45 (settled live, 2026-10-20) | RS-U03 (reach ≥ lookback), RS-U04, RS-U05, RS-U06, RS-U09, RS-U10 (replay half observed stable, 2026-10-20), RS-U13 (closed: ≤ 5.2 s, 2026-10-20), ~~RS-U17~~ → RS-46, PG-U03 |
+| 4 | ~~RS-U01~~ → RS-45, ~~RS-U02~~ → RS-44, ~~RS-U20~~ → RS-45 (settled live, 2026-10-20) | RS-U03 (reach ≥ lookback), RS-U04 and RS-U05 (closed safe, the experiments held, 2026-10-20), RS-U06, RS-U09, RS-U10 (replay half observed stable, 2026-10-20), RS-U13 (closed: ≤ 5.2 s, 2026-10-20), ~~RS-U17~~ → RS-46, PG-U03 |
 | 5 | — | The slice's library bullets |
 | 6 | — | RS-U16 |
 | 7 | — | RS-U03 (re-measured before M2 closes) |
