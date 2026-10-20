@@ -103,8 +103,10 @@ export const deployEnvSchema = z
   // D11: with `on`, the value the deploy writes into the simulator secret must be one RS-02 secret,
   // asserted before contacting AWS. The message names the variable's form, never its value.
   // Slice 4 D29: the reconciler is configured by both inputs or by neither, and a deploy that sets
-  // the signing secrets (the owner's live webhook) sets both, so a redeploy cannot silently leave
-  // the reconciler unconfigured. The first missing one is named, never a value.
+  // the signing secrets (the owner's live webhook) sets both. A redeploy with neither, and no
+  // signing secrets, leaves the reconciler unconfigured: its runs end `reconciler_not_configured`,
+  // emit no clean-run metric, and `LedgerApp-reconcile-gap` alarms within the hour (D24). The first
+  // missing one is named, never a value.
   .superRefine((env, ctx) => {
     const key = env.LEDGER_DEPLOY_RESEND_API_KEY;
     const id = env.LEDGER_DEPLOY_RESEND_WEBHOOK_ID;
