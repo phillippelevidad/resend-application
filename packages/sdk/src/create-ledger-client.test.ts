@@ -371,6 +371,109 @@ describe('createLedgerClient', () => {
     );
   });
 
+  describe('gaps and reconcile methods (slice 4)', () => {
+    const run = {
+      object: 'reconcile_run',
+      run_id: 42,
+      trigger: 'manual',
+      dry_run: true,
+      started_at: '2026-10-21T13:24:10.554Z',
+      finished_at: null,
+      horizon_start: '2026-10-18T13:14:10.554Z',
+      horizon_end: '2026-10-21T13:14:10.554Z',
+      checked: 0,
+      missing: 0,
+      replayed: 0,
+      failed: 0,
+      error: null,
+    };
+    const inProgress = {
+      code: 'reconcile_in_progress',
+      message:
+        'Another reconcile run is unfinished and still inside its time budget; runs never overlap.',
+      hint: 'Wait for it: `ledger gaps`.',
+      docs: 'https://github.com/phillippelevidad/resend-application/blob/main/docs/runbook.md#reconcile_in_progress',
+    };
+
+    type Case = [string, (ledger: LedgerClient) => Promise<unknown>, string, string, string];
+    const cases: Case[] = [
+      ['gaps.list()', (ledger) => ledger.gaps.list(), 'GET', '/gaps', ''],
+      [
+        'gaps.list({ since, limit, after })',
+        (ledger) => ledger.gaps.list({ since: '2h', limit: 5, after: 9 }),
+        'GET',
+        '/gaps?since=2h&limit=5&after=9',
+        '',
+      ],
+      [
+        'reconcile.getRun',
+        (ledger) => ledger.reconcile.getRun('42'),
+        'GET',
+        '/reconcile/runs/42',
+        '',
+      ],
+      ['reconcile.start()', (ledger) => ledger.reconcile.start(), 'POST', '/reconcile', '{}'],
+      [
+        'reconcile.start({ dry_run, lookback })',
+        (ledger) => ledger.reconcile.start({ dry_run: true, lookback: '6h' }),
+        'POST',
+        '/reconcile',
+        '{"dry_run":true,"lookback":"6h"}',
+      ],
+    ];
+
+    it.each(cases)(
+      '%s sends its method, path and body with the bearer header, and returns the body as data',
+      async (_name, call, method, url, body) => {
+        const { baseUrl, received } = await serve(json(200, run));
+        const ledger = createLedgerClient({ baseUrl, token: 'ldg_contract' });
+
+        expect(await call(ledger)).toEqual({ data: run, error: null });
+        expect(received).toHaveLength(1);
+        expect(received[0]?.method).toBe(method);
+        expect(received[0]?.url).toBe(url);
+        expect(received[0]?.headers.authorization).toBe('Bearer ldg_contract');
+        expect(received[0]?.body).toBe(body);
+      },
+    );
+
+    it('reconcile.start returns a 202 run as data', async () => {
+      const { baseUrl } = await serve(json(202, run));
+      const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+      expect(await ledger.reconcile.start({ dry_run: true })).toEqual({ data: run, error: null });
+    });
+
+    it.each(cases)('%s returns a registry error as a value and does not throw', async (...c) => {
+      const { baseUrl } = await serve(json(409, { error: inProgress }));
+      const ledger = createLedgerClient({ baseUrl, token: 't' });
+
+      await expect(c[1](ledger)).resolves.toEqual({ data: null, error: inProgress });
+    });
+
+    it.each(cases)('%s maps a closed port to api_unavailable without throwing', async (...c) => {
+      const ledger = createLedgerClient({ baseUrl: await closedPort(), token: 't' });
+
+      await expect(c[1](ledger)).resolves.toEqual({ data: null, error: apiUnavailable });
+    });
+
+    it('reconcile.start sends exactly one request when the response is lost, and retries nothing', async () => {
+      const received: string[] = [];
+      const server = createServer((request) => {
+        received.push(`${request.method} ${request.url}`);
+        // The request arrived; its answer never does.
+        request.socket.destroy();
+      });
+      servers.push(server);
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const { port } = server.address() as AddressInfo;
+      const ledger = createLedgerClient({ baseUrl: `http://127.0.0.1:${port}`, token: 't' });
+
+      expect(await ledger.reconcile.start()).toEqual({ data: null, error: apiUnavailable });
+      expect(received).toEqual(['POST /reconcile']);
+    });
+  });
+
   it('exports api_unavailable with its registry message, hint and docs', () => {
     expect(apiUnavailable).toEqual({
       code: 'api_unavailable',

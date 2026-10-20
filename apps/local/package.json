@@ -15,6 +15,7 @@
     "@ledger/core": "workspace:*",
     "@ledger/db": "workspace:*",
     "@ledger/ingest": "workspace:*",
+    "@ledger/reconciler": "workspace:*",
     "@ledger/shared": "workspace:*",
     "@ledger/worker": "workspace:*",
     "hono": "4.13.13",

@@ -24,6 +24,8 @@ export const apiEnv = {
   QUEUE_URL: 'QUEUE_URL',
   DLQ_URL: 'DLQ_URL',
   WORKER_FUNCTION_NAME: 'WORKER_FUNCTION_NAME',
+  // Slice 4 D22, D28: `reconcile.start`'s asynchronous invoke target.
+  RECONCILER_FUNCTION_NAME: 'RECONCILER_FUNCTION_NAME',
 } as const;
 
 // Slice 4 D21: `RESEND_WEBHOOK_ID` is the value of CDK context `ledger:resendWebhookId`, `unset` when

@@ -33,11 +33,13 @@ export const apiEnvironment = (values: {
   queueUrl: string;
   dlqUrl: string;
   workerFunctionName: string;
+  reconcilerFunctionName: string;
 }): EnvOf<typeof apiEnv> => ({
   [apiEnv.DATABASE_SECRET_ARN]: values.databaseSecretArn,
   [apiEnv.QUEUE_URL]: values.queueUrl,
   [apiEnv.DLQ_URL]: values.dlqUrl,
   [apiEnv.WORKER_FUNCTION_NAME]: values.workerFunctionName,
+  [apiEnv.RECONCILER_FUNCTION_NAME]: values.reconcilerFunctionName,
 });
 
 export const killSwitchEnvironment = (values: {

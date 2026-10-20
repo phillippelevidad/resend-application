@@ -31,6 +31,9 @@ export const guardrailsOutputKeys = {
 // The read API's physical name, derived as `infra/src/app.stack.ts` derives it; no output names it.
 export const API_FUNCTION_NAME = `${APP_STACK_NAME}-api`;
 
+// Slice 4 D20: the reconciler's physical name, derived as the stack derives it.
+export const RECONCILER_FUNCTION_NAME = `${APP_STACK_NAME}-reconciler`;
+
 // The alarms: the usage trip the drill forces (slice 2, D30) and the three operating alarms
 // (slice 3, D17) in the app stack; the kill switch's `Errors` alarm the drill watches in the
 // guardrails stack (slice 2, D28).

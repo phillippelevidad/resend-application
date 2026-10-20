@@ -14,10 +14,13 @@ export const VALID_ENV: Env = {
 
 export type CliRun = { exitCode: number; stdout: string; stderr: string };
 
+// `sleep` records each wait and returns at once, so a test of `ledger reconcile` runs without real
+// time (pp-cli → cli-tests, Waiting).
 export async function runCli(
   args: string[],
   client: LedgerClient,
   env: Env = VALID_ENV,
+  sleep: (ms: number) => Promise<void> = async () => {},
 ): Promise<CliRun> {
   let stdout = '';
   let stderr = '';
@@ -36,7 +39,7 @@ export async function runCli(
     return client;
   };
   try {
-    await createProgram({ client: clientFromEnv, output, setExitCode }).parseAsync([
+    await createProgram({ client: clientFromEnv, output, setExitCode, sleep }).parseAsync([
       'node',
       'ledger',
       ...args,

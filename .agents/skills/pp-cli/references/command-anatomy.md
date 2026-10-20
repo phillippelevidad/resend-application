@@ -179,13 +179,16 @@ calls `process.exit()`.
   handler is needed.
 
 ```ts
-// apps/cli/src/wait-for-run.ts
-import { setTimeout as sleep } from 'node:timers/promises';
-
+// apps/cli/src/wait-for-run.ts (slice 4, D46)
 // Each poll costs one HTTP API request, one Lambda invocation and one Postgres read, and counts
-// against the HTTP API throttle (AWS-14). Value: slice 4 pre-proposal.
-export const RUN_POLL_INTERVAL_MS = /* slice 4 */;
+// against the HTTP API throttle (AWS-14): at 3 s, a full 14-minute run is 280 polls.
+export const RUN_POLL_INTERVAL_MS = 3_000;
+export const RUN_WAIT_BACKSTOP_MS = 1_200_000; // 20 minutes, above the 14-minute budget
 ```
+
+`waitForRun(client, runId, sleep)` sleeps one interval before each poll and counts polls to the
+backstop, so no clock is read. `sleep` is `CliDeps.sleep`: `node:timers/promises` in `main.ts`, a
+no-op in tests.
 
 - `ledger reconcile` declares `--no-wait` alone, so `options.wait` defaults to `true` and the flag
   sets it `false` ([README](https://github.com/tj/commander.js), "Other option types, negatable
@@ -195,8 +198,12 @@ export const RUN_POLL_INTERVAL_MS = /* slice 4 */;
   abandoned run has `run_abandoned` and no `finished_at`), so it tests the field, never a `code`
   literal. A run outcome ends the wait with exit `1`. Each poll unwraps through `runOperation`'s
   rules: an `error` from `getRun` itself ends the wait with exit `1`.
-- **The wait's own bound is a backstop** (one constant above the run's budget, value and output
-  from the slice 4 pre-proposal): it fires only if the API's derivation does not.
+- **The wait's own bound is a backstop**, `RUN_WAIT_BACKSTOP_MS` (20 minutes, above the run's
+  14-minute budget): it fires only if the API's derivation does not, and exits `1` with
+  `internal_error` under `--json`, the constant defect line `ledger: unexpected failure.` without.
+- **The notice** is `ledger: reconcile run <run_id> started; follow it with ledger gaps.`, on
+  stderr in both modes, so under `--json` `ledger reconcile` is the one command whose success
+  writes to stderr.
 - Progress lines, if any, go to stderr through `notice`. Under `--json`, stdout gets only the final
   run, or the run's `error` in the error shape.
 - `sleep` is injected in tests, so a wait test runs without real time

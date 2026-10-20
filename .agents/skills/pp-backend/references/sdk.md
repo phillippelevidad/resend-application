@@ -90,7 +90,11 @@ surface that sits close to Resend's. Everything inside the server still throws.
 - **Until slice 5, no method retries.** `dlq.listMessages` and `dlq.startRedrive` each send exactly
   one request per call, on a lost response and on a shapeless `503` alike (slice 3 D10; evidence:
   [create-ledger-client.test.ts](../../../../packages/sdk/src/create-ledger-client.test.ts)).
-  `dlq.startRedrive` is a command and stays unretried after slice 5 too.
+  `dlq.startRedrive` is a command and stays unretried after slice 5 too. Slice 4's `gaps.list({
+  since?, limit?, after? })`, `reconcile.getRun(runId)` (a string, the API validates it) and
+  `reconcile.start({ dry_run?, lookback? })` send one request per call too; `reconcile.start` is a
+  command, **never retried**, because each accepted call starts a run that spends the shared Resend
+  budget.
 - The count and the backoff curve are the slice 5 pre-proposal's. Evidence: SDK unit tests
   (slice 5); the SDK ↔ API contract tests from slice 1 grow per slice.
 

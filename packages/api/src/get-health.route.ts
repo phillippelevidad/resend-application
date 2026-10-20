@@ -1,4 +1,5 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
+import type { ClockPort } from '@ledger/shared';
 import { bearerSecurity, requireScope } from './auth.middleware.ts';
 import type { ApiEnv } from './create-api.ts';
 import { errorDescriptions, errorResponses } from './error-response.schema.ts';
@@ -12,7 +13,8 @@ export const getHealthRoute = createRoute({
   method: 'get',
   path: '/health',
   operationId: 'health.get',
-  summary: 'Queue and DLQ depth, the worker event source, and database reachability and storage',
+  summary:
+    'Queue and DLQ depth, the worker event source, database reachability and storage, and the last reconcile run',
   middleware: requireScope('read'),
   security: bearerSecurity,
   responses: {
@@ -27,9 +29,10 @@ export const getHealthRoute = createRoute({
 // One reader, one mapper, no branch on domain data (pp-backend → One route per operation).
 export function getHealthHandler(
   reader: GetHealthReader,
+  clock: ClockPort,
 ): RouteHandler<typeof getHealthRoute, ApiEnv> {
   return async (c) => {
     const { verified } = c.get('caller');
-    return c.json(healthResponseMapper(await reader.execute({ verified })), 200);
+    return c.json(healthResponseMapper(await reader.execute({ verified }), clock.now()), 200);
   };
 }

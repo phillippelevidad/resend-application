@@ -62,6 +62,7 @@ export {
   guardrailsOutputKeys,
   KILL_SWITCH_ERRORS_ALARM_NAME,
   QUEUE_AGE_ALARM_NAME,
+  RECONCILER_FUNCTION_NAME,
   USAGE_TRIP_ALARM_NAME,
 } from './ledger-stacks.ts';
 export {

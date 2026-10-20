@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Queue and DLQ depth, the worker event source, and database reachability and storage */
+        /** Queue and DLQ depth, the worker event source, database reachability and storage, and the last reconcile run */
         get: operations["health.get"];
         put?: never;
         post?: never;
@@ -158,6 +158,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reconcile runs in the window, newest first, each with its counts and outcome */
+        get: operations["gaps.list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reconcile/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One reconcile run, running, finished or abandoned */
+        get: operations["reconcile.getRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start one manual reconcile run; poll reconcile.getRun until it finishes */
+        post: operations["reconcile.start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -240,6 +291,33 @@ export interface components {
                 storage_bytes: number | null;
                 storage_limit_bytes: number;
             };
+            last_reconcile_run: components["schemas"]["ReconcileRun"] | null;
+        };
+        ReconcileRun: {
+            /** @enum {string} */
+            object: "reconcile_run";
+            run_id: number;
+            /** @enum {string} */
+            trigger: "scheduled" | "manual";
+            dry_run: boolean;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+            /** Format: date-time */
+            horizon_start: string;
+            /** Format: date-time */
+            horizon_end: string;
+            checked: number;
+            missing: number;
+            replayed: number;
+            failed: number;
+            error: {
+                code: string;
+                message: string;
+                hint: string;
+                docs: string;
+            } | null;
         };
         EventSource: {
             /** @enum {string} */
@@ -299,6 +377,18 @@ export interface components {
             /** @enum {string} */
             status: "started" | "empty";
             depth: number;
+        };
+        ReconcileRunList: {
+            /** @enum {string} */
+            object: "list";
+            has_more: boolean;
+            data: components["schemas"]["ReconcileRun"][];
+        };
+        ReconcileStart: {
+            /** @example false */
+            dry_run?: boolean;
+            /** @example 72h */
+            lookback?: string;
         };
     };
     responses: never;
@@ -912,6 +1002,211 @@ export interface operations {
                 };
             };
             /** @description `redrive_in_progress`: a redrive task is already running; SQS allows one per queue. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error`: an unexpected failure, logged by request id. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `database_unavailable`: the database is unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    "gaps.list": {
+        parameters: {
+            query?: {
+                since?: string;
+                limit?: string;
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of runs; an unfinished run past its budget reads `run_abandoned`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileRunList"];
+                };
+            };
+            /** @description `validation_failed`: the field the message names is malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error`: an unexpected failure, logged by request id. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `database_unavailable`: the database is unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    "reconcile.getRun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run; one with no `finished_at` past its budget reads `run_abandoned`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileRun"];
+                };
+            };
+            /** @description `validation_failed`: the field the message names is malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `run_not_found`: no reconcile run with this id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error`: an unexpected failure, logged by request id. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `database_unavailable`: the database is unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    "reconcile.start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileStart"];
+            };
+        };
+        responses: {
+            /** @description The inserted run, `finished_at: null`; the reconciler runs it asynchronously. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileRun"];
+                };
+            };
+            /** @description `validation_failed`: the field the message names is malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthorized`: the bearer token is missing, malformed, bad-tag, unknown or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden`: the token lacks the `operate` scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `reconcile_in_progress`: another run is unfinished inside its time budget. */
             409: {
                 headers: {
                     [name: string]: unknown;

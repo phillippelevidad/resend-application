@@ -3,8 +3,10 @@ import type { LedgerClient } from '@ledger/sdk';
 import { dlqListMessagesCli } from './commands/dlq-list-messages.cli.ts';
 import { dlqStartRedriveCli } from './commands/dlq-start-redrive.cli.ts';
 import { emailGetCli } from './commands/email-get.cli.ts';
+import { gapsListCli } from './commands/gaps-list.cli.ts';
 import { healthGetCli } from './commands/health-get.cli.ts';
 import { recipientGetCli } from './commands/recipient-get.cli.ts';
+import { reconcileStartCli } from './commands/reconcile-start.cli.ts';
 import { tokenCreateCli } from './commands/token-create.cli.ts';
 import { tokenGetCurrentCli } from './commands/token-get-current.cli.ts';
 import { tokenListCli } from './commands/token-list.cli.ts';
@@ -19,6 +21,9 @@ export type CliDeps = {
   output: Output;
   // The only exit path: process.exitCode in main.ts, a recorder in tests (pp-cli).
   setExitCode: (code: number) => void;
+  // How `ledger reconcile` waits between polls: `node:timers/promises` in main.ts, a no-op in tests,
+  // so no test waits in real time (pp-cli → cli-tests, Waiting).
+  sleep: (ms: number) => Promise<void>;
 };
 
 export function createProgram(deps: CliDeps) {
@@ -33,6 +38,8 @@ export function createProgram(deps: CliDeps) {
   emailGetCli(program, deps);
   recipientGetCli(program, deps);
   healthGetCli(program, deps);
+  gapsListCli(program, deps);
+  reconcileStartCli(program, deps);
   // A group is a plain .command() with no action, so it inherits the root settings too (D25).
   const worker = program.command('worker').description('operate the worker');
   workerResumeEventSourceCli(worker, deps);

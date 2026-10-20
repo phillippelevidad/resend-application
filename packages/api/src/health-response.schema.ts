@@ -1,5 +1,6 @@
 import { z } from '@hono/zod-openapi';
 import { eventSourceStateSchema } from '@ledger/core';
+import { reconcileRunResponseSchema } from './reconcile-run-response.schema.ts';
 
 const count = z.int().min(0);
 
@@ -21,6 +22,10 @@ export const healthResponseSchema = z
       storage_bytes: count.nullable(),
       storage_limit_bytes: count,
     }),
+    // Slice 4 D27: the newest run, `null` before the first one or while the database is unreachable.
+    // A union, not `.nullable()`: that would make the registered `ReconcileRun` component itself
+    // nullable, and with it every run in the document and the SDK types.
+    last_reconcile_run: z.union([reconcileRunResponseSchema, z.null()]),
   })
   .openapi('Health');
 

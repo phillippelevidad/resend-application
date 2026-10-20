@@ -14,6 +14,8 @@ export {
   type LedgerClient,
   type LedgerClientConfig,
   type Recipient,
+  type ReconcileRun,
+  type ReconcileRunList,
   type SdkError,
   type SdkResult,
   type Token,

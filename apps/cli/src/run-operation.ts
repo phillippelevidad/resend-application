@@ -19,7 +19,7 @@ export async function runOperation<T>(
   try {
     const { data, error } = await call(deps.client());
     if (error) {
-      fail(deps, options, error);
+      printFailure(deps, options, error);
       return;
     }
     if (options.json) {
@@ -34,12 +34,13 @@ export async function runOperation<T>(
     // the constant line: both belong to exitCodeFor, the CLI's one exit mapping. A defect under
     // --json is the internal_error object, never the exception's text, stack or cause (O-12).
     if (err instanceof ConfigError || !options.json) throw err;
-    fail(deps, options, internalError);
+    printFailure(deps, options, internalError);
   }
 }
 
 // The SDK's error printed as received, wrapped once into the error shape (AGENTS.md → Error shape).
-function fail(deps: CliDeps, options: JsonOption, error: SdkError): void {
+// Exported for `ledger reconcile`, whose wait unwraps more than one call (pp-cli → Waiting).
+export function printFailure(deps: CliDeps, options: JsonOption, error: SdkError): void {
   if (options.json) deps.output.json({ error });
   else deps.output.failure(error.message, error.hint);
   deps.setExitCode(1);

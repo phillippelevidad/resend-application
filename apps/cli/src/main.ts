@@ -1,5 +1,6 @@
 // @ledger/app-cli: the `ledger` CLI, built on the SDK. Composition root (pp-cli): the only
 // process.env read. Started from the workspace as `pnpm -s ledger` (D33).
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createLedgerClient } from '@ledger/sdk';
 import { loadConfig } from '@ledger/shared';
 import { cliConfig } from './cli.config.ts';
@@ -15,7 +16,7 @@ const client = () => createLedgerClient(loadConfig(cliConfig, process.env));
 const setExitCode = (code: number): void => {
   process.exitCode = code;
 };
-const program = createProgram({ client, output, setExitCode });
+const program = createProgram({ client, output, setExitCode, sleep: (ms) => sleep(ms) });
 
 try {
   await program.parseAsync(process.argv);

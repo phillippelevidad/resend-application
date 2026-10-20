@@ -346,6 +346,8 @@ export function readApiContract(
           storage_bytes: expect.any(Number),
           storage_limit_bytes: STORAGE_LIMIT_BYTES,
         },
+        // No run yet: the reconcile cases below run after this one.
+        last_reconcile_run: null,
       });
     });
 
@@ -651,6 +653,102 @@ export function readApiContract(
 
       expect(await stranger.dlq.listMessages()).toEqual(unauthorized);
       expect(await stranger.dlq.startRedrive()).toEqual(unauthorized);
+    });
+
+    // Slice 4 D27: the three reconcile operations. The fake invoke runs nothing, so a started run
+    // stays unfinished until a case moves its `started_at` past the budget.
+    it('reconcile.start returns the manual run, which reconcile.getRun and gaps.list then return', async () => {
+      const started = await operator.reconcile.start({ dry_run: true, lookback: '6h' });
+
+      expect(started.error).toBeNull();
+      expect(started.data).toMatchObject({
+        object: 'reconcile_run',
+        trigger: 'manual',
+        dry_run: true,
+        finished_at: null,
+        error: null,
+      });
+      const runId = started.data?.run_id ?? 0;
+      expect(started.data?.started_at).toMatch(RFC3339);
+
+      expect(await client.reconcile.getRun(String(runId))).toEqual({
+        data: started.data,
+        error: null,
+      });
+      const listed = await client.gaps.list({ since: '1h' });
+      expect(listed.error).toBeNull();
+      expect(listed.data?.object).toBe('list');
+      expect(listed.data?.has_more).toBe(false);
+      expect(listed.data?.data.map((run) => run.run_id)).toEqual([runId]);
+    });
+
+    it('reconcile.start while that run is unfinished comes back as error reconcile_in_progress', async () => {
+      expect(await operator.reconcile.start()).toEqual({
+        data: null,
+        error: registryError('reconcile_in_progress'),
+      });
+    });
+
+    it('a run past its budget with no finished_at reads run_abandoned through reconcile.getRun and gaps.list', async () => {
+      await t.owner.execute(
+        "update reconcile_runs set started_at = now() - interval '15 minutes' where finished_at is null",
+      );
+      const listed = await client.gaps.list({ since: '1h' });
+      const runId = listed.data?.data[0]?.run_id ?? 0;
+
+      expect(listed.data?.data[0]?.error).toEqual(registryError('run_abandoned'));
+      const one = await client.reconcile.getRun(String(runId));
+      expect(one.data?.error).toEqual(registryError('run_abandoned'));
+      expect(one.data?.finished_at).toBeNull();
+    });
+
+    it('reconcile.start with a read token comes back as error forbidden', async () => {
+      expect(await client.reconcile.start()).toEqual({
+        data: null,
+        error: registryError('forbidden'),
+      });
+    });
+
+    it('reconcile.getRun for an id no row holds comes back as error run_not_found', async () => {
+      expect(await client.reconcile.getRun('999999999')).toEqual({
+        data: null,
+        error: registryError('run_not_found'),
+      });
+    });
+
+    it('a bad since, limit, after, run_id or lookback comes back as validation_failed naming the field', async () => {
+      expect(await client.gaps.list({ since: '2x' })).toEqual({
+        data: null,
+        error: validationFailed('since must be a duration from 1m to 30d, such as 24h.'),
+      });
+      expect(await client.gaps.list({ limit: 0 })).toEqual({
+        data: null,
+        error: validationFailed('limit must be an integer from 1 to 100.'),
+      });
+      expect(await client.gaps.list({ after: 0 })).toEqual({
+        data: null,
+        error: validationFailed('after must be a run id, a positive integer.'),
+      });
+      expect(await client.reconcile.getRun('abc')).toEqual({
+        data: null,
+        error: validationFailed('run_id must be a positive integer.'),
+      });
+      expect(await operator.reconcile.start({ lookback: '31d' })).toEqual({
+        data: null,
+        error: validationFailed('lookback must be a duration from 1m to 30d, such as 72h.'),
+      });
+    });
+
+    it('the reconcile methods with a token no row holds come back as error unauthorized', async () => {
+      const stranger = createLedgerClient({
+        baseUrl: served.baseUrl,
+        token: mintApiToken(TEST_TOKEN_TAG_KEY).token,
+      });
+      const unauthorized = { data: null, error: registryError('unauthorized') };
+
+      expect(await stranger.gaps.list()).toEqual(unauthorized);
+      expect(await stranger.reconcile.getRun('1')).toEqual(unauthorized);
+      expect(await stranger.reconcile.start()).toEqual(unauthorized);
     });
   });
 }

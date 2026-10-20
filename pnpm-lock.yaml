@@ -150,6 +150,9 @@ importers:
       '@ledger/ingest':
         specifier: workspace:*
         version: link:../../packages/ingest
+      '@ledger/reconciler':
+        specifier: workspace:*
+        version: link:../../packages/reconciler
       '@ledger/shared':
         specifier: workspace:*
         version: link:../../packages/shared

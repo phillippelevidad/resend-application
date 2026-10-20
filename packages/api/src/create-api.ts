@@ -2,6 +2,8 @@ import { type Hook, OpenAPIHono } from '@hono/zod-openapi';
 import { type ErrorCode, errorRegistry } from '@ledger/core';
 import { classifyDatabaseError, type Executor } from '@ledger/db';
 import {
+  type AsyncFunctionInvokePort,
+  type ClockPort,
   type DlqPort,
   type EventSourceControlPort,
   errorFields,
@@ -27,8 +29,12 @@ import { GetHealthReader } from './get-health.reader.ts';
 import { getHealthHandler, getHealthRoute } from './get-health.route.ts';
 import { GetRecipientReader } from './get-recipient.reader.ts';
 import { getRecipientHandler, getRecipientRoute } from './get-recipient.route.ts';
+import { GetReconcileRunReader } from './get-reconcile-run.reader.ts';
+import { getReconcileRunHandler, getReconcileRunRoute } from './get-reconcile-run.route.ts';
 import { ListDlqMessagesReader } from './list-dlq-messages.reader.ts';
 import { listDlqMessagesHandler, listDlqMessagesRoute } from './list-dlq-messages.route.ts';
+import { ListGapsReader } from './list-gaps.reader.ts';
+import { listGapsHandler, listGapsRoute } from './list-gaps.route.ts';
 import { ListTokensReader } from './list-tokens.reader.ts';
 import { listTokensHandler, listTokensRoute } from './list-tokens.route.ts';
 import { ResumeEventSourceCommand } from './resume-event-source.command.ts';
@@ -37,11 +43,14 @@ import { RevokeTokenCommand } from './revoke-token.command.ts';
 import { revokeTokenHandler, revokeTokenRoute } from './revoke-token.route.ts';
 import { StartDlqRedriveCommand } from './start-dlq-redrive.command.ts';
 import { startDlqRedriveHandler, startDlqRedriveRoute } from './start-dlq-redrive.route.ts';
+import { StartReconcileCommand } from './start-reconcile.command.ts';
+import { startReconcileHandler, startReconcileRoute } from './start-reconcile.route.ts';
 
 // D22. Every dependency is injected by the root, so this package imports no Lambda type and no AWS
 // SDK: `requestId` matches Hono's `generator` (`apps/api` returns the Lambda request id,
-// `apps/local` `crypto.randomUUID()`); the four ports are SQS, Lambda, the worker and the DLQ on
-// AWS, the in-process implementations locally (slice 3 D9: the in-process queue is the `DlqPort`).
+// `apps/local` `crypto.randomUUID()`); the ports are SQS, Lambda, the worker, the DLQ and (slice 4)
+// the reconciler on AWS, the in-process implementations locally (slice 3 D9: the in-process queue is
+// the `DlqPort`). `clock` dates a run's derived `run_abandoned` and its horizon (slice 4 D27).
 export type ApiDeps = {
   db: Executor;
   logger: Logger;
@@ -52,6 +61,9 @@ export type ApiDeps = {
   eventSource: EventSourceControlPort;
   workerInvoke: FunctionInvokePort;
   dlq: DlqPort;
+  // Slice 4 D18, D28: hands a manual run to the reconciler without waiting on it.
+  reconcilerInvoke: AsyncFunctionInvokePort;
+  clock: ClockPort;
   storageLimitBytes: number;
 };
 
@@ -73,6 +85,10 @@ const fieldErrors = {
   token_id: { message: 'token_id must be a positive integer.' },
   limit: { message: 'limit must be an integer from 1 to 100.' },
   after: { message: 'after must be a token id, a positive integer.' },
+  since: { message: 'since must be a duration from 1m to 30d, such as 24h.' },
+  run_id: { message: 'run_id must be a positive integer.' },
+  dry_run: { message: 'dry_run must be true or false.' },
+  lookback: { message: 'lookback must be a duration from 1m to 30d, such as 72h.' },
 } satisfies Record<string, ErrorOverrides>;
 
 // A query field whose range differs on one route names that route's range, keyed by the matched
@@ -82,11 +98,17 @@ const routeFieldErrors: Record<
   Partial<Record<keyof typeof fieldErrors, ErrorOverrides>>
 > = {
   [listDlqMessagesRoute.path]: { limit: { message: 'limit must be an integer from 1 to 10.' } },
+  [listGapsRoute.path]: { after: { message: 'after must be a run id, a positive integer.' } },
 };
 
 // Each JSON-body route's body message and the fields its own message names (D22: keyed by the
-// matched route's path). Hono registers `{param}` as `:param`; both body routes have static paths.
-const bodyErrors: Record<string, { body: ErrorOverrides; fields: (keyof typeof fieldErrors)[] }> = {
+// matched route's path). Hono registers `{param}` as `:param`; every body route has a static path.
+// `typedFields`: a field of the wrong type names itself too (slice 4: `POST /reconcile`'s fields
+// are all optional, so only a body that is not an object names the body).
+const bodyErrors: Record<
+  string,
+  { body: ErrorOverrides; fields: (keyof typeof fieldErrors)[]; typedFields?: boolean }
+> = {
   [getRecipientRoute.path]: {
     body: {
       message: 'The request body must be a JSON object with an address field.',
@@ -101,9 +123,24 @@ const bodyErrors: Record<string, { body: ErrorOverrides; fields: (keyof typeof f
     },
     fields: ['name', 'scope'],
   },
+  [startReconcileRoute.path]: {
+    body: {
+      message: 'The request body must be a JSON object with optional dry_run and lookback fields.',
+      hint: bodyHint,
+    },
+    fields: ['dry_run', 'lookback'],
+    typedFields: true,
+  },
 };
 
-const paramFields: ReadonlySet<string> = new Set(['email_id', 'token_id', 'limit', 'after']);
+const paramFields: ReadonlySet<string> = new Set([
+  'email_id',
+  'token_id',
+  'limit',
+  'after',
+  'since',
+  'run_id',
+]);
 
 // D22's `defaultHook`: every request-validation failure is `400 validation_failed`. A path or query
 // field names itself. In a JSON body, a field of the right type that fails its rule names itself;
@@ -126,7 +163,9 @@ const validationHook: Hook<unknown, ApiEnv, string, Response | undefined> = (res
     const named = route?.fields.find((name) => name === field);
     if (route !== undefined) {
       overrides =
-        named !== undefined && issue?.code !== 'invalid_type' ? fieldErrors[named] : route.body;
+        named !== undefined && (route.typedFields === true || issue?.code !== 'invalid_type')
+          ? fieldErrors[named]
+          : route.body;
     }
   }
   return c.json(errorResponseMapper('validation_failed', overrides), 400);
@@ -205,6 +244,7 @@ export function createApi(deps: ApiDeps): OpenAPIHono<ApiEnv> {
         eventSource: deps.eventSource,
         storageLimitBytes: deps.storageLimitBytes,
       }),
+      deps.clock,
     ),
   );
   app.openapi(
@@ -220,6 +260,23 @@ export function createApi(deps: ApiDeps): OpenAPIHono<ApiEnv> {
   app.openapi(revokeTokenRoute, revokeTokenHandler(new RevokeTokenCommand(deps.db)));
   app.openapi(listDlqMessagesRoute, listDlqMessagesHandler(new ListDlqMessagesReader(deps.dlq)));
   app.openapi(startDlqRedriveRoute, startDlqRedriveHandler(new StartDlqRedriveCommand(deps.dlq)));
+  app.openapi(listGapsRoute, listGapsHandler(new ListGapsReader(deps.db, deps.clock), deps.clock));
+  app.openapi(
+    getReconcileRunRoute,
+    getReconcileRunHandler(new GetReconcileRunReader(deps.db), deps.clock),
+  );
+  app.openapi(
+    startReconcileRoute,
+    startReconcileHandler(
+      new StartReconcileCommand({
+        db: deps.db,
+        queueAttributes: deps.queueAttributes,
+        reconcilerInvoke: deps.reconcilerInvoke,
+        clock: deps.clock,
+      }),
+      deps.clock,
+    ),
+  );
 
   // D23: any method and path no operation serves, never Hono's plain-text default.
   app.notFound((c) => respond(c, 'route_not_found'));

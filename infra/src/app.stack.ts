@@ -122,6 +122,7 @@ export class AppStack extends Stack {
       ingest: `${stackName}-ingest`,
       worker: `${stackName}-worker`,
       api: `${stackName}-api`,
+      reconciler: `${stackName}-reconciler`,
       http: `${stackName}-http`,
     };
     // Every function ARN in a policy is built from its physical name, never a reference, so no
@@ -224,6 +225,7 @@ export class AppStack extends Stack {
         queueUrl: queue.queueUrl,
         dlqUrl: dlq.queueUrl,
         workerFunctionName: names.worker,
+        reconcilerFunctionName: names.reconciler,
       }),
     });
     databaseSecret.grantRead(api.fn);

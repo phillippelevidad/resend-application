@@ -1,4 +1,4 @@
-import { apiUnavailable, type Health, type SdkError } from '@ledger/sdk';
+import { apiUnavailable, type Health, type ReconcileRun, type SdkError } from '@ledger/sdk';
 import { FakeLedgerClient } from '@ledger/sdk/testing';
 import { describe, expect, it } from 'vitest';
 import { runCli } from '../testing/run-cli.ts';
@@ -14,6 +14,29 @@ const healthy: Health = {
   dlq: { visible: 0, in_flight: 0 },
   event_source: { state: 'enabled' },
   database: { reachable: true, storage_bytes: 9437184, storage_limit_bytes: 1000000000 },
+  last_reconcile_run: null,
+};
+
+// Slice 4: the run `last_reconcile_run` carries, finished clean.
+const run: ReconcileRun = {
+  object: 'reconcile_run',
+  run_id: 42,
+  trigger: 'manual',
+  dry_run: false,
+  started_at: '2026-10-21T13:24:10.554Z',
+  finished_at: '2026-10-21T13:24:14.008Z',
+  horizon_start: '2026-10-18T13:14:10.554Z',
+  horizon_end: '2026-10-21T13:14:10.554Z',
+  checked: 2,
+  missing: 2,
+  replayed: 2,
+  failed: 0,
+  error: null,
+};
+
+const reconcileLine = async (health: Health): Promise<string | undefined> => {
+  const result = await runCli(['health'], answering(health));
+  return result.stdout.split('\n').find((line) => line.startsWith('reconcile'));
 };
 
 const answering = (data: Health) => new FakeLedgerClient({ healthGet: { data, error: null } });
@@ -43,6 +66,7 @@ describe('ledger health', () => {
         'dlq         0 visible, 0 in flight',
         'worker      enabled',
         'database    reachable, 9.4 MB of 1.0 GB',
+        'reconcile   no run yet',
         '',
       ].join('\n'),
     );
@@ -66,8 +90,26 @@ describe('ledger health', () => {
         'dlq         1 visible, 0 in flight',
         'worker      paused',
         'database    unreachable',
+        'reconcile   —',
         '',
       ].join('\n'),
+    );
+  });
+
+  it('prints the last reconcile run: finished with its counts, running, or its error code', async () => {
+    expect(await reconcileLine({ ...healthy, last_reconcile_run: run })).toBe(
+      'reconcile   run 42 finished 2026-10-21T13:24:14.008Z, missing 2, replayed 2',
+    );
+    expect(
+      await reconcileLine({ ...healthy, last_reconcile_run: { ...run, finished_at: null } }),
+    ).toBe('reconcile   run 42 running');
+    const abandoned = {
+      ...run,
+      finished_at: null,
+      error: { ...unauthorized, code: 'run_abandoned' },
+    };
+    expect(await reconcileLine({ ...healthy, last_reconcile_run: abandoned })).toBe(
+      'reconcile   run 42 run_abandoned',
     );
   });
 

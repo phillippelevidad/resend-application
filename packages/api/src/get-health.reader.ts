@@ -1,11 +1,17 @@
 import { type EventSourceState, errorRegistry } from '@ledger/core';
-import { classifyDatabaseError, databaseRepository, type Executor } from '@ledger/db';
+import {
+  classifyDatabaseError,
+  databaseRepository,
+  type Executor,
+  reconcileRunsRepository,
+} from '@ledger/db';
 import {
   type EventSourceControlPort,
   LedgerError,
   type QueueAttributesPort,
   type QueueSnapshot,
 } from '@ledger/shared';
+import type { ReconcileRunRead } from './reconcile-run-response.mapper.ts';
 
 // `verified: false` is the auth middleware's outage mark: its token lookup already found the
 // database unreachable (D18).
@@ -18,6 +24,8 @@ export type HealthRead = {
   // `null` when the database is unreachable.
   storageBytes: number | null;
   storageLimitBytes: number;
+  // Slice 4 D27: the newest run; `null` before the first run or while the database is unreachable.
+  lastReconcileRun: ReconcileRunRead | null;
 };
 
 export type GetHealthReaderDeps = {
@@ -26,6 +34,8 @@ export type GetHealthReaderDeps = {
   eventSource: EventSourceControlPort;
   storageLimitBytes: number;
 };
+
+const unreachable = { storageBytes: null, lastReconcileRun: null } as const;
 
 // `health.get` (api-contract.md, D19): the queue and event-source fields from their ports, the
 // storage from Postgres. A database outage is reported, never a failed response; an AWS read error
@@ -48,23 +58,22 @@ export class GetHealthReader {
     ]).catch((err: unknown) => {
       throw new LedgerError('internal_error', errorRegistry.internal_error.message, { cause: err });
     });
-    return {
-      queue,
-      eventSourceState,
-      storageBytes: input.verified ? await this.#storageBytes() : null,
-      storageLimitBytes,
-    };
+    const database = input.verified ? await this.#databaseRead() : unreachable;
+    return { queue, eventSourceState, storageLimitBytes, ...database };
   }
 
   // At most one database attempt per request (D19): an unverified caller already spent it in the
   // middleware, so `execute` skips this; two stacked attempts would outlast API Gateway's 30 s
-  // (AWS-02).
-  async #storageBytes(): Promise<number | null> {
+  // (AWS-02). Slice 4 D27: the last run is read in the same attempt, after the storage, and a
+  // classified failure of either nulls both, so a dead database costs one connection timeout.
+  async #databaseRead(): Promise<Pick<HealthRead, 'storageBytes' | 'lastReconcileRun'>> {
     try {
-      return await databaseRepository.storageBytes(this.#deps.db);
+      const storageBytes = await databaseRepository.storageBytes(this.#deps.db);
+      const lastReconcileRun = (await reconcileRunsRepository.latest(this.#deps.db)) ?? null;
+      return { storageBytes, lastReconcileRun };
     } catch (err) {
       if (classifyDatabaseError(err) !== undefined) {
-        return null;
+        return unreachable;
       }
       throw err;
     }

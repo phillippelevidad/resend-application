@@ -79,7 +79,8 @@ an address or a subject.
     send) and `ingest.secrets_unavailable` (the signing secrets could not be read), and
     `/ledger/LedgerApp-api` for `api.internal_error` by its `request_id`.
   - Check in the Resend dashboard that the webhook is still enabled. If Resend disabled it,
-    re-enable it there. Slice 4 lands `ledger reconcile`, which recovers what Resend gave up on.
+    re-enable it there, then run `pnpm -s ledger reconcile`, which recovers what Resend gave up
+    on.
 - **Related:** RS-10 and RS-11 ([resend.md → Facts](../.ai/resend.md#facts)),
   [ADR-001](../.ai/architecture.md#adr-001--verify-then-enqueue), AWS-30
   ([aws.md → CloudWatch and SNS](../.ai/aws.md#cloudwatch-and-sns)).
@@ -99,7 +100,7 @@ an address or a subject.
   2. `pnpm aws:rearm`. It restores what the app stack declares and warns when the month's spend is
      at the budget, because the budget cannot trip again the same month.
   3. `pnpm -s ledger health`: `worker enabled` and the queue draining.
-  4. Slice 4 lands `ledger reconcile`, which recovers the events Resend marked failed meanwhile.
+  4. `pnpm -s ledger reconcile`, which recovers the events Resend marked failed meanwhile.
 - **Related:** [aws.md → Budget alarms](../.ai/aws.md#budget-alarms) items 4, 6 and 7,
   [ADR-010](../.ai/architecture.md#adr-010--serverless-on-aws-cdk-an-app-stack-and-a-guardrails-stack).
 
@@ -156,8 +157,8 @@ an address or a subject.
 - **First:** `pnpm -s ledger health`: events may still be queued (`queue` visible) or the worker
   may be paused.
 - **Then:** check the id is a Resend email id. If the queue is draining, wait and retry. If the
-  queue is empty and the worker enabled, the events were missed: slice 4 lands `ledger gaps` and
-  `ledger reconcile` to find and replay them.
+  queue is empty and the worker enabled, the events were missed: `pnpm -s ledger gaps` shows the
+  recent runs, and `pnpm -s ledger reconcile` finds and replays them.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
 ### recipient_not_found
@@ -165,13 +166,13 @@ an address or a subject.
 - **Means:** `404`. No recorded event has ever named this address.
 - **First:** `pnpm -s ledger health`, as for [email_not_found](#email_not_found).
 - **Then:** check the address (it is matched after normalization). If it was emailed recently, the
-  events may be queued or missed; slice 4 lands `ledger gaps`.
+  events may be queued or missed: `pnpm -s ledger gaps`, then `pnpm -s ledger reconcile`.
 - **Related:** [ADR-003](../.ai/architecture.md#adr-003--projection-is-a-pure-function-of-the-event-set).
 
 ### run_not_found
 
-- **Means:** `404`. No reconcile run has this id. Slice 4 lands this operation.
-- **First:** slice 4's `ledger gaps` lists the runs.
+- **Means:** `404`. No reconcile run has this id.
+- **First:** `pnpm -s ledger gaps` lists the runs.
 - **Then:** use a run id from that list.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
@@ -194,8 +195,8 @@ an address or a subject.
 ### reconcile_in_progress
 
 - **Means:** `409`. Another reconcile run is unfinished and still inside its time budget; runs
-  never overlap. Slice 4 lands this operation.
-- **First:** slice 4's `ledger gaps` shows the running run.
+  never overlap.
+- **First:** `pnpm -s ledger gaps` shows the running run.
 - **Then:** wait for it to finish, or for its time budget to pass, then start another.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
@@ -212,10 +213,10 @@ an address or a subject.
 ### run_abandoned
 
 - **Means:** a reconcile run's outcome, not an HTTP status: the run has no `finished_at` past its
-  time budget (it crashed or its invoke was lost), so it will not finish. Slice 4 lands this
-  operation.
-- **First:** slice 4's `ledger gaps` shows the run.
-- **Then:** run `ledger reconcile` again (slice 4); the next hourly run covers the horizon anyway.
+  time budget (it crashed or its invoke was lost), so it will not finish.
+- **First:** `pnpm -s ledger gaps` shows the run; `/ledger/LedgerApp-reconciler` holds its log lines
+  by `run_id`.
+- **Then:** run `pnpm -s ledger reconcile` again; the next hourly run covers the horizon anyway.
 - **Related:** [ADR-007](../.ai/architecture.md#adr-007--recovery-by-id-diff-and-replay-through-ingest).
 
 ### reconciler_not_configured

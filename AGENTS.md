@@ -325,6 +325,13 @@ pnpm -s ledger token current [--json]    # the token LEDGER_TOKEN holds: id, nam
 pnpm -s ledger dlq inspect [--limit <1-10>] [--json]   # dead messages, ids and counts only, and the
                    # DLQ depth; a stderr notice pointing at the worker logs when the DLQ is not empty
 pnpm -s ledger dlq redrive [--json]      # operate; moves every dead message back to the queue, returns at once
+pnpm -s ledger gaps [--since <duration>] [--json]   # reconcile runs started within --since (1m-30d,
+                   # default 24h), newest 100, each with its counts and outcome; a stderr notice
+                   # when more exist
+pnpm -s ledger reconcile [--dry-run] [--lookback <duration>] [--no-wait] [--json]   # operate; starts
+                   # one manual run (stderr: its run id), then polls every 3 s until it finishes or
+                   # reads run_abandoned (exit 1 with a run's error); --no-wait prints the started
+                   # run; a 20-minute backstop; locally every run ends reconciler_not_configured
                    # exit 0 success, 1 a registry error (api_unavailable included), 2 a usage error
                    # or a missing / invalid LEDGER_URL or LEDGER_TOKEN; `pnpm ledger` is the same
                    # without -s (pnpm's banner then precedes the output)
