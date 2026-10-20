@@ -29,6 +29,8 @@ type World = {
   apiUrl: string | undefined;
   tripped: boolean;
   trippedMidDrill: boolean;
+  // The lower applies the route setting, then its call fails (a lost response).
+  lowerFails: boolean;
   depths: { queue: number; dlq: number };
   lastRunFinished: boolean | null;
   routeSetting: boolean;
@@ -50,6 +52,7 @@ function newWorld(overrides: Partial<World> = {}): World {
     apiUrl: `${LEDGER_URL}/`,
     tripped: false,
     trippedMidDrill: false,
+    lowerFails: false,
     depths: { queue: 0, dlq: 0 },
     lastRunFinished: true,
     routeSetting: false,
@@ -98,6 +101,7 @@ function stepsFor(world: World): GapDrillSteps {
       call('lower');
       world.routeSetting = true;
       if (world.trippedMidDrill) world.tripped = true;
+      if (world.lowerFails) throw new Error('the response was lost');
     },
     async restoreIngestRoute() {
       call('restore');
@@ -223,6 +227,18 @@ describe('runGapDrill', () => {
     expect(run.last).toBe('aws:gap-drill: failed: resend_auth_failed: the send was refused\n');
     expect(world.calls).toContain('restore');
     expect(world.routeSetting).toBe(false);
+  });
+
+  it('restores the ingest route when the lower applied and then failed, and sends nothing', async () => {
+    const world = newWorld({ lowerFails: true });
+
+    const run = await drill(world);
+
+    expect(run.code).toBe(1);
+    expect(run.lines).toContain('aws:gap-drill: ingest route restored\n');
+    expect(run.last).toBe('aws:gap-drill: failed: lowering the ingest route throttle failed\n');
+    expect(world.routeSetting).toBe(false);
+    expect(world.calls).not.toContain('sendEmail');
   });
 
   it('leaves the ingest route setting when the stack tripped mid-drill, and fails', async () => {

@@ -163,12 +163,14 @@ async function drill(
 
   // 2–6. The gap: the ingest route stopped, one send, its events visible at Resend, the grace
   // window passed, then the route restored before Resend's next retry (≈ 35 min, RS-09).
-  out.line('lowering the ingest route throttle');
-  await step('lowering the ingest route throttle failed', () => steps.lowerIngestRoute());
   let restored = false;
   let emailId: string;
   let newEvents: readonly DrillEvent[];
   try {
+    // Inside the `try`: a lower that applied and then threw is still restored, and a restore with
+    // nothing lowered changes nothing.
+    out.line('lowering the ingest route throttle');
+    await step('lowering the ingest route throttle failed', () => steps.lowerIngestRoute());
     const key = `ledger-gap-drill-${steps.now().toISOString().replace(/[-:.]/g, '')}`;
     const sent = await step('the send failed', () => steps.sendEmail(key));
     if ('rejectedStatus' in sent) {
