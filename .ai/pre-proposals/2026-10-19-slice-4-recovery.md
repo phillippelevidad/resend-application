@@ -12,7 +12,7 @@
 | Earlier pre-proposal | None for this slice |
 | Branch | `worktree-slice-4-reconcile` (at `5fe2a51`, clean) |
 | Owner round | 2026-10-19: two decisions (D1 the `reconciler_not_configured` code, D24 the `LedgerApp-reconcile-gap` alarm) and the itemized Ask-first approvals (§7), items 1–5 approved, AWS runs and live Resend writes held per action |
-| Checked | 2026-10-19: 31 repaired, 0 for the owner |
+| Checked | 2026-10-19: 31 repaired, 2 for the owner (RS-U17 observes a revoked key, D38, owner-ruled; D1 and D24 confirmed as the owner's) |
 
 ## 1. Why now
 
@@ -56,6 +56,7 @@ bullet is a scope change, so the card is edited before anything is built,
 Bullet 9's two counts are corrected as facts in the same first task (C3, C4): "(1 missing)" becomes
 "(the send's events missing, RS-39)", and "`ledger gaps` (0 missing)" reads the run of a final
 `ledger reconcile --dry-run`. Neither loosens the bullet: each states what the evidence will show.
+The same task rewords Ships 7's RS-U17 clause to the owner-ruled revoked-key experiment (D38, §22).
 
 ## 3. Out of scope
 
@@ -170,6 +171,7 @@ change nothing).
 | 4. Public variables and commands | `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, read by `pnpm aws:deploy` (D29); `pnpm aws:gap-drill` (D32), which reads `LEDGER_URL`, `LEDGER_TOKEN`, `RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`, existing names with a new reader | owner-approved 2026-10-19 | Groups 1, 10 |
 | 5. Template resources | App stack: Lambda `LedgerApp-reconciler` and its log group `/ledger/LedgerApp-reconciler`; secret `ledger/resend-api-key` (USD 0.40/month, AWS-11; the M1 count integrations.md already plans); schedule `LedgerApp-reconcile-hourly`; one `AWS::Lambda::EventInvokeConfig` (`MaximumRetryAttempts: 0`, `MaximumEventAgeInSeconds: 60`); IAM (D22); the read API's `lambda:InvokeFunction` on the reconciler; alarm `LedgerApp-reconcile-gap` (D24, wall clock evaluation window; 6 of 10 free, AWS-28); output `ResendApiKeySecretArn` | owner-approved 2026-10-19 | Group 9 |
 | 6. AWS runs | Each `pnpm aws:deploy`, the gap drill, and every read-only `aws` CLI read in the walk | held — approved per action at walk time | Group 12 |
+| 7a. RS-U17 key | One create and one revoke of the throwaway `sending_access` key `ledger-rs-u17` (D38, walk C7) | **owner-approved 2026-10-19** (pre-approved in the check's owner round) | Group 12 |
 | 7. Live Resend writes | Creating the reconciler's dedicated `full_access` key (dashboard or `POST /api-keys`, §25); E1's one replay of a stored event (D37); E3's test-webhook experiments: one create, two sends, two `PATCH status`, one replay, one delete (D39); the gap drill's one send and the replays its `ledger reconcile` makes (D32); and, by deploying the reconciler, its **automatic hourly replays** of missing events on the production webhook (ADR-007) | held — approved per action at walk time; the redeploy's approval covers the hourly replays | Group 12 |
 | CI change | None: every new test runs in an existing `pnpm verify` stage; `scripts/verify.mjs` is untouched | — | — |
 
@@ -751,18 +753,20 @@ original `svix-id` and a fresh, passing `svix-timestamp`). No id is recorded. If
 the card goes `[!]` with that reason, and ADR-007 needs a superseding design before recovery is
 called done ([pp-workflow → Never](../../.agents/skills/pp-workflow/SKILL.md#never)).
 
-**D38 — RS-U03, RS-U13, RS-U17 (read-only), on or after 2026-10-21.** RS-U03: page the production
+**D38 — RS-U03 and RS-U13 (read-only, RS-U03 on or after 2026-10-21), and RS-U17 (two pre-approved key writes).** RS-U03: page the production
 webhook's List Events to `has_more: false` and record the oldest event's date and its age, which
 needs to be at least 72 h (the webhook's oldest event is from 2026-10-18, §4). RS-U13: the gap
-drill's `events visible after <ms> ms` (D32 step 4). RS-U17: one `GET /webhooks/{id}` with a
-well-formed key no account issued (`re_` plus random characters). It is expected to answer `400`
-`validation_error` "API key is invalid" (api-reference/errors: "a key that doesn't exist or was
-deleted"), and the row records the observed status and name. That call settles the
-never-issued half only. The deleted (revoked) half is closed as safe in both outcomes, as the row's
-own Owed-by cell states: Constraint 14 maps the documented answer by message, and any other answer
-takes the default branch. Creating and revoking a real key would be two Ask-first writes for the
-same documented answer. Authority: card Ships 7 ("closed by read-only checks") and
-[resend.md → \[Unverified\]](../resend.md#unverified), the RS-U03, RS-U13 and RS-U17 rows.
+drill's `events visible after <ms> ms` (D32 step 4). RS-U17 (**owner-ruled 2026-10-19**: observe a
+revoked key, the two writes pre-approved): create a throwaway `sending_access` key named
+`ledger-rs-u17` (dashboard or `POST /api-keys`, RS-18; `sending_access` keeps its few seconds of life
+unable to read a signing secret, RS-05), revoke it at once (`DELETE /api-keys/{api_key_id}`, which
+answers `{ "object": "api_key", "id": …, "deleted": true }`, [delete-api-key](https://resend.com/docs/api-reference/api-keys/delete-api-key),
+read 2026-10-19), then make one `GET /webhooks/{id}` with it, and one with a well-formed key no
+account issued (`re_` plus random characters). Both are expected to answer `400` `validation_error`
+"API key is invalid" (api-reference/errors: "a key that doesn't exist or was deleted"), and the row
+records each observed status and name, never the key. Authority: card Ships 7 and
+[resend.md → \[Unverified\]](../resend.md#unverified), the RS-U03, RS-U13 and RS-U17 rows (RS-U17's
+settle column: "one call with a revoked test key").
 
 **D39 — E3: the disabled-webhook experiments (RS-U04, RS-U05)**, on a throwaway test webhook,
 every write Ask-first. The test webhook points at the deployed ingest URL with its secret **not**
@@ -1181,8 +1185,8 @@ requests, and a status column.
 `openspec/changes/slice-4-recovery/WALKTHROUGH.md`, in [the format](../../.agents/skills/rsa-manual-test/references/walkthrough-format.md).
 **Before you start:** `pnpm install`, `pnpm dev:full` (path A), then the deployed values from
 `.env.deployed.local` in the shell (paths B–F). The walk creates local runs, deployed runs, one
-reviewer token (revoked in T1) and E3's test webhook (deleted in E7). Ask-first steps: B2, C4, D1,
-E1–E7.
+reviewer token (revoked in T1), RS-U17's throwaway key (revoked inside C7) and E3's test webhook
+(deleted in E7). Ask-first steps: B2, C4, C7, D1, E1–E7.
 
 **Path A — Local: the contract without AWS. Walked as: Operator.**
 
@@ -1219,8 +1223,11 @@ E1–E7.
 5. `curl … /events/<event_id>/attempts` → the newest `http_status_code` is `200` (**RS-U20**).
 6. `aws logs filter-log-events --log-group-name /ledger/LedgerApp-worker --filter-pattern '"worker.duplicates"' --start-time <ms>`
    → one line with that `svix_id`; `ledger email`'s `event_count` unchanged (**RS-U01**).
-7. `curl -s -o /dev/null -w '%{http_code}' "https://api.resend.com/webhooks/$LEDGER_DEPLOY_RESEND_WEBHOOK_ID" -H "Authorization: Bearer re_<random>"`
-   → `400`, body `validation_error` / `API key is invalid` (**RS-U17**).
+7. **Ask-first (owner pre-approved 2026-10-19):** create the `sending_access` key `ledger-rs-u17`,
+   then `curl -s -X DELETE "https://api.resend.com/api-keys/<api_key_id>" -H "Authorization: Bearer $RESEND_API_KEY"`
+   → `"deleted": true`. Then `curl -s -w '\n%{http_code}' "https://api.resend.com/webhooks/$LEDGER_DEPLOY_RESEND_WEBHOOK_ID" -H "Authorization: Bearer <the revoked key>"`
+   and the same with `Bearer re_<random>` → each `400`, body `validation_error` / `API key is
+   invalid` (**RS-U17**). Neither key is recorded.
 
 **Path D — One real gap, closed (J3). Walked as: Operator.**
 
@@ -1269,6 +1276,10 @@ At apply time, in this order:
 - [build-checklist.md → 4](../build-checklist.md#4--recovery):
   - Add Ships 11 (§2, owner-ruled).
   - Correct Ships 9's two counts (C3, C4).
+  - Ships 7's RS-U17 clause: "RS-U17 revoked-key status closed by read-only checks" becomes "RS-U17
+    revoked-key status closed by one Ask-first create and revoke of a throwaway key and a read with
+    it" (owner-ruled 2026-10-19, D38). It tightens the evidence, so the rule gate is cleared by the
+    owner's ruling.
   - Add `pnpm aws:gap-drill` and the alarm email to UI surfaces.
   - The Ops line gains "create a dedicated `full_access` key; set `LEDGER_DEPLOY_RESEND_API_KEY` and
     `LEDGER_DEPLOY_RESEND_WEBHOOK_ID`; approve the gap drill".
@@ -1314,6 +1325,8 @@ At apply time, in this order:
   - Verdict's "three unverified links" bullet updated.
   - Onboarding reality's webhook row (C13).
   - Constraint 9 resolved by RS-45.
+  - Sources: a [delete-api-key](https://resend.com/docs/api-reference/api-keys/delete-api-key) row
+    (RS-U17's revoke, read 2026-10-19).
 - [aws.md](../aws.md):
   - AWS-63 (`EventInvokeConfig`: `maxEventAge` 60 s–6 h, `retryAttempts` 0–2, aws-cdk-lib 2.273.0 docs).
   - AWS-64 (CloudWatch alarm evaluation: a sliding window ignores the missing-data treatment while
@@ -1427,7 +1440,8 @@ At apply time, in this order:
    `.env.deployed.local`, never committed).
 2. **Run E1 before `opsx:apply`** (recommended, D37): one Ask-first replay of a stored event plus
    five reads. It settles RS-U01, RS-U02 and RS-U20 before any code depends on them.
-3. **On or after 2026-10-21:** the RS-U03 reach read (D38).
+3. **On or after 2026-10-21:** the RS-U03 reach read (D38). The RS-U17 key create and revoke (walk
+   C7) is already approved and can run any time.
 4. **Approve, per action at walk time:** the redeploy (B2), the gap drill (D1), and E3 (E1–E7, or
    hold them for safe-either-way).
 5. **Walk the M1 demo** against the kept deploy (paths D and F).
