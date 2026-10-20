@@ -17,7 +17,9 @@ and the three `svix-*` headers to the function `packages/ingest` built. Anything
 at the edge, logged by `error_name`, and rethrown as a constant `internal_error` with no `cause`.
 Every Lambda root parses its config and builds its clients at module scope, but reads its secrets
 on the first invocation through one memoized promise per container, reused by every warm
-invocation, so importing the bundle needs no AWS access (slice 2 D32's bundle smoke check).
+invocation, so importing the bundle needs no AWS access (slice 2 D32's bundle smoke check). The one
+exception is the reconciler's Resend key, read on every invocation and the client rebuilt when it
+changed ([resend-client.md](resend-client.md#what-it-is), `apps/reconciler/src/compose-reconciler.ts`).
 Ingest's root builds `createIngest` at module scope and makes no AWS call there; its memoized read
 is step 1's cache, filled on the first request. That function:
 

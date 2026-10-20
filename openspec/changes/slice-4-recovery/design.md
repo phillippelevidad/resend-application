@@ -95,7 +95,7 @@ files mirror the synchronous `function-invoke` set (D42).
 | `packages/api` | `list-gaps.route.ts`, `list-gaps.reader.ts`; `get-reconcile-run.route.ts`, `get-reconcile-run.reader.ts`; `start-reconcile.route.ts`, `start-reconcile.command.ts`; `reconcile-run-response.mapper.ts` + test, `reconcile-run-response.schema.ts`, `reconcile-run-list-response.schema.ts`, `run-id.schema.ts`, `duration.schema.ts` (D27, D28); `get-health.reader.ts`, `health-response.mapper.ts`, `health-response.schema.ts` (D27); `create-api.ts` (`ApiDeps.reconcilerInvoke`, the routes, `bodyErrors` and `routeFieldErrors` entries); route int tests `list-gaps.route.int.test.ts`, `get-reconcile-run.route.int.test.ts`, `start-reconcile.route.int.test.ts`, `start-reconcile.command.int.test.ts`; `get-health.route.int.test.ts`; `testing/api-test-deps.ts`, `testing/read-api-contract.ts`; `scripts/export-openapi.ts` (an inert `reconcilerInvoke`, D48) |
 | `packages/sdk` | `create-ledger-client.ts` (`gaps.list`, `reconcile.getRun`, `reconcile.start`), `testing.ts` (`FakeLedgerClient`); regenerated `openapi.json`, `src/openapi-types.ts` |
 | `packages/aws` | `lambda-async-function-invoke.adapter.ts` + test (D7); `ingest-route-throttle.ts` + test (D31); `ledger-stacks.ts` (`RECONCILER_FUNCTION_NAME`, `RECONCILE_SCHEDULE_NAME`, `RECONCILE_GAP_ALARM_NAME`, `appOutputKeys.resendApiKeySecretArn`); `index.ts` |
-| `apps/reconciler` | `reconciler.config.ts`, `database-secret.schema.ts` (one field, D21), `create-reconciler-handler.ts` + test (D20), `reconciler.handler.ts`, `main.ts`; `package.json` |
+| `apps/reconciler` | `reconciler.config.ts`, `database-secret.schema.ts` (one field, D21), `create-reconciler-handler.ts` + test (D20), `compose-reconciler.ts` + test (D20), `reconciler.handler.ts`, `main.ts`; `package.json` |
 | `apps/api` | `api.config.ts` (`RECONCILER_FUNCTION_NAME`), `main.ts` (D28) |
 | `apps/local` | `main.ts` (D23); `sdk-contract.int.test.ts` (runs the grown contract); `local-reconcile.int.test.ts` (the local reconcile case: the real `main.ts` and CLI over a Testcontainers clone, since the e2e tier has no Postgres) |
 | `apps/cli` | `wait-for-run.ts` (D46); `commands/gaps-list.cli.ts` + test, `commands/reconcile-start.cli.ts` + test; `commands/health-get.cli.ts` + test; `create-program.ts` |
@@ -251,7 +251,7 @@ lists it (PP C17).
 config constant `https://api.resend.com`, and tests pass the fake's. `userAgent` is
 `ledger-reconciler` or `ledger-gap-drill` (RS-21). Each request passes `signal:
 AbortSignal.timeout(RESEND_REQUEST_TIMEOUT_MS)` (`10_000`). The key comes from the root, read
-through the secret port on the first invocation (PP C22), and never reaches a log, an error or an
+through the secret port on every invocation (PP C22, D20), and never reaches a log, an error or an
 output. `sendEmail` always carries `Idempotency-Key` (RS-24).
 
 **Console silence** (PP C9): `Reflect.defineProperty(sdk, 'logError', { value: () => {} })` on the
@@ -371,9 +371,12 @@ logged as `String(id)`.
 `retryAttempts: 0` and `maxEventAge: Duration.seconds(60)` (PP C15, AWS-63), no reserved
 concurrency. `create-reconciler-handler.ts` Zod-parses either event (D5): `reconcile-scheduled` →
 `runScheduled()`, `reconcile-run` → `runClaimed(run_id)`, anything else → logged and rejected. It
-catches at its edge, logs `error_name`, rethrows a constant. `main.ts` parses config at module scope
-and reads both secrets on the first invocation through one memoized promise, so the bundle loads
-with no AWS access (`apps/worker/src/main.ts:16` pattern).
+catches at its edge, logs `error_name`, rethrows a constant. `main.ts` parses config at module scope,
+so the bundle loads with no AWS access (`apps/worker/src/main.ts:16` pattern), and composes through
+`compose-reconciler.ts`: `ledger/database` is read, and the pool built, on the first invocation
+through one memoized promise; `ledger/resend-api-key` is read on every invocation, and the Resend
+client rebuilt when the key changed, so a key `pnpm aws:deploy` writes after `cdk deploy`, or a
+rotated one, reaches a warm container (`compose-reconciler.test.ts`). One `GetSecretValue` per run.
 
 #### D21 — Its configuration
 

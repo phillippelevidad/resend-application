@@ -18,7 +18,8 @@ export const RECONCILER_USER_AGENT = 'ledger-reconciler';
 // the variable, never its value (pp-general → config-and-env).
 export const reconcilerConfigSchema = z
   .object({
-    // The ARNs of `ledger/database` and `ledger/resend-api-key`, read on the first invocation.
+    // The ARNs of `ledger/database`, read on the first invocation, and `ledger/resend-api-key`,
+    // read on every invocation (`compose-reconciler.ts`).
     [reconcilerEnv.DATABASE_SECRET_ARN]: required,
     [reconcilerEnv.RESEND_API_KEY_SECRET_ARN]: required,
     [reconcilerEnv.RESEND_WEBHOOK_ID]: required,
@@ -43,10 +44,12 @@ export type ReconcilerConfig = z.output<typeof reconcilerConfigSchema>;
 // D21: the Resend side the reconciler composes, or none. `ledger/resend-api-key` holds a bare key; a
 // value not starting `re_` is the CDK placeholder the deploy has not overwritten, and reads as not
 // configured, as does an unset webhook id. Every run then ends `reconciler_not_configured`.
+export type ResendConfiguration = { apiKey: string; webhookId: string };
+
 export function resendConfiguration(
   webhookId: string | undefined,
   apiKeySecret: string,
-): { apiKey: string; webhookId: string } | undefined {
+): ResendConfiguration | undefined {
   const apiKey = apiKeySecret.trim();
   if (webhookId === undefined || !apiKey.startsWith('re_')) return undefined;
   return { apiKey, webhookId };

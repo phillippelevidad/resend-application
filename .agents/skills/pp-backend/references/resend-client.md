@@ -14,12 +14,19 @@ faked in tests, and how its own tests stand in for Resend's API, are
   dispatcher from slice 6) type against directly. It is ADR-012's named seam, so it needs no
   interface in `packages/shared` and no third duplicate
   ([extract an abstraction](../../pp-general/references/adding-things.md#extract-an-abstraction)).
-- **One instance per calling function**, built at module scope in that function's `main.ts`
+- **One instance per calling function at a time**, composed in that function's `main.ts`
   ([composition.md](composition.md#the-composition-root)), holding that function's key only: the
   reconciler a `full_access` key, the dispatcher a `sending_access` key
-  ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)). `main.ts` reads the key through the secret port on the first invocation, through one
-  memoized promise, so the bundle loads with no AWS access, and passes it to the constructor, never
-  through a config schema ([secrets](../../pp-general/references/config-and-env.md#secrets)); it never appears in a log, an error or an output (rule 7).
+  ([Secrets layout](../../../../.ai/integrations.md#secrets-layout)). `main.ts` reads the key through
+  the secret port, never at import, so the bundle loads with no AWS access, and passes it to the
+  constructor, never through a config schema ([secrets](../../pp-general/references/config-and-env.md#secrets));
+  it never appears in a log, an error or an output (rule 7). The reconciler reads it on every
+  invocation, one `GetSecretValue` per run (hourly plus manual), and rebuilds the client only when
+  the key read differs from the one it holds, the cache's invalidation trigger: `pnpm aws:deploy`
+  writes the key after `cdk deploy` and again on a rotation, so a key read once per container would
+  never reach a warm one (`apps/reconciler/src/compose-reconciler.test.ts`). A higher-frequency
+  caller (slice 6's dispatcher) settles its own refresh, a TTL like ingest's secret set (ADR-009),
+  in its slice.
 - **Constructed with every option explicit:** `new Resend(key, { baseUrl, userAgent })`, `baseUrl`
   from the function's typed config. Left unset, the SDK reads `process.env.RESEND_BASE_URL`
   (`resend@6.33.0`), an env read outside the composition root that the config schema never sees;
