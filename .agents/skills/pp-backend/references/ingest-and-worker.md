@@ -43,10 +43,12 @@ is step 1's cache, filled on the first request. That function:
    `live` or `simulated` (ADR-016). Only ingest sets `source`. Never a hand-rolled HMAC compare
    ([integrations.md → Locked rules](../../../../.ai/integrations.md#locked-rules-must), rule 1).
    `webhooks.verify` enforces the 5-minute timestamp window (RS-02).
-3. **On no match: `401`**, the `ingest.rejected` metric with `reason` `signature` or `timestamp`,
-   and nothing enqueued. How `reason` tells a stale timestamp from a bad signature is the pre-proposal of
-   the slice that ships the metric (slice 4); comparing `svix-timestamp` with the clock port before `verify` needs no parsing
-   of the SDK's thrown error.
+3. **On no match: `401`**, one `ingest.rejected` metric with `reason` `signature` or `timestamp` as
+   its one dimension and no field, and nothing enqueued (slice 4, D33). `timestamp`: `svix-timestamp`
+   absent, not an integer as `parseInt` reads it, or more than 300 s from the clock port's now
+   either way (`webhooks.verify`'s window, Constraint 12), checked before any `verify` call, so no
+   thrown SDK error is parsed. `signature`: every other rejection (a missing `svix-id` or
+   `svix-signature`, no secret matching).
 4. **Builds the envelope** `{ svixId, receivedAt, source, rawBody, headers subset }` and reads
    `type` for the log line.
 5. **Enqueues through the queue port.** A failed enqueue answers `503`, so Resend retries (RS-10).

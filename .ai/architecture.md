@@ -259,13 +259,14 @@ Rejected: unbounded concurrency; whole-batch retry; reserved concurrency as the 
 **Accepted.** Ingest verifies against the configured set of signing secrets, one `verify` call per
 secret, first match wins (RS-02), and rejects `svix-timestamp` more than 5 minutes off (RS-02,
 RS-03). Resend signs with both the old and new secret for 24 h after a rotation (RS-04), so the set
-is required, not defensive: the adopter adds the new secret, rotates, retires the old one inside
-24 h. Ingest re-reads the set at most every 5 minutes (a per-container cache TTL), so an added or
+is required, not defensive: the adopter rotates at Resend, which is what returns the new secret
+(RS-13), adds the new secret to the set, and retires the old one inside 24 h of the rotation
+(slice 4 pre-proposal C5; [runbook → Rotate the webhook signing secret](../docs/runbook.md#rotate-the-webhook-signing-secret)). Ingest re-reads the set at most every 5 minutes (a per-container cache TTL), so an added or
 retired secret takes effect within 5 minutes, with no redeploy. The loop ships with ingest in slice
 1; slice 4 adds the rotation runbook and the retired-secret test. **Conditional:** how both
 signatures appear in the header (RS-U09) does not matter to a per-secret loop.
 Rejected: one secret with a redeploy on rotation (drops deliveries for the redeploy window).
-**Evidence:** unit tests with old, new and both signatures in one header, forged and stale (6 min) requests, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), signed by the test signer that `resend`'s `webhooks.verify` accepts in [sign-webhook.test.ts](../packages/ingest/src/sign-webhook.test.ts) (slice 1). Pending — retired secret → `401` once the cache TTL passes, with a fake clock (slice 4).
+**Evidence:** unit tests with old, new and both signatures in one header, forged and stale (6 min) requests, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts), signed by the test signer that `resend`'s `webhooks.verify` accepts in [sign-webhook.test.ts](../packages/ingest/src/sign-webhook.test.ts) (slice 1). A secret dropped from the store still verifies until the 5-minute cache TTL passes, then answers `401` with one `ingest.rejected` carrying `reason: signature`; a stale, skewed or non-integer `svix-timestamp` answers `401` with `reason: timestamp` before any `verify` call, on a fake clock started at wall-clock time, in [create-ingest.test.ts](../packages/ingest/src/create-ingest.test.ts) (slice 4).
 
 ### ADR-010 — Serverless on AWS CDK: an app stack and a guardrails stack
 
@@ -499,7 +500,7 @@ Rejected: NestJS (CDK `NodejsFunction` and Vitest compile with esbuild, which em
 | Workspace orchestration | pnpm workspaces and root `package.json` scripts; no Turborepo (owner, 2026-10-16) | No package emits a build output to cache (packages ship TypeScript source); Biome and Vitest each run as one root process; typecheck is one `tsc` pass. Revisit when a measured `pnpm check` exceeds 60 s or a package emits a build output |
 | Local development database | `compose.yaml`: `postgres:18.6-alpine` on `127.0.0.1:55432`, started by `pnpm dev:full` (owner, 2026-10-16) | Loopback only, no cost. Integration tests never use it (Testcontainers). Slice 2B adds `apps/local` to the same file |
 | Secret scan | gitleaks, version-pinned Docker image, a `pnpm verify` stage (owner, 2026-10-15) | Not in Resend's public stack: the repo is public and nothing in that stack scans history. Docker is already needed for Testcontainers, so it adds no install. Upstream says gitleaks is feature complete and now gets security patches only |
-| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`, `worker.payload_sanitized` (ADR-004); vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
+| Logging / metrics | Winston JSON; CloudWatch EMF custom set: `ingest.accepted`, `ingest.rejected{reason}` (`reason` ∈ `signature`, `timestamp`; emitted once per `401` from slice 4), `worker.duplicates`, `worker.processing_lag`, `reconcile.missing`, `reconcile.replayed`, `reconcile.failed`, `projection.unknown_event_type`, `worker.payload_sanitized` (ADR-004); vended SQS (queue age, DLQ depth), Lambda and API Gateway metrics for alarms | Ids on every line, never as metric dimensions (AWS-12, AWS-30). The set is idea §5.8's minus the queue metrics SQS vends free (AWS-22) |
 | Resend | `resend` Node SDK: API calls only inside `packages/resend-client`; `webhooks.verify` (local crypto, RS-02) in `packages/ingest` | ADR-012, ADR-009, ADR-013 |
 | Infra / CI | AWS CDK (app + guardrails stacks), GitHub Actions | ADR-010 |
 | MCP | `@modelcontextprotocol/server` v2, stdio | ADR-019, ADR-011 |

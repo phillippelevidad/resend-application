@@ -264,3 +264,32 @@ an address or a subject.
   [LedgerApp-usage-trip](#ledgerapp-usage-trip) email, then `pnpm aws:rearm`. Locally, start the
   server with `pnpm dev:full`.
 - **Related:** [aws.md → Budget alarms](../.ai/aws.md#budget-alarms) items 4 and 6.
+
+## Procedures
+
+Planned operator tasks, each in the order that keeps every delivery verifiable.
+
+### Rotate the webhook signing secret
+
+Rotate first, then add the new secret, then retire the old one. Resend returns the new secret only
+from the rotation (RS-13), and both secrets sign for 24 hours after it (RS-04), so no delivery is
+lost in between ([ADR-009](../.ai/architecture.md#adr-009--multi-secret-verification-and-timestamp-tolerance)).
+
+1. **Ask-first.** Rotate at Resend, with a `full_access` key:
+   `curl -X POST "https://api.resend.com/webhooks/$WEBHOOK_ID/signing-secret/rotate" -H "Authorization: Bearer $RESEND_API_KEY"`.
+   The response holds the new secret; keep it out of the shell history and every file but
+   `.env.deployed.local`.
+2. Set `LEDGER_DEPLOY_WEBHOOK_SECRETS=<old>,<new>` and run `pnpm aws:deploy` (with
+   `LEDGER_DEPLOY_RESEND_API_KEY` and `LEDGER_DEPLOY_RESEND_WEBHOOK_ID` set: the deploy refuses the
+   secrets without them). Ingest reads the new set within 5 minutes, with no restart.
+3. Watch `ingest.rejected` stay flat:
+   `aws cloudwatch get-metric-statistics --namespace Ledger --metric-name ingest.rejected --dimensions Name=reason,Value=signature --statistics Sum --period 300 --start-time <15 min ago> --end-time <now>`
+   returns no datapoint above 0.
+4. Within 24 hours of step 1 (RS-04), set `LEDGER_DEPLOY_WEBHOOK_SECRETS=<new>`, run
+   `pnpm aws:deploy` again, and repeat step 3.
+5. If the old secret was retired too early, deliveries signed with it answer `401` and Resend
+   retries them (RS-10): put it back in the set, redeploy, then run `pnpm -s ledger reconcile` for
+   anything Resend gave up on.
+
+Local mode: the same order with `LEDGER_WEBHOOK_SECRETS` in `.env.local` and a restart of
+`pnpm dev`.
